@@ -104,7 +104,11 @@ def parse_tasks(text: str, rep: Report) -> list[Task]:
     current: Task | None = None
     current_field: str | None = None
     field_re = re.compile(r"^\*\*([A-Za-z_]+):\*\*\s*(.*)$")
-    header_re = re.compile(r"^###\s+(TASK-\d+)\s*$")
+    # TASK-\d+ (TASK-001) is the original/common shape; TASK-[A-Z0-9-]+ also
+    # accepts self-generated escalation IDs like TASK-MAINT-2026-07-19 (Wave
+    # B's nightly self-audit) without weakening anything else — a superset,
+    # not a redesign of the ID grammar.
+    header_re = re.compile(r"^###\s+(TASK-[A-Z0-9-]+)\s*$")
 
     for i, line in enumerate(text.splitlines(), start=1):
         h = header_re.match(line.strip())

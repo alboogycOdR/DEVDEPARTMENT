@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-    Dispatch a builder (Grok Build or Codex AI) against PLAN.md, headlessly.
+    Dispatch a builder (grok|codex) headlessly against PLAN.md. Windows mirror of dispatch.sh.
 .DESCRIPTION
-    Validates PLAN.md, ensures the builder's worktree exists, then launches the
-    builder CLI with a condensed protocol prompt. Adjust $GrokCmd / $CodexCmd to
-    match your installed CLI binary names and headless flags.
+    Targets Windows PowerShell 5.1 (Windows default). Do NOT add "#requires -Version 7".
+    Behaviour is 1:1 with scripts/dispatch.sh: validate plan -> ensure detached worktree ->
+    resume-first builder prompt -> launch -> re-validate.
 .EXAMPLE
-    .\scripts\dispatch.ps1 -Builder grok
-    .\scripts\dispatch.ps1 -Builder codex -DryRun
+    powershell -ExecutionPolicy Bypass -File scripts\dispatch.ps1 -Builder grok
+    powershell -ExecutionPolicy Bypass -File scripts\dispatch.ps1 -Builder codex -DryRun
 #>
 param(
     [Parameter(Mandatory = $true)][ValidateSet("grok", "codex")][string]$Builder,
@@ -16,81 +16,81 @@ param(
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
+$ParentDir = Split-Path $RepoRoot -Parent
 Set-Location $RepoRoot
-$RepoName = Split-Path $RepoRoot -Leaf
 
-# --- 1. Gate on protocol-legal plan -----------------------------------------
+# Resolve a Python launcher that exists on this box (Windows usually has `python` or `py`).
+function Get-PythonCmd {
+    foreach ($c in @("python", "python3", "py")) {
+        if (Get-Command $c -ErrorAction SilentlyContinue) { return $c }
+    }
+    throw "No Python interpreter found on PATH (tried python, python3, py)."
+}
+$Py = Get-PythonCmd
+
+# --- Builder config (mirror of dispatch.sh case block; amendments 55ce44a + 779746f) ---
+switch ($Builder) {
+    "grok" {
+        $Id = "GB"; $Suffix = "gb"
+        $Wt = Join-Path $ParentDir "wt-grok"
+        $Cmd = "grok"
+        $CmdArgs = @("--always-approve", "--permission-mode", "bypassPermissions")
+        $Briefing = "briefings/GROK_BUILD_BRIEFING.md"
+    }
+    "codex" {
+        $Id = "CX"; $Suffix = "cx"
+        $Wt = Join-Path $ParentDir "wt-codex"
+        $Cmd = "codex"
+        $CmdArgs = @("exec", "--model", "gpt-5.6-sol", "--reasoning-effort", "medium", "-s", "danger-full-access")
+        $Briefing = "briefings/CODEX_BRIEFING.md"
+    }
+}
+
+# --- 1. Validate plan -------------------------------------------------------------
 Write-Host "[dispatch] Validating PLAN.md..." -ForegroundColor Cyan
-python "$RepoRoot\scripts\validate_plan.py" "$RepoRoot\PLAN.md"
+& $Py "scripts\validate_plan.py" "PLAN.md"
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "[dispatch] PLAN.md is protocol-illegal. Fix violations before dispatching builders."
+    Write-Error "[dispatch] PLAN.md illegal - fix before dispatching."
     exit 1
 }
 
-# --- 2. Builder config -------------------------------------------------------
-# EDIT THESE to match your installed CLIs (binary name + headless prompt flag).
-$Config = @{
-    grok = @{
-        Id       = "GB"
-        Worktree = Join-Path (Split-Path $RepoRoot -Parent) "wt-$RepoName-grok"
-        Cmd      = "grok"
-        # Headless agentic flags. NOT `-p` (single-turn -- prints once, no tool use).
-        Args     = @("--always-approve", "--permission-mode", "bypassPermissions")
-        Briefing = "briefings\GROK_BUILD_BRIEFING.md"
-        Suffix   = "gb"
-    }
-    codex = @{
-        Id       = "CX"
-        Worktree = Join-Path (Split-Path $RepoRoot -Parent) "wt-$RepoName-codex"
-        Cmd      = "codex"
-        # `-s danger-full-access` required: PLAN.md is in the main repo root, outside
-        # the worktree, so read-only / workspace-write sandboxes block claiming tasks.
-        Args     = @("exec", "--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-5.5")
-        Briefing = "briefings\CODEX_BRIEFING.md"
-        Suffix   = "cx"
-    }
-}
-$B = $Config[$Builder]
-
-# --- 3. Ensure worktree ------------------------------------------------------
-if (-not (Test-Path $B.Worktree)) {
-    Write-Host "[dispatch] Creating worktree at $($B.Worktree)..." -ForegroundColor Cyan
-    # --detach: main is already checked out in the primary worktree; git forbids a
-    # named branch in two worktrees. Builder creates its own task branch after.
-    git worktree add --detach $B.Worktree main
+# --- 2. Ensure detached worktree ---------------------------------------------------
+if (-not (Test-Path $Wt)) {
+    Write-Host "[dispatch] Creating worktree at $Wt..." -ForegroundColor Cyan
+    git worktree add --detach $Wt main
     if ($LASTEXITCODE -ne 0) { Write-Error "[dispatch] git worktree add failed."; exit 1 }
 }
 
-# --- 4. Condensed headless prompt ---------------------------------------------
-$RepoPlan = Join-Path $RepoRoot "PLAN.md"
+# --- 3. Resume-first prompt (verbatim mirror of dispatch.sh; protocol section 10a) ---
+$PlanPath = Join-Path $RepoRoot "PLAN.md"
 $Prompt = @"
-You are $($B.Id), a builder in a multi-agent dev team. Working directory: $($B.Worktree) (your isolated git worktree; the coordination PLAN.md currently lives at $RepoPlan on branch main -- but ALL your PLAN.md commits happen on your own task branch, never directly on main).
-Procedure: (1) Read AGENTS.md and briefings/$(Split-Path $B.Briefing -Leaf) in the repo, then PLAN.md, fresh from disk. (2) RESUME CHECK FIRST -- scan PLAN.md for any task with Assigned_To: $($B.Id) and Status: in_progress or claimed. If found, resume it immediately: re-read its Owned_Paths files and the last Progress_Note to find the exact stopping point, then continue on the existing branch (do not re-claim or re-branch). Only if NO in_progress/claimed task exists: claim the highest-priority pending task Assigned_To: $($B.Id) whose dependencies are done. (3) BRANCH FIRST, THEN COMMIT: create/switch to task/TASK-NNN-$($B.Suffix) in your worktree; run 'git branch --show-current' and confirm it prints task/TASK-NNN-$($B.Suffix), not main; only then make one atomic commit ON THAT BRANCH setting Status: claimed, Branch: task/TASK-NNN-$($B.Suffix), Started_At. Implement strictly against the task's Spec_References, touching ONLY files under its Owned_Paths. Every later PLAN.md commit (in_progress, needs_review) must also land on this branch, never main -- re-check 'git branch --show-current' before each one. (4) Test everything; append Test_Evidence. (5) Append-only Progress_Notes with UTC timestamps and [$($B.Id)] tags -- if context is running low, write a detailed stopping-point note and commit before stopping. (6) Finish at needs_review (never done), or blocked with a vocabulary reason. Conventional Commits ending [TASK-NNN]. Never write to specs/, docs/, REVIEW.md, scripts/, .claude/, other task blocks, or main.
+You are $Id, a builder in a multi-agent dev team. Working directory: $Wt (your isolated git worktree; coordination PLAN.md lives at $PlanPath on main).
+Procedure: (1) Read AGENTS.md and $Briefing, then PLAN.md, fresh from disk. If dossiers/TASK-NNN.md exists for your task, read it in full before acting and append a Work Log entry each session - never ask for re-explanation of anything in the dossier. (2) RESUME CHECK FIRST - scan PLAN.md for any task with Assigned_To: $Id and Status: in_progress or claimed. If found, resume that task immediately: re-read its Owned_Paths files and the last Progress_Note to find the exact stopping point, then continue on the existing branch (do not re-claim or re-branch). Only if NO in_progress/claimed task exists: claim the highest-priority pending task Assigned_To: $Id whose dependencies are done - one atomic edit+commit setting Status: claimed, Branch: task/TASK-NNN-$Suffix, Started_At. (3) Create (or switch to) the task branch in your worktree and implement strictly against the task's Spec_References, touching ONLY files under its Owned_Paths. (4) Test everything; append Test_Evidence. (5) Append-only Progress_Notes with UTC timestamps and [$Id] tags - if your context is approaching its limit, write a detailed stopping-point note (what is done, what file, exact next step) and commit before stopping. (6) Finish at needs_review (never done), or blocked with a vocabulary reason. Conventional Commits ending [TASK-NNN]. Never write to specs/, docs/, REVIEW.md, scripts/, .claude/, other task blocks, or main.
 "@
 
 if ($DryRun) {
-    Write-Host "[dispatch] DRY RUN -- would execute:" -ForegroundColor Yellow
-    Write-Host "  cd $($B.Worktree)"
-    Write-Host "  $($B.Cmd) $($B.Args -join ' ') `"<prompt>`""
-    Write-Host "`n--- Prompt ---`n$Prompt"
+    Write-Host "[dispatch] DRY RUN - would run: (cd $Wt ; $Cmd $($CmdArgs -join ' ') `"<prompt>`")" -ForegroundColor Yellow
+    Write-Host "--- Prompt ---"
+    Write-Host $Prompt
     exit 0
 }
 
-# --- 5. Launch -----------------------------------------------------------------
-Write-Host "[dispatch] Launching $Builder ($($B.Id)) in $($B.Worktree)..." -ForegroundColor Green
-Push-Location $B.Worktree
+# --- 4. Launch --------------------------------------------------------------------
+Write-Host "[dispatch] Launching $Builder ($Id) in $Wt..." -ForegroundColor Green
+Push-Location $Wt
 try {
-    & $B.Cmd @($B.Args + $Prompt)
-    $exit = $LASTEXITCODE
+    & $Cmd @($CmdArgs + @($Prompt))
+} catch {
+    Write-Warning "[dispatch] Builder process error: $($_.Exception.Message)"
 } finally {
     Pop-Location
 }
 
-# --- 6. Post-session validation -------------------------------------------------
-Write-Host "[dispatch] Builder session ended (exit $exit). Re-validating PLAN.md..." -ForegroundColor Cyan
-python "$RepoRoot\scripts\validate_plan.py" "$RepoRoot\PLAN.md"
+# --- 5. Re-validate ----------------------------------------------------------------
+Write-Host "[dispatch] Session ended. Re-validating PLAN.md..." -ForegroundColor Cyan
+& $Py "scripts\validate_plan.py" "PLAN.md"
 if ($LASTEXITCODE -ne 0) {
-    Write-Warning "[dispatch] PLAN.md is now protocol-illegal -- builder violated the protocol. Review 'git log -p -- PLAN.md' before proceeding."
+    Write-Warning "[dispatch] PLAN.md now protocol-illegal - builder violated protocol. Inspect: git log -p -- PLAN.md"
     exit 1
 }
-Write-Host "[dispatch] Done. Run /status in Claude Code for the health scan." -ForegroundColor Green
+Write-Host "[dispatch] Done. Run /devteam-status in Claude Code for the health scan." -ForegroundColor Green

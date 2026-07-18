@@ -1,69 +1,58 @@
-# Multi-Agent Dev Team — Orchestrator + Heterogeneous Builders
+# DEVDEPARTMENT v4.2 — Multi-Agent Development Workflow Framework
 
-**Version:** 1.0.0 | **Owner:** Alister Witbooy / Basileia Technologies
+One pack, three layers, one onboarding prompt. Basileia Technologies.
 
-One cohesive development team built from three tools:
+| Layer | What it gives you |
+|---|---|
+| **Core protocol** | ORCH (Claude Code) + GB (Grok Build) + CX (Codex AI) coordinating through a git-versioned PLAN.md blackboard; strict status state machine; territorial isolation (Owned_Paths + worktrees + validator); /devteam-decompose /devteam-dispatch /devteam-status /devteam-review; Protocol §10 session continuity (resume-first, checkpoints); ORCH model discipline table |
+| **Autopilot** | /devteam-autopilot (L1 one-wave autonomy) and scripts/supervisor.py (L2 continuous loop): auto-review, auto-merge, self-healing redispatch, P0/P1/P2 escalation contract, STOP kill switch, team_stats learning assignment, **two-way Telegram** (v4.1: /status /board /answer /approve /rework /stop /resume /wave /digest /mute), **nightly self-audit + dispatch budget ceiling** (v4.2: files TASK-MAINT-\* on failure, T1 Watchtower unreachable-builder P2 escalation) |
+| **ECC waves** | Write-time enforcement hooks (territory firewall, secret scan, §10 lifecycle automation), .codex/config.toml for CX, harness-audit.sh release gate (AgentShield + validator + all test suites) |
+| **Deployment** | PM2 process definition + clawsrv (Ubuntu 24.04, Tailscale) T1 "Watchtower" always-on deployment guide (v4.2) — supervisor runs unattended, dispatch/review still execute wherever builder CLIs are authenticated |
 
-| Unit | Tool | Role |
-|---|---|---|
-| **ORCH** | Claude Code | Orchestrator, planner, reviewer. Owns PLAN.md structure, task assignment, review verdicts. |
-| **GB** | Grok Build | Builder sub-agent. Executes assigned tasks in an isolated git worktree. |
-| **CX** | Codex AI | Builder sub-agent. Executes assigned tasks in an isolated git worktree. |
+## Install into any new project
 
-Coordination happens through **one shared, git-versioned folder** (this repo). No tool shares session memory with another; the **PLAN.md blackboard** plus a strict **update protocol** is the entire coordination fabric.
+1. Keep this DEVDEPARTMENT/ folder next to your projects (not inside one).
+2. Open Claude Code in the project root.
+3. Paste the contents of `onboard.md` (or reference it) and run it.
+4. Confirm the two human-gated steps (settings.json diff, git commit).
+5. Drop specs into `specs/`, run `/devteam-decompose`, then `/devteam-dispatch`.
+6. (Optional) Set `DEVTEAM_TG_TOKEN` / `DEVTEAM_TG_CHAT` and add `"telegram"`
+   to `autopilot.json → notify_channels` for two-way command & control from
+   your phone — see `docs/TELEGRAM.md`.
+7. (Optional) Deploy the supervisor always-on to a VPS — see
+   `docs/DEPLOY_CLAWSRV.md`.
 
-## Repository Layout
+## Layout
 
 ```
-/project-root/
-├── README.md                      # This file
-├── PLAN.md                        # Living blackboard — the single source of coordination truth
-├── AGENTS.md                      # Shared conventions ALL three tools must obey
-├── CLAUDE.md                      # Claude Code orchestrator briefing (auto-loaded by Claude Code)
-├── REVIEW.md                      # Review log (orchestrator-only writes)
-├── specs/                         # Spec documents (read-only for builders) — drop your 5 specs here
-├── src/                           # Builder output (code)
-├── docs/
-│   └── COORDINATION_PROTOCOL.md   # Full protocol: lifecycle, ownership, sync, conflict rules
-├── briefings/
-│   ├── GROK_BUILD_BRIEFING.md     # Paste/point Grok Build at this on launch
-│   └── CODEX_BRIEFING.md          # Paste/point Codex at this on launch
-├── scripts/
-│   ├── validate_plan.py           # Protocol linter — run before/after every builder session
-│   ├── dispatch.ps1               # Windows: launch a builder headlessly against PLAN.md
-│   ├── dispatch.sh                # Bash equivalent
-│   └── worktree.ps1               # Create/remove per-builder git worktrees
-├── tests/
-│   └── test_validate_plan.py      # Test suite for the validator (pytest)
-└── .claude/commands/              # Orchestrator slash commands
-    ├── plan.md                    # /plan     — decompose specs into PLAN.md tasks
-    ├── dispatch.md                # /dispatch — assign + kick off builders
-    ├── status.md                  # /status   — sync scan + health report
-    └── review.md                  # /review   — review done items, verdict, follow-ups
+PLAN.md  AGENTS.md  CLAUDE.md  REVIEW.md  autopilot.json  onboard.md
+briefings/   GROK_BUILD_BRIEFING.md · CODEX_BRIEFING.md   (filesystem-check mandate, resume-first)
+docs/        COORDINATION_PROTOCOL.md · AUTOPILOT.md · HOOKS.md · BOARD.md · TELEGRAM.md · DEPLOY_CLAWSRV.md
+scripts/     board_publisher.py · validate_plan.py · dispatch.sh + dispatch.ps1 · worktree.ps1 · harness-audit.sh + harness-audit.ps1 · supervisor.py (platform-aware) · notify.py · team_stats.py · tg_listener.py · tg_commands.py · maintenance.py · budget.py · scheduling.py
+deploy/      ecosystem.config.js (PM2 process definition for clawsrv)
+hooks/       territory-firewall.js · secret-scan.js · session-start.js · pre-compact.js · session-end.js · lib.js · hooks.json · run-tests.js
+.claude/commands/  devteam-decompose · devteam-dispatch · devteam-status · devteam-review · devteam-autopilot
+.codex/      config.toml (CX: gpt-5.6-sol, medium effort, sandbox profiles, DEVTEAM_UNIT=CX)
+tests/       test_validate_plan.py · test_supervisor.py · test_board_publisher.py · test_tg_commands.py · test_tg_listener.py · test_supervisor_telegram.py · test_notify.py · test_scheduling.py · test_budget.py · test_maintenance.py · test_supervisor_maintenance.py
+board/       index.html (Mission Control frontend)
+dossiers/    per-task context dossiers (v4)
+specs/       drop per-project spec documents here
 ```
 
-## Quick Start
+## Test totals (run them all via `bash scripts/harness-audit.sh --no-shield`)
 
-```powershell
-# 1. Initialise
-git init; git add -A; git commit -m "chore: bootstrap multi-agent dev team system"
+- Python: 277 (validator 18 + supervisor 17 + board_publisher 8 + tg_commands 85 + tg_listener 18 + supervisor_telegram 21 + notify 6 + scheduling 14 + budget 23 + maintenance 49 + supervisor_maintenance 18)
+- Node hooks: 21
+- Plus PLAN.md protocol validation and (online) AgentShield config scan.
 
-# 2. Drop your 5 spec documents into specs/
+## Version history
 
-# 3. Open Claude Code in the repo root and run:
-#      /plan          → decomposes specs into TASK items in PLAN.md
-#      /dispatch      → creates worktrees + launches builders (or prints launch commands)
-#      /status        → any time, for a health scan
-#      /review        → when tasks hit needs_review
+- v1.0 — core protocol, blackboard, validator, dispatch (renamed devteam-*, §10 continuity)
+- v1.1–1.2 — autopilot layer; resume-first stale handling; model discipline (sonnet-5 judgment / sonnet-4-6 mechanical); c8b9872 filesystem checks; gpt-5.6-sol for CX
+- v2.0 — ECC waves vendored: write-time hooks, .codex config, harness audit gate; unified onboarding
+- v2.1 — full Windows 11 / PowerShell 5.1 parity: dispatch.ps1 + harness-audit.ps1 mirrors (resume-first, gpt-5.6-sol flags), platform-aware supervisor dispatch defaults, dual-platform onboarding steps
+- v4.0 — Mission Control: board_publisher + paper-terminal Kanban PWA (portfolio across machines, animated unit avatars, in-flight tracker), per-task dossiers, supervisor board publishing. Python tests: 43.
+- v4.1 — Two-way Telegram (Wave A-remainder, completes Pillar 2): `tg_listener.py` long-polling daemon thread + `tg_commands.py` command grammar/PLAN.md micro-transactions; 10-command grammar (`/status /board /answer /approve /rework /stop /resume /wave /digest /mute`); chat allowlist with silent-drop for unknown senders; P2 escalations get an actionable `/answer` reply line (notify.py); offset-persisted long-poll (no replay on restart); `/stop` verified unbreakable even against a corrupted PLAN.md. Python tests: 173.
+- v4.2 — Self-maintenance + clawsrv deployment (Wave B, Pillar 3): `maintenance.py`'s six-step nightly self-audit (harness audit, validator, pytest, node hooks, hygiene, backup) idempotent via the new shared `scheduling.py` daily/weekly marker helper — files a `TASK-MAINT-<date>` block on any failure, committed `[MAINT]`; `budget.py` dispatch-ceiling + `quiet_hours` gating before every DISPATCH; T1 "Watchtower" unreachable-builder P2 escalation (dispatch/review CLIs may live on a different host than the monitoring supervisor); `deploy/ecosystem.config.js` PM2 process definition + `docs/DEPLOY_CLAWSRV.md` full T1 setup guide (T2 documented as a future path only); task-ID grammar widened from `TASK-\d+` to `TASK-[A-Z0-9-]+` so self-generated escalation IDs are fully recognized by the validator, board, and Telegram commands. Python tests: 277.
 
-# 4. Builders (manual launch alternative):
-.\scripts\dispatch.ps1 -Builder grok    # or -Builder codex
-```
 
-## The Three Guarantees
-
-1. **No overlap.** Every task lists `Owned_Paths`. The orchestrator must never assign two active tasks with intersecting paths. `validate_plan.py` enforces this mechanically.
-2. **No overwrites.** Builders work in **git worktrees on task branches** (`task/TASK-###-gb` / `-cx`) and may only edit *their own task block* in PLAN.md, append-only.
-3. **No drift.** Status lifecycle is a strict state machine; every mutation is timestamped, attributed, and committed. The validator rejects any PLAN.md that violates the protocol, and the orchestrator runs it at every phase boundary.
-
-Full rules: `docs/COORDINATION_PROTOCOL.md`.

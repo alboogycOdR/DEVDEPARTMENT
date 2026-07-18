@@ -1,0 +1,420 @@
+#!/usr/bin/env python3
+"""tg_commands.py — Command grammar, PLAN.md micro-transaction editing, and
+reply rendering for DEVDEPARTMENT's two-way Telegram integration (Wave
+A-remainder, completes Pillar 2 of the v3 design).
+
+Design principles (mirrors the rest of this codebase):
+  - Pure functions wherever possible: parsing and PLAN.md text mutation take
+    strings in, return strings/results out — no I/O, no globals, fully
+    unit-testable without a repo, git, or a network connection.
+  - validate_plan.py remains THE PLAN.md parser/schema authority. This module
+    does not reimplement it — it reuses the exact same field/header regex
+    shapes so a PLAN.md written here is always re-parseable by validate_plan.
+  - Free text from Telegram (the argument of /answer and /rework) is treated
+    strictly as inert data. It is written into PLAN.md as a single-line bullet
+    and is NEVER eval'd, shelled out, or interpreted as a path or command. See
+    _sanitize_free_text() for exactly how it is neutralised before writing.
+  - Updated_By is set to "ORCH" on every Telegram-driven PLAN.md edit, never
+    "TG". validate_plan.py's VALID_UNITS vocabulary is {ORCH, GB, CX} and this
+    module deliberately does not touch that invariant (Wave A-remainder does
+    not redesign existing APIs). Telegram is a remote *channel* for
+    human/ORCH-level decisions, not a fourth autonomous unit that writes code.
+    Full provenance is still preserved end-to-end via three independent,
+    higher-resolution trails that DO carry a distinct "TG" marker: the git
+    commit message tag "[TG]", the AUTOPILOT_LOG.md line
+    ("TG_COMMAND unit=TG cmd=... task=..."), and the "[TG-DECISION]" /
+    "[TG-REWORK]" prefix on the Progress_Notes / Review_Findings bullet
+    itself. Nothing about who-really-typed-this is lost; it just isn't
+    encoded in the one field the protocol validator constrains.
+"""
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import sys
+import urllib.parse
+import urllib.request
+from dataclasses import dataclass
+from pathlib import Path
+
+# ---------------------------------------------------------------- constants --
+# TASK-\d+ (TASK-001) is the common shape; TASK-[A-Z0-9-]+ also accepts
+# self-generated escalation IDs like TASK-MAINT-2026-07-19 (Wave B) so
+# /answer, /approve, /rework can target those from Telegram too.
+TASK_HEADER_RE = re.compile(r"^###\s+(TASK-[A-Z0-9-]+)\s*$")
+FIELD_RE = re.compile(r"^\*\*([A-Za-z_]+):\*\*\s*(.*)$")
+EMPTY_VALUES = {"", "\u2014", "-", "--", "n/a", "none"}  # \u2014 = em dash "—", matches validate_plan.py
+
+COMMANDS = {
+    "/status", "/board", "/answer", "/approve", "/rework",
+    "/stop", "/resume", "/wave", "/digest", "/mute",
+}
+
+MAX_FREE_TEXT_LEN = 2000
+
+HELP_TEXT = (
+    "DEVDEPARTMENT commands:\n"
+    "/status \u2014 task board summary\n"
+    "/board \u2014 board URL\n"
+    "/answer TASK-NNN <text> \u2014 unblock / append a decision\n"
+    "/approve TASK-NNN \u2014 trigger a scoped ORCH review for that task\n"
+    "/rework TASK-NNN <reason> \u2014 send back to rework\n"
+    "/stop \u2014 halt the supervisor loop\n"
+    "/resume \u2014 clear STOP and resume\n"
+    "/wave \u2014 wake the loop early (skip remaining sleep)\n"
+    "/digest \u2014 send a digest now\n"
+    "/mute <duration e.g. 2h, 30m> \u2014 suppress P0/P2 alerts (P1 always gets through)\n"
+)
+
+STATUS_ICON = {
+    "blocked": "\U0001F534", "needs_review": "\U0001F7E0", "in_progress": "\U0001F7E3",
+    "claimed": "\U0001F535", "pending": "\u26AA", "done": "\u2705",
+}
+DIGEST_ICON = "\U0001F4CA"
+
+
+@dataclass
+class ApplyResult:
+    text: str
+    changed: bool
+    detail: str
+
+
+# --------------------------------------------------------------- grammar ----
+def parse_command(text: str) -> tuple[str, str]:
+    """Split a raw Telegram message into (command, argstring).
+
+    Unknown / malformed / non-command text -> ("help", original_text), per the
+    grammar table's "anything else -> reply with help; do NOT execute" rule.
+    """
+    raw = (text or "").strip()
+    if not raw.startswith("/"):
+        return "help", raw
+    parts = raw.split(None, 1)
+    cmd = parts[0].lower()
+    if "@" in cmd:  # tolerate "/status@MyBotName" (Telegram group-chat convention)
+        cmd = cmd.split("@", 1)[0]
+    args = parts[1].strip() if len(parts) > 1 else ""
+    if cmd not in COMMANDS:
+        return "help", raw
+    return cmd, args
+
+
+_TASK_AND_TEXT_RE = re.compile(r"^(TASK-[A-Z0-9-]+)\s+(.+)$", re.DOTALL)
+_TASK_ONLY_RE = re.compile(r"^(TASK-[A-Z0-9-]+)\s*$")
+_DURATION_RE = re.compile(r"^(\d+)\s*([hm])$", re.IGNORECASE)
+
+
+def parse_task_and_text(args: str) -> tuple[str, str] | None:
+    """Parse '<TASK-NNN> <free text...>' shared by /answer and /rework."""
+    m = _TASK_AND_TEXT_RE.match((args or "").strip())
+    if not m:
+        return None
+    return m.group(1), m.group(2)
+
+
+# Kept as distinct names because the grammar table lists them as distinct
+# commands with independently-evolvable argument shapes, even though today
+# both are literally "TASK-NNN <text>".
+def parse_answer_args(args: str) -> tuple[str, str] | None:
+    return parse_task_and_text(args)
+
+
+def parse_rework_args(args: str) -> tuple[str, str] | None:
+    return parse_task_and_text(args)
+
+
+def parse_approve_args(args: str) -> str | None:
+    m = _TASK_ONLY_RE.match((args or "").strip())
+    return m.group(1) if m else None
+
+
+def parse_mute_args(args: str) -> int | None:
+    """'2h' / '30m' -> seconds. Anything else -> None (caller replies usage)."""
+    m = _DURATION_RE.match((args or "").strip())
+    if not m:
+        return None
+    n, unit = int(m.group(1)), m.group(2).lower()
+    if n <= 0:
+        return None
+    return n * 3600 if unit == "h" else n * 60
+
+
+# ------------------------------------------------------------- allowlist ----
+def is_allowed(chat_id: str, allowlist: list[str], default_chat: str) -> bool:
+    """True iff chat_id may issue commands.
+
+    If chat_allowlist is configured (multi-person), it is used ADDITIVELY with
+    DEVTEAM_TG_CHAT (the owner never gets silently locked out by their own
+    allowlist edit) rather than replacing it. If chat_allowlist is empty, only
+    DEVTEAM_TG_CHAT may command the bot — the single-operator default.
+    """
+    allowed = {str(c) for c in (allowlist or []) if str(c).strip()}
+    if default_chat:
+        allowed.add(str(default_chat))
+    return bool(chat_id) and str(chat_id) in allowed
+
+
+# ------------------------------------------------------- free-text safety ---
+def _sanitize_free_text(text: str) -> str:
+    """Neutralise Telegram free text before it is written into PLAN.md.
+
+    PLAN.md's structure is entirely line-based: a new "### TASK-NNN" or
+    "**Field:**" only means something at the START of a line. This function
+    guarantees the sanitised text can never occupy the start of a line inside
+    PLAN.md by collapsing every newline/control character to a single space,
+    so the entire message — however it's formatted, however many shell
+    metacharacters or path-traversal strings it contains — stays inert data
+    inside one Markdown bullet. It is never eval'd, shelled out to, or opened
+    as a path; this function's only job is markdown-structure containment.
+    """
+    if text is None:
+        return ""
+    clean = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    clean = "".join(ch if (ch.isprintable() or ch == " ") else " " for ch in clean)
+    clean = re.sub(r"\s+", " ", clean).strip()
+    if len(clean) > MAX_FREE_TEXT_LEN:
+        clean = clean[: MAX_FREE_TEXT_LEN].rstrip() + "\u2026 [truncated]"
+    return clean
+
+
+# --------------------------------------------------- PLAN.md block editing --
+def _task_span(lines: list[str], task_id: str) -> tuple[int, int] | None:
+    """(start, end) line-index span [start, end) for a single ### TASK-NNN block."""
+    start = None
+    for i, raw in enumerate(lines):
+        m = TASK_HEADER_RE.match(raw.strip())
+        if m:
+            if start is not None:
+                return start, i
+            if m.group(1) == task_id:
+                start = i
+    if start is not None:
+        return start, len(lines)
+    return None
+
+
+def _field_line_index(lines: list[str], start: int, end: int, field: str) -> int | None:
+    for i in range(start, end):
+        m = FIELD_RE.match(lines[i].strip())
+        if m and m.group(1) == field:
+            return i
+    return None
+
+
+def _field_block_end(lines: list[str], field_line: int, end: int) -> int:
+    """Index one-past the last continuation line of a (possibly multi-line) field."""
+    j = field_line + 1
+    while j < end:
+        stripped = lines[j].strip()
+        if not stripped:
+            break
+        if FIELD_RE.match(stripped) or TASK_HEADER_RE.match(stripped):
+            break
+        j += 1
+    return j
+
+
+def _get_field_value(lines: list[str], start: int, end: int, field: str) -> str:
+    idx = _field_line_index(lines, start, end, field)
+    if idx is None:
+        return ""
+    m = FIELD_RE.match(lines[idx].strip())
+    return m.group(2).strip() if m else ""
+
+
+def _set_field(lines: list[str], start: int, end: int, field: str, value: str) -> list[str]:
+    """Replace a single-line field's value in place. No-op if the field is missing."""
+    idx = _field_line_index(lines, start, end, field)
+    if idx is None:
+        return lines
+    return lines[:idx] + [f"**{field}:** {value}"] + lines[idx + 1:]
+
+
+def _append_to_field(lines: list[str], start: int, end: int, field: str, bullet_line: str) -> list[str]:
+    """Append a bullet as a new continuation line of a multi-line field.
+
+    If the field currently holds an empty-value marker ("—" etc.) on the
+    header line itself, the header is rewritten bare ("**Field:**") and the
+    bullet becomes its first continuation line — matching the convention used
+    throughout the rest of PLAN.md (see Progress_Notes in the schema).
+    """
+    idx = _field_line_index(lines, start, end, field)
+    if idx is None:
+        return lines
+    block_end = _field_block_end(lines, idx, end)
+    header_val = _get_field_value(lines, start, end, field)
+    if block_end == idx + 1 and header_val.lower() in EMPTY_VALUES:
+        return lines[:idx] + [f"**{field}:**", bullet_line] + lines[idx + 1:]
+    return lines[:block_end] + [bullet_line] + lines[block_end:]
+
+
+def apply_answer(plan_text: str, task_id: str, free_text: str, ts: str) -> ApplyResult:
+    """/answer TASK-NNN <text>
+
+    Appends a [TG-DECISION] Progress_Note. If the task is currently blocked,
+    flips Status -> pending and clears Blocked_Reason. Always bumps
+    Updated_By/Updated_At. Touches ONLY this task's block — every other byte
+    of plan_text is preserved verbatim (territorial isolation, applied to a
+    single writer instead of two builders).
+    """
+    lines = plan_text.split("\n")
+    span = _task_span(lines, task_id)
+    if span is None:
+        return ApplyResult(plan_text, False, f"/answer {task_id}: unknown task ID — no edit made")
+    start, end = span
+
+    if _field_line_index(lines, start, end, "Progress_Notes") is None:
+        return ApplyResult(plan_text, False, f"/answer {task_id}: malformed task block (no Progress_Notes field) — no edit made")
+
+    was_blocked = _get_field_value(lines, start, end, "Status").lower() == "blocked"
+    clean = _sanitize_free_text(free_text)
+    if not clean:
+        return ApplyResult(plan_text, False, f"/answer {task_id}: empty text after sanitisation — no edit made")
+
+    bullet = f"- [{ts}] [TG-DECISION] {clean}"
+    lines = _append_to_field(lines, start, end, "Progress_Notes", bullet)
+    start, end = _task_span(lines, task_id)
+
+    if was_blocked:
+        lines = _set_field(lines, start, end, "Status", "pending")
+        start, end = _task_span(lines, task_id)
+        lines = _set_field(lines, start, end, "Blocked_Reason", "\u2014")
+        start, end = _task_span(lines, task_id)
+
+    lines = _set_field(lines, start, end, "Updated_By", "ORCH")
+    start, end = _task_span(lines, task_id)
+    lines = _set_field(lines, start, end, "Updated_At", ts)
+
+    detail = f"/answer {task_id}" + (" \u2014 unblocked (pending)" if was_blocked else " \u2014 note appended")
+    return ApplyResult("\n".join(lines), True, detail)
+
+
+def apply_rework(plan_text: str, task_id: str, reason: str, ts: str) -> ApplyResult:
+    """/rework TASK-NNN <reason>
+
+    Writes the reason into Review_Findings as a [TG-REWORK] bullet and moves
+    Status needs_review -> in_progress. Same single-task-block discipline as
+    apply_answer.
+    """
+    lines = plan_text.split("\n")
+    span = _task_span(lines, task_id)
+    if span is None:
+        return ApplyResult(plan_text, False, f"/rework {task_id}: unknown task ID — no edit made")
+    start, end = span
+
+    if _field_line_index(lines, start, end, "Review_Findings") is None:
+        return ApplyResult(plan_text, False, f"/rework {task_id}: malformed task block (no Review_Findings field) — no edit made")
+
+    clean = _sanitize_free_text(reason)
+    if not clean:
+        return ApplyResult(plan_text, False, f"/rework {task_id}: empty reason after sanitisation — no edit made")
+
+    bullet = f"- [{ts}] [TG-REWORK] {clean}"
+    lines = _append_to_field(lines, start, end, "Review_Findings", bullet)
+    start, end = _task_span(lines, task_id)
+
+    lines = _set_field(lines, start, end, "Status", "in_progress")
+    start, end = _task_span(lines, task_id)
+    lines = _set_field(lines, start, end, "Updated_By", "ORCH")
+    start, end = _task_span(lines, task_id)
+    lines = _set_field(lines, start, end, "Updated_At", ts)
+
+    return ApplyResult("\n".join(lines), True, f"/rework {task_id} \u2014 sent back for rework")
+
+
+# ------------------------------------------------------------- git plumbing -
+def git_pull(repo: Path) -> bool:
+    """Best-effort `git pull --rebase --autostash`. False (not raised) on any failure
+    or if repo isn't a git working tree — the caller proceeds on the working copy
+    either way; a stale pull just means a slightly higher chance of a push conflict,
+    never a crash."""
+    try:
+        r = subprocess.run(["git", "pull", "--rebase", "--autostash"],
+                            cwd=repo, capture_output=True, text=True, timeout=30)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def git_commit_and_push(repo: Path, message: str) -> bool:
+    """Stage+commit+push ONLY PLAN.md. Never touches any other file."""
+    try:
+        subprocess.run(["git", "add", "PLAN.md"], cwd=repo, capture_output=True, text=True, timeout=30)
+        r = subprocess.run(["git", "commit", "-m", message], cwd=repo, capture_output=True, text=True, timeout=30)
+        if r.returncode != 0:
+            return False
+        r2 = subprocess.run(["git", "push"], cwd=repo, capture_output=True, text=True, timeout=30)
+        return r2.returncode == 0
+    except Exception:
+        return False
+
+
+# ------------------------------------------------------------ rendering -----
+def render_status(board: dict) -> str:
+    """Compact plain-text task table from board_publisher.build_board()'s output.
+    Telegram-safe: no Markdown tables (Telegram's plain-text mode doesn't render
+    GFM tables), just short lines."""
+    b = board.get("burndown", {}) or {}
+    project = board.get("project", "") or "project"
+    lines = [f"\U0001F4CB {project} \u2014 {b.get('done', 0)}/{b.get('total', 0)} done ({b.get('pct', 0)}%)"]
+    cols = board.get("columns", {}) or {}
+    for status in ("blocked", "needs_review", "in_progress", "claimed", "pending"):
+        items = cols.get(status) or []
+        if not items:
+            continue
+        icon = STATUS_ICON.get(status, "\u2022")
+        shown = ", ".join(f"{c.get('id', '?')}({c.get('assignee', '')})" for c in items[:8])
+        more = "" if len(items) <= 8 else f" +{len(items) - 8} more"
+        lines.append(f"{icon} {status}: {shown}{more}")
+    done_n = len(cols.get("done") or [])
+    if done_n:
+        lines.append(f"{STATUS_ICON['done']} done: {done_n}")
+    if (board.get("autopilot") or {}).get("stop_file"):
+        lines.append("\u26D4 STOP file present \u2014 supervisor halted.")
+    return "\n".join(lines)
+
+
+def render_board_url(cfg: dict) -> str:
+    url = ((cfg or {}).get("board") or {}).get("url", "")
+    return url if url else "No board URL configured \u2014 set autopilot.json \u2192 board.url"
+
+
+def render_digest(board: dict) -> str:
+    """One-paragraph on-demand digest (same P0 channel as the wave-complete digest)."""
+    b = board.get("burndown", {}) or {}
+    esc = board.get("escalations_open", []) or []
+    team = board.get("team", {}) or {}
+    lines = [f"{DIGEST_ICON} Digest \u2014 {board.get('project', '')}: "
+             f"{b.get('done', 0)}/{b.get('total', 0)} done ({b.get('pct', 0)}%)."]
+    if esc:
+        esc_str = ", ".join(f"{e.get('task')} ({e.get('question')})" for e in esc[:5])
+        lines.append(f"Open escalations: {esc_str}")
+    else:
+        lines.append("No open escalations.")
+    for unit in ("GB", "CX"):
+        u = team.get(unit)
+        if u and u.get("reviews"):
+            lines.append(f"{unit}: {u.get('reviews', 0)} reviews, first-pass rate {u.get('first_pass_rate')}")
+    return "\n".join(lines)
+
+
+# -------------------------------------------------------------- outbound ----
+def send_reply(token: str, chat_id: str, text: str) -> bool:
+    """POST sendMessage. Fail-open: any network/API error is caught, logged to
+    stderr, and swallowed — a failed reply must never crash the supervisor tick."""
+    if not token or not chat_id or not text:
+        return False
+    data = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode()
+    req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            body = json.loads(resp.read().decode())
+            if not body.get("ok"):
+                print(f"[tg_commands] reply send failed: {body}", file=sys.stderr)
+                return False
+            return True
+    except Exception as exc:  # noqa: BLE001 — network failures must never crash the tick
+        print(f"[tg_commands] reply send failed: {exc}", file=sys.stderr)
+        return False

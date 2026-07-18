@@ -14,4 +14,6 @@ You are ORCH executing **Phase 1 — Planning**. Follow CLAUDE.md and docs/COORD
 8. Commit: `docs(plan): plan v<X.Y> — <N> tasks from <M> specs [ORCH]`.
 9. Report to Alister: task table (ID, title, assignee, priority, territory), the dependency graph, the first dispatch wave, and any spec ambiguities you resolved or need answered.
 
+Additionally (v4): for every task created, write `dossiers/TASK-NNN.md` containing the brief (2-4 sentences), the relevant spec excerpts/pointers, the intended approach, and an empty `## Work Log` section. The dossier is the context hand-off that kills re-briefing between units.
+
 $ARGUMENTS

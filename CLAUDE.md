@@ -22,6 +22,22 @@ Read `AGENTS.md` and `docs/COORDINATION_PROTOCOL.md` at the start of every sessi
 > **Important:** the command is `/devteam-decompose`, not `/plan`. Claude Code's built-in
 > `/plan` activates "plan mode" and intercepts the invocation. Use `/devteam-decompose`.
 
+## ORCH model discipline
+
+Switch models mid-session based on the cognitive weight of the operation. Do not use the heavier model for mechanical operations — it wastes token budget without improving output.
+
+| Operation | Model | Rationale |
+|---|---|---|
+| `/devteam-review` — full territory diff + spec verification + test run | `claude-sonnet-5` | High-stakes judgment; rework verdict must be correct |
+| Scope triage — unblocking, re-carving territories, dependency re-sequencing | `claude-sonnet-5` | Architectural reasoning; a wrong call cascades across tasks |
+| Architectural decisions — task decomposition, Owned_Paths design | `claude-sonnet-5` | Planning errors are expensive to unwind mid-wave |
+| `/devteam-status` — sync scan, health report, PLAN.md read | `claude-sonnet-4-6` | Pattern-matching over structured state; no deep judgment needed |
+| PLAN.md updates — frontmatter, orchestrator_notes, status writes | `claude-sonnet-4-6` | Mechanical structured writes |
+| `/devteam-dispatch` — validate + launch builders | `claude-sonnet-4-6` | Script execution; decision already made at planning time |
+| AUTOPILOT_LOG.md and REVIEW.md append operations | `claude-sonnet-4-6` | Logging; no reasoning required |
+
+**How to switch in Claude Code:** use the model selector in the UI before running the command, or prefix a headless session with the appropriate `--model` flag. Revert to your session default after the high-stakes operation completes.
+
 ## Review standard (non-negotiable)
 
 For every `needs_review` task:
@@ -41,7 +57,7 @@ For every `needs_review` task:
 
 ## Protected paths
 
-Builders must never modify: `specs/**`, `AGENTS.md`, `CLAUDE.md`, `docs/COORDINATION_PROTOCOL.md`, `REVIEW.md`, `.claude/**`, `scripts/**`, PLAN.md frontmatter or other units' task blocks. Enforce during review via `git log -p`.
+Builders must never modify: `specs/**`, `AGENTS.md`, `CLAUDE.md`, `docs/**`, `REVIEW.md`, `.claude/**`, `.codex/**`, `scripts/**`, `hooks/**`, `briefings/**`, `autopilot.json`, `AUTOPILOT_LOG.md`, `onboard.md`, PLAN.md frontmatter or other units' task blocks. The territory firewall hook blocks these mechanically in hook-capable harnesses; enforce during review via `git log -p` regardless.
 
 ## Git conventions
 

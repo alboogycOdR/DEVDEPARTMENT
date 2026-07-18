@@ -1,0 +1,35 @@
+{
+  "$comment": "DEVDEPARTMENT hook wiring. Merge the `hooks` object below into the project's .claude/settings.json (create it if absent). Paths are project-relative; Claude Code runs hook commands from the project root with CLAUDE_PROJECT_DIR set. Set DEVTEAM_UNIT=GB|CX in a builder harness environment to activate territory enforcement for that unit; unset/ORCH sessions get secret-scan + session lifecycle only.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          { "type": "command", "command": "node hooks/territory-firewall.js" },
+          { "type": "command", "command": "node hooks/secret-scan.js" }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node hooks/session-start.js" }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node hooks/pre-compact.js" }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node hooks/session-end.js" }
+        ]
+      }
+    ]
+  }
+}

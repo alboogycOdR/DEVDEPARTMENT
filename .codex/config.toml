@@ -1,0 +1,38 @@
+# .codex/config.toml — DEVDEPARTMENT reference configuration for CX (Codex AI builder)
+#
+# Vendored from the ECC .codex asset pattern, adapted to the Coordination Protocol.
+# Keep this file PROJECT-LOCAL (committed in the repo root's .codex/), so CX's
+# model, effort, and sandbox posture are version-controlled and auditable —
+# not scattered across dispatch script CLI flags.
+#
+# dispatch.sh may still pass flags; project-local config is the source of truth
+# and the dispatch flags should be reduced to profile selection over time.
+# AGENTS.md at the repo root is auto-detected by Codex; it carries the protocol.
+
+# --- Model discipline (commits 55ce44a + 779746f) -----------------------------
+model = "gpt-5.6-sol"
+model_reasoning_effort = "medium"   # medium is the token-budget sweet spot; raise to
+                                    # "high" only if quality issues persist on this model.
+
+# --- Sandbox & approvals -------------------------------------------------------
+# Matches dispatch.sh: codex exec -s danger-full-access. Builders run inside an
+# isolated git worktree, so full FS access within it is the accepted trade-off.
+sandbox_mode = "danger-full-access"
+approval_policy = "never"           # headless builder sessions; safety comes from
+                                    # worktree isolation + territory review + validator.
+
+# --- Profiles -------------------------------------------------------------------
+# strict: for supervised debugging of CX behaviour (read-heavy, approval-gated).
+[profiles.strict]
+sandbox_mode = "read-only"
+approval_policy = "on-request"
+
+# builder: the normal DEVDEPARTMENT headless posture (same as top-level defaults).
+[profiles.builder]
+sandbox_mode = "danger-full-access"
+approval_policy = "never"
+
+# --- Environment ------------------------------------------------------------------
+# DEVTEAM_UNIT identifies this harness to any hook-capable tooling and scripts.
+[shell_environment_policy]
+set = { DEVTEAM_UNIT = "CX" }

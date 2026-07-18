@@ -1,0 +1,39 @@
+{
+  "interval_seconds": 300,
+  "stale_minutes": 90,
+  "max_rework": 2,
+  "digest_hours": 4,
+  "notify_channels": [
+    "console",
+    "file"
+  ],
+  "review_cmd": "claude -p \"/devteam-review\" --model claude-sonnet-5 --dangerously-skip-permissions",
+  "builders": [
+    "GB",
+    "CX"
+  ],
+  "autonomy_level": 2,
+  "board": {
+    "enabled": true,
+    "mode": "local",
+    "central_path": "",
+    "branch": "gh-pages",
+    "min_interval_seconds": 120,
+    "project_name": "",
+    "host_label": "",
+    "public_note": "",
+    "url": ""
+  },
+  "telegram": {
+    "chat_allowlist": [],
+    "poll_interval_seconds": 20
+  },
+  "maintenance": {
+    "hour_utc": 2,
+    "backup_retain_days": 7
+  },
+  "budget": {
+    "max_dispatches_per_hour": 6,
+    "quiet_hours": []
+  }
+}

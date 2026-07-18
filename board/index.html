@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DEVDEPARTMENT · Mission Control</title>
+<style>
+/* DEVDEPARTMENT MISSION CONTROL — tactical telemetry printed on warm documentation
+   paper. Design parity with Starbird's Dispatch board (ISC), adapted to the
+   DEVDEPARTMENT protocol: units ORCH/GB/CX, columns = the protocol state machine.
+   The interface is printed, not backlit. */
+:root{
+  --bg:#e3d9bd; --bg-1:#ede6d2; --bg-2:#f4efe1; --line:#c6ba95;
+  --fg:#2e2a20; --fg-dim:#7d7358; --fg-faint:#ab9f7d;
+  --red:#bd4326; --green:#5a7d24; --amber:#a8781c;
+  --orch:#3f7288; --gb:#7c5b8f; --cx:#6f8f3a;
+  --mono:"JetBrains Mono","IBM Plex Mono",ui-monospace,"Cascadia Mono",Menlo,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;border-radius:0!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:13px;
+     letter-spacing:.04em;display:flex;flex-direction:column;overflow:hidden}
+#scan{position:fixed;inset:0;pointer-events:none;z-index:999;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(120,96,40,.12) 2px,rgba(120,96,40,.12) 4px);
+  mix-blend-mode:multiply;opacity:.45}
+button{font:inherit;background:var(--bg-1);border:1px solid var(--line);color:var(--fg);
+  padding:4px 10px;cursor:pointer;text-transform:uppercase;letter-spacing:.08em}
+button:hover{background:var(--bg-2)}
+a{color:inherit}
+
+/* ---------- top bar ---------- */
+#topbar{display:flex;align-items:stretch;gap:0;border-bottom:2px solid var(--fg);
+  background:var(--bg);flex:none}
+#topbar>div{padding:10px 14px;border-right:1px solid var(--line);display:flex;
+  flex-direction:column;justify-content:center;min-width:0}
+#brand{font-weight:700;letter-spacing:.14em}
+#brand small{display:block;color:var(--fg-dim);font-weight:400;font-size:9px;letter-spacing:.2em}
+.meter{font-size:10px;color:var(--fg-dim);text-transform:uppercase}
+.meter b{color:var(--fg);font-size:12px}
+.dot{width:7px;height:7px;display:inline-block;background:var(--fg-faint);margin-right:6px;vertical-align:baseline}
+.dot.live{background:var(--green)} .dot.warn{background:var(--amber)} .dot.stuck{background:var(--red)}
+#clockcell{margin-left:auto;text-align:right}
+#stale{display:none;background:var(--red);color:var(--bg-2);padding:6px 14px;
+  font-size:11px;text-transform:uppercase;letter-spacing:.1em}
+
+/* ---------- portfolio ---------- */
+#portfolio{flex:1;overflow-y:auto;padding:22px}
+.pf-title{font-size:11px;color:var(--fg-dim);text-transform:uppercase;letter-spacing:.18em;margin-bottom:14px}
+.pf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:14px}
+.pf-card{background:var(--bg-1);border:1px solid var(--line);border-top:3px solid var(--fg);
+  padding:14px 16px;cursor:pointer}
+.pf-card:hover{background:var(--bg-2)}
+.pf-card h3{font-size:15px;letter-spacing:.06em;display:flex;justify-content:space-between;align-items:baseline}
+.pf-host{font-size:9px;color:var(--fg-dim);text-transform:uppercase;letter-spacing:.14em}
+.pf-bar{height:8px;background:var(--bg);border:1px solid var(--line);margin:12px 0 8px;position:relative}
+.pf-bar i{position:absolute;inset:0;width:0;background:var(--green)}
+.pf-meta{display:flex;gap:14px;font-size:10px;color:var(--fg-dim);text-transform:uppercase}
+.pf-meta b{color:var(--fg)}
+.pf-flag{color:var(--red);font-weight:700}
+
+/* ---------- board view ---------- */
+#board{flex:1;display:none;flex-direction:column;min-height:0}
+#rail{flex:1 1 55%;display:flex;align-items:stretch;overflow-x:auto;padding:14px;gap:0;min-height:0}
+.station{flex:0 0 250px;display:flex;flex-direction:column;min-height:0}
+.station+.station::before{content:"▸";align-self:center;color:var(--fg-faint);
+  position:absolute;margin-left:-16px;margin-top:16px}
+.st-head{background:var(--bg-1);border:1px solid var(--line);border-top:3px solid var(--acc,var(--fg));
+  padding:8px 10px;flex:none;margin-right:12px}
+.st-head h2{font-size:12px;letter-spacing:.12em;display:flex;justify-content:space-between}
+.st-head .cnt{color:var(--fg-dim)}
+.st-sub{font-size:9px;color:var(--fg-dim);text-transform:uppercase;letter-spacing:.1em;margin-top:2px}
+.st-body{flex:1;overflow-y:auto;margin-right:12px;padding-top:8px;display:flex;flex-direction:column;gap:8px}
+.chip{background:var(--bg-1);border:1px solid var(--line);border-left:3px solid var(--uacc,var(--fg-faint));
+  padding:8px 10px;cursor:default}
+.chip .cid{font-size:10px;color:var(--fg-dim);display:flex;justify-content:space-between;align-items:center}
+.chip .ct{font-size:12px;margin:3px 0 4px;line-height:1.35}
+.chip .cn{font-size:9.5px;color:var(--fg-dim);line-height:1.4;max-height:2.9em;overflow:hidden}
+.prio{font-size:8.5px;text-transform:uppercase;letter-spacing:.1em;padding:1px 5px;border:1px solid var(--line)}
+.prio.critical{background:var(--red);color:var(--bg-2);border-color:var(--red)}
+.prio.high{color:var(--red)}
+.blockedreason{color:var(--red);font-size:9.5px;margin-top:3px}
+
+/* unit avatars — the crew, alive when running */
+.unit{display:inline-flex;align-items:center;gap:5px;font-size:9.5px;letter-spacing:.08em;color:var(--uacc)}
+.uav{width:16px;height:16px;flex:none}
+.uav svg{width:100%;height:100%;display:block}
+.chip.running .uav, .fl-row.running .uav{animation:pulse 1.6s ease-in-out infinite}
+.chip.running{border-left-width:4px}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.22);opacity:.72}}
+.beacon{width:6px;height:6px;background:var(--green);display:inline-block;margin-left:6px;
+  animation:blink 1.2s steps(2,start) infinite}
+@keyframes blink{50%{opacity:.15}}
+@media (prefers-reduced-motion:reduce){.chip.running .uav,.fl-row.running .uav,.beacon{animation:none}}
+
+/* ---------- in-flight tracker ---------- */
+#tracker{flex:1 1 45%;border-top:2px solid var(--fg);display:flex;flex-direction:column;min-height:0}
+#tr-head{padding:8px 14px;font-size:10px;text-transform:uppercase;letter-spacing:.14em;
+  color:var(--fg-dim);flex:none;display:flex;gap:18px}
+#tr-body{flex:1;overflow-y:auto;padding:0 14px 14px}
+.fl-row{background:var(--bg-1);border:1px solid var(--line);padding:10px 12px;margin-bottom:8px}
+.fl-top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.fl-title{font-size:12.5px}
+.fl-id{font-size:10px;color:var(--fg-dim)}
+.tclock{color:var(--amber);font-size:11px;white-space:nowrap}
+.segs{display:flex;gap:4px;margin-top:8px}
+.seg{flex:1;height:9px;background:var(--bg-2);border:1px solid var(--line);position:relative}
+.seg.spent{background:var(--fg-faint);border-color:var(--fg-faint)}
+.seg.now{background:var(--green);border-color:var(--green)}
+.seg.now.warn{background:var(--amber);border-color:var(--amber)}
+.seg.now.stuck{background:var(--red);border-color:var(--red)}
+.seglabels{display:flex;gap:4px;margin-top:2px}
+.seglabels span{flex:1;font-size:7.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--fg-faint);text-align:center}
+.hb{font-size:9px;color:var(--fg-dim);margin-top:5px}
+
+/* ---------- bottom strip ---------- */
+#strip{flex:none;border-top:1px solid var(--line);padding:6px 14px;font-size:9.5px;
+  color:var(--fg-dim);display:flex;gap:20px;overflow-x:auto;white-space:nowrap}
+#strip b{color:var(--fg)}
+
+/* ---------- responsive (<760px: one station per screen + pager) ---------- */
+#pager{display:none}
+@media (max-width:759px){
+  #rail{scroll-snap-type:x mandatory;padding:10px}
+  .station{flex:0 0 100%;scroll-snap-align:center}
+  .station+.station::before{content:""}
+  #pager{display:flex;justify-content:center;gap:8px;padding:6px;flex:none}
+  #pager i{width:7px;height:7px;background:var(--fg-faint);cursor:pointer}
+  #pager i.on{background:var(--fg)}
+  #topbar>div{padding:8px 10px}
+  #tm-team{display:none}
+}
+</style>
+</head>
+<body>
+<div id="scan"></div>
+
+<div id="topbar">
+  <div id="brand">DEVDEPARTMENT<small id="viewlabel">MISSION CONTROL</small></div>
+  <div class="meter" id="tm-wave"><span>WAVE</span><b>—</b></div>
+  <div class="meter" id="tm-flight"><span>IN FLIGHT</span><b>—</b></div>
+  <div class="meter" id="tm-blocked"><span>BLOCKED</span><b>—</b></div>
+  <div class="meter" id="tm-team"><span>FIRST-PASS GB·CX</span><b>—</b></div>
+  <div class="meter" id="tm-pilot"><span>AUTOPILOT</span><b>—</b></div>
+  <div id="clockcell" class="meter"><span id="projname">PORTFOLIO</span><b id="gen">—</b></div>
+</div>
+<div id="stale">⚠ BOARD STALE — LAST PUBLISH OVER 3 TICKS AGO. SUPERVISOR MAY BE OFFLINE.</div>
+
+<div id="portfolio">
+  <div class="pf-title">ACTIVE PROJECTS — ALL MACHINES</div>
+  <div class="pf-grid" id="pfgrid"></div>
+</div>
+
+<div id="board">
+  <div id="rail"></div>
+  <div id="pager"></div>
+  <div id="tracker">
+    <div id="tr-head"><span>■ IN FLIGHT</span><span id="tr-counts">—</span><span id="backlink" style="cursor:pointer">[ ◂ PORTFOLIO ]</span></div>
+    <div id="tr-body"></div>
+  </div>
+  <div id="strip" id="strip"></div>
+</div>
+
+<script>
+"use strict";
+/* ------------------------------------------------ units: the crew ---------- */
+const UNITS = {
+  ORCH:{color:"var(--orch)",name:"ORCH",
+    svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l3-9 4 5 2-7 2 7 4-5 3 9z"/><path d="M4 20h16"/></svg>'}, // the crown — verdict authority
+  GB:{color:"var(--gb)",name:"GROK BUILD",
+    svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 5l5 5-9 9H5v-5z"/><path d="M13 6l5 5"/><circle cx="18" cy="4" r="1.6"/></svg>'}, // the chisel
+  CX:{color:"var(--cx)",name:"CODEX",
+    svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6L3 12l5 6"/><path d="M16 6l5 6-5 6"/><path d="M13 4l-2 16"/></svg>'}, // the code brackets
+  TBD:{color:"var(--fg-faint)",name:"UNASSIGNED",
+    svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 8v5M12 16.5v.5"/></svg>'}
+};
+const COLS = [
+  {key:"pending",      label:"BACKLOG",     sub:"awaiting dispatch", acc:"var(--fg-dim)"},
+  {key:"claimed",      label:"CLAIMED",     sub:"builder locked in", acc:"var(--amber)"},
+  {key:"in_progress",  label:"BUILD",       sub:"in the worktree",   acc:"var(--cx)"},
+  {key:"needs_review", label:"REVIEW",      sub:"ORCH · sonnet-5",   acc:"var(--orch)"},
+  {key:"blocked",      label:"BLOCKED",     sub:"needs a decision",  acc:"var(--red)"},
+  {key:"done",         label:"DONE",        sub:"merged to main",    acc:"var(--green)"}
+];
+const SEGKEYS = ["pending","claimed","in_progress","needs_review","done"];
+const SEGLBL  = ["BACK","CLAIM","BUILD","REVIEW","DONE"];
+
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function unitBadge(u,running){
+  const U=UNITS[u]||UNITS.TBD;
+  return `<span class="unit" style="--uacc:${U.color};color:${U.color}">
+    <span class="uav">${U.svg}</span>${U.name}${running?'<span class="beacon"></span>':""}</span>`;
+}
+function fmtT(min){ if(min==null)return"—"; const m=Math.floor(min);
+  return "T+"+String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0"); }
+function hbClass(m){ return m==null?"":(m<30?"":(m<90?"warn":"stuck")); }
+
+/* ------------------------------------------------ routing ------------------ */
+let CACHE={}, TIMER=null;
+function route(){ const h=location.hash;
+  const m=h.match(/^#\/p\/(.+)$/);
+  if(m) showProject(decodeURIComponent(m[1])); else showPortfolio(); }
+window.addEventListener("hashchange",route);
+$("#backlink").onclick=()=>location.hash="#/";
+
+/* ------------------------------------------------ portfolio ---------------- */
+async function fetchJSON(f){ const r=await fetch(f+"?t="+Date.now()); if(!r.ok)throw 0; return r.json(); }
+async function showPortfolio(){
+  $("#portfolio").style.display="block"; $("#board").style.display="none";
+  $("#projname").textContent="PORTFOLIO"; $("#viewlabel").textContent="MISSION CONTROL";
+  let idx; try{ idx=await fetchJSON("projects.json"); }catch(e){ 
+    $("#pfgrid").innerHTML='<div class="pf-card">projects.json not found — publish at least one board first.</div>'; return; }
+  $("#gen").textContent=new Date().toUTCString().slice(17,25)+"Z";
+  $("#pfgrid").innerHTML=(idx.projects||[]).map(p=>{
+    const pct=p.total?Math.round(100*p.done/p.total):0;
+    const stale=(Date.now()-Date.parse(p.generated_at))>15*60*1000;
+    return `<div class="pf-card" onclick="location.hash='#/p/${encodeURIComponent(p.project)}'">
+      <h3>${esc(p.project)} <span class="pf-host">${esc(p.host||"")}</span></h3>
+      <div class="pf-bar"><i style="width:${pct}%"></i></div>
+      <div class="pf-meta">
+        <span><b>${p.done}</b>/${p.total} DONE</span>
+        <span><b>${p.in_flight}</b> IN FLIGHT</span>
+        ${p.blocked?`<span class="pf-flag">▲ ${p.blocked} BLOCKED</span>`:""}
+        ${p.stop?`<span class="pf-flag">■ STOPPED</span>`:""}
+        ${stale?`<span class="pf-flag">⚠ STALE</span>`:""}
+      </div></div>`;
+  }).join("")||'<div class="pf-card">No projects published yet.</div>';
+}
+
+/* ------------------------------------------------ project board ------------ */
+async function showProject(name){
+  $("#portfolio").style.display="none"; $("#board").style.display="flex";
+  let b; try{ b=await fetchJSON(name+".json"); }catch(e){ location.hash="#/"; return; }
+  CACHE=b;
+  $("#projname").textContent=b.project.toUpperCase()+(b.host?" · "+b.host.toUpperCase():"");
+  $("#viewlabel").textContent="PLAN v"+(b.plan_version||"?");
+  $("#gen").textContent=(b.generated_at||"").slice(11,19)+"Z";
+  const ageMin=(Date.now()-Date.parse(b.generated_at))/60000;
+  $("#stale").style.display= ageMin>15 ? "block":"none";
+  $("#tm-wave b").textContent=b.burndown.done+"/"+b.burndown.total+" · "+b.burndown.pct+"%";
+  $("#tm-flight b").textContent=b.in_flight.length;
+  $("#tm-blocked b").innerHTML=(b.columns.blocked.length? '<span style="color:var(--red)">'+b.columns.blocked.length+'</span>':'0');
+  const g=b.team.GB?.first_pass_rate, c=b.team.CX?.first_pass_rate;
+  $("#tm-team b").textContent=(g??"—")+" · "+(c??"—");
+  $("#tm-pilot b").innerHTML=b.autopilot.stop_file?'<span class="dot stuck"></span>STOPPED':'<span class="dot live"></span>RUNNING';
+
+  // rail
+  $("#rail").innerHTML=COLS.map(col=>{
+    const cards=b.columns[col.key]||[];
+    return `<div class="station" style="--acc:${col.acc};position:relative">
+      <div class="st-head"><h2>${col.label}<span class="cnt">${String(cards.length).padStart(2,"0")}</span></h2>
+        <div class="st-sub">${col.sub}</div></div>
+      <div class="st-body">${cards.map(t=>chip(t)).join("")||'<div class="chip" style="color:var(--fg-faint)">— empty —</div>'}</div>
+    </div>`;
+  }).join("");
+  buildPager();
+
+  // in-flight tracker
+  $("#tr-counts").textContent=b.in_flight.length+" RUNNING/REVIEW · "+(b.columns.pending.length)+" QUEUED";
+  $("#tr-body").innerHTML=b.in_flight.map(t=>flightRow(t)).join("")
+    ||'<div class="fl-row" style="color:var(--fg-faint)">Nothing in flight — dispatch a wave.</div>';
+
+  // strip
+  const strip=[];
+  if(b.orchestrator_notes) strip.push("ORCH NOTES: <b>"+esc(b.orchestrator_notes)+"</b>");
+  if(b.assignment_hint) strip.push("HINT: "+esc(b.assignment_hint));
+  (b.log_tail||[]).slice(-3).forEach(l=>strip.push(esc(l)));
+  $("#strip").innerHTML=strip.map(s=>`<span>${s}</span>`).join("");
+  clearTimeout(TIMER); TIMER=setTimeout(()=>route(),45000);
+}
+function chip(t){
+  const running=t.status==="in_progress"||t.status==="claimed";
+  const U=UNITS[t.assignee]||UNITS.TBD;
+  return `<div class="chip ${running?"running":""}" style="--uacc:${U.color}">
+    <div class="cid"><span>${esc(t.id)}</span><span class="prio ${esc(t.priority)}">${esc(t.priority)}</span></div>
+    <div class="ct">${esc(t.title)}</div>
+    ${unitBadge(t.assignee,running)}
+    ${t.blocked_reason?`<div class="blockedreason">▲ ${esc(t.blocked_reason)}</div>`:""}
+    ${t.last_note?`<div class="cn">${esc(t.last_note)}</div>`:""}
+  </div>`;
+}
+function flightRow(t){
+  const idx=SEGKEYS.indexOf(t.status==="claimed"?"claimed":t.status);
+  const hb=hbClass(t.heartbeat_age_min);
+  return `<div class="fl-row ${t.status!=="needs_review"?"running":""}" style="--uacc:${(UNITS[t.assignee]||UNITS.TBD).color}">
+    <div class="fl-top">
+      <span class="fl-title">${esc(t.title)} <span class="fl-id">${esc(t.id)} · ${esc(t.branch||"")}</span></span>
+      ${unitBadge(t.assignee,t.status!=="needs_review")}
+      <span class="tclock">${fmtT(t.active_min)}</span>
+    </div>
+    <div class="segs">${SEGKEYS.map((k,i)=>`<div class="seg ${i<idx?"spent":""} ${i===idx?"now "+hb:""}"></div>`).join("")}</div>
+    <div class="seglabels">${SEGLBL.map(l=>`<span>${l}</span>`).join("")}</div>
+    ${t.heartbeat_age_min!=null?`<div class="hb">last heartbeat ${Math.round(t.heartbeat_age_min)}m ago${t.heartbeat_age_min>90?' — <span style="color:var(--red)">STALE, supervisor will redispatch</span>':""}</div>`:""}
+  </div>`;
+}
+function buildPager(){
+  const st=[...document.querySelectorAll(".station")], pg=$("#pager");
+  pg.innerHTML=st.map((_,i)=>`<i data-i="${i}" class="${i===0?"on":""}"></i>`).join("");
+  pg.querySelectorAll("i").forEach(d=>d.onclick=()=>st[+d.dataset.i].scrollIntoView({behavior:"smooth",inline:"center"}));
+  $("#rail").addEventListener("scroll",()=>{const r=$("#rail");const i=Math.round(r.scrollLeft/r.clientWidth);
+    pg.querySelectorAll("i").forEach((d,j)=>d.classList.toggle("on",j===i));},{passive:true});
+}
+route();
+</script>
+</body>
+</html>

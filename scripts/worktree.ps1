@@ -14,12 +14,11 @@ param(
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $Parent = Split-Path $RepoRoot -Parent
-$RepoName = Split-Path $RepoRoot -Leaf
 Set-Location $RepoRoot
 
 $Targets = @()
-if ($Builder -in @("grok", "all"))  { $Targets += @{ Name = "grok";  Path = Join-Path $Parent "wt-$RepoName-grok" } }
-if ($Builder -in @("codex", "all")) { $Targets += @{ Name = "codex"; Path = Join-Path $Parent "wt-$RepoName-codex" } }
+if ($Builder -in @("grok", "all"))  { $Targets += @{ Name = "grok";  Path = Join-Path $Parent "wt-grok" } }
+if ($Builder -in @("codex", "all")) { $Targets += @{ Name = "codex"; Path = Join-Path $Parent "wt-codex" } }
 
 switch ($Action) {
     "create" {

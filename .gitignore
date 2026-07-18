@@ -1,3 +1,7 @@
 .pytest_cache/
 __pycache__/
 *.pyc
+.autopilot_state.json
+.devteam/
+AUTOPILOT_LOG.md
+STOP
