@@ -44,5 +44,8 @@
     "rationalization_threshold": 3,
     "retro_day_of_week": 0,
     "retro_hour_utc": 6
+  },
+  "control": {
+    "mode": "legacy"
   }
 }

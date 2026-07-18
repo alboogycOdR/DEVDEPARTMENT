@@ -108,9 +108,11 @@ function pathInAnyGlob(filePath, globs) {
 
 /**
  * Protected paths per protocol (builders must never write these).
- * PLAN.md is handled separately: builders may edit it (their own block only —
- * block-level enforcement stays with validate_plan.py + review; file-level
- * hooks cannot see which block is edited reliably across Edit payload shapes).
+ * PLAN.md is handled separately: in control.mode=legacy builders may edit
+ * it (their own block only — block-level enforcement stays with
+ * validate_plan.py + review; file-level hooks cannot see which block is
+ * edited reliably across Edit payload shapes). In control.mode=strict
+ * (Wave I) PLAN.md joins this list — see territory-firewall.js.
  */
 const PROTECTED_FOR_BUILDERS = [
   'specs/**', 'AGENTS.md', 'CLAUDE.md', 'docs/**', 'REVIEW.md',
@@ -118,6 +120,42 @@ const PROTECTED_FOR_BUILDERS = [
   'autopilot.json', 'AUTOPILOT_LOG.md', 'deploy/**',
   'INSTINCTS.md', '.devteam/pending_amendments/**',
 ];
+
+/**
+ * Wave I (I1): control.mode from autopilot.json. Fail-safe: unreadable or
+ * missing config -> "legacy" (today's behavior), never "strict" — a broken
+ * or absent config must never silently start blocking builder PLAN.md
+ * writes they don't know to expect.
+ */
+function controlMode() {
+  try {
+    const raw = fs.readFileSync(path.join(repoRoot(), 'autopilot.json'), 'utf-8');
+    const cfg = JSON.parse(raw);
+    const m = cfg.control && cfg.control.mode;
+    return m === 'strict' ? 'strict' : 'legacy';
+  } catch (_e) {
+    return 'legacy';
+  }
+}
+
+/**
+ * Wave I: resolve the task_id this unit is authorized to report/write a
+ * dossier against. .devteam/inflight/<unit>.json (written by dispatch.*'s
+ * claim-at-dispatch step) is authoritative when present; falls back to a
+ * PLAN.md scan (activeTasksFor) for states where inflight hasn't been
+ * written yet (e.g. mid-migration from legacy). Returns null if neither
+ * source has an answer.
+ */
+function activeTaskIdFor(tasks, unitId) {
+  try {
+    const raw = fs.readFileSync(
+      path.join(repoRoot(), '.devteam', 'inflight', `${unitId}.json`), 'utf-8');
+    const obj = JSON.parse(raw);
+    if (obj && obj.task_id) return obj.task_id;
+  } catch (_e) { /* fall through to PLAN.md scan */ }
+  const active = activeTasksFor(tasks, unitId);
+  return active.length ? active[0].task_id : null;
+}
 
 /** Secret patterns (superset of ECC's sk-/ghp_/AKIA idea, tuned to reduce noise). */
 const SECRET_PATTERNS = [
@@ -162,5 +200,5 @@ function filePathOf(toolInput) {
 module.exports = {
   repoRoot, unit, readStdinJson, relPath, parsePlan, ownedPathsOf, activeTasksFor,
   globPrefix, pathInGlob, pathInAnyGlob, PROTECTED_FOR_BUILDERS, findSecrets,
-  writtenContentOf, filePathOf, EMPTY, ACTIVE,
+  writtenContentOf, filePathOf, EMPTY, ACTIVE, controlMode, activeTaskIdFor,
 };

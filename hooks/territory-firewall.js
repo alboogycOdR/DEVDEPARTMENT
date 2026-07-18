@@ -30,9 +30,21 @@ function main() {
   if (u === 'ORCH') return 0;
 
   const rel = lib.relPath(target);
+  const mode = lib.controlMode();
 
-  // PLAN.md itself is writable by builders (own-block discipline enforced downstream).
-  if (rel === 'PLAN.md') return 0;
+  // PLAN.md: legacy mode keeps today's behavior (block-level discipline
+  // stays downstream). Strict mode (Wave I): PLAN.md joins the protected
+  // set — the supervisor is the sole writer; builders report state via a
+  // devteam-control block instead.
+  if (rel === 'PLAN.md') {
+    if (mode === 'legacy') return 0;
+    process.stderr.write(
+      `[territory-firewall] BLOCKED: PLAN.md is protected in control.mode=strict (Wave I). ` +
+      `The supervisor is the sole writer — emit a devteam-control block as the last thing ` +
+      `you print instead of editing PLAN.md directly. See docs/CONTROL.md.`
+    );
+    return 2;
+  }
 
   // Hard-protected paths first.
   if (lib.pathInAnyGlob(rel, lib.PROTECTED_FOR_BUILDERS)) {
@@ -40,6 +52,24 @@ function main() {
       `[territory-firewall] BLOCKED: ${rel} is a protected path (protocol hard prohibition for ${u}). ` +
       `Do not modify it. If you believe you need this file, set your task to blocked ` +
       `(Blocked_Reason: OWNERSHIP_CONFLICT) with a Progress_Note explaining exactly why.`
+    );
+    return 2;
+  }
+
+  // Strict mode positive rule: a builder MAY write dossiers/<their-active-task>.md
+  // (their heartbeat/work-log file) — resolved via .devteam/inflight/<unit>.json,
+  // falling back to a PLAN.md scan. Any OTHER dossier is still off-limits.
+  if (mode === 'strict' && rel.startsWith('dossiers/')) {
+    let planTextForDossier = '';
+    try {
+      planTextForDossier = fs.readFileSync(path.join(lib.repoRoot(), 'PLAN.md'), 'utf-8');
+    } catch (_e) { /* no plan yet — activeTaskIdFor's inflight fallback still works */ }
+    const tasksForDossier = lib.parsePlan(planTextForDossier);
+    const activeId = lib.activeTaskIdFor(tasksForDossier, u);
+    if (activeId && rel === `dossiers/${activeId}.md`) return 0;
+    process.stderr.write(
+      `[territory-firewall] BLOCKED: ${rel} — in control.mode=strict you may only write your ` +
+      `own active task's dossier (dossiers/${activeId || '<your-task-id>'}.md), not another task's.`
     );
     return 2;
   }

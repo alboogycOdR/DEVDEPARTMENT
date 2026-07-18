@@ -41,6 +41,7 @@ import budget  # noqa: E402 — Wave B: dispatch ceiling tracking
 import maintenance  # noqa: E402 — Wave B: nightly self-audit
 import distiller  # noqa: E402 — Wave C: post-review-batch distillation
 import retro  # noqa: E402 — Wave C: weekly retro drafter
+import control  # noqa: E402 — Wave I (I1): CONTROL-block single-writer blackboard
 
 UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -87,6 +88,13 @@ DEFAULT_CONFIG = {
         "retro_day_of_week": 0,
         "retro_hour_utc": 6,
     },
+    # Wave I (I1): CONTROL-block single-writer blackboard. Defaults to
+    # "legacy" (builders still write PLAN.md themselves) — "strict" is a
+    # deliberate opt-in once GB/CX are verified to reliably emit the
+    # devteam-control fence in real sessions, not a silent default flip.
+    "control": {
+        "mode": "legacy",
+    },
 }
 
 
@@ -111,6 +119,7 @@ class RuntimeState:
     dispatch_log: list[str] = field(default_factory=list)          # Wave B: budget.py timestamp log
     pending_digest_lines: list[str] = field(default_factory=list)  # Wave B: e.g. "Self-audit: PASS", folded into the next P0 digest
     reviews_since_distill: int = 0  # Wave C: reset to 0 after each distiller.run()
+    unreported_counts: dict[str, int] = field(default_factory=dict)  # Wave I: consecutive no-CONTROL-block runs per task
 
     @classmethod
     def load(cls, path: Path) -> "RuntimeState":
@@ -156,16 +165,25 @@ def _deps_done(task: Task, by_id: dict[str, Task]) -> bool:
 
 
 def decide(plan_text: str, state: RuntimeState, cfg: dict,
-           now: datetime | None = None, stop_file_exists: bool = False) -> list[Action]:
-    """Pure decision engine: plan + runtime state -> ordered list of actions for this tick."""
+           now: datetime | None = None, stop_file_exists: bool = False,
+           dossier_heartbeats: dict[str, datetime] | None = None) -> list[Action]:
+    """Pure decision engine: plan + runtime state -> ordered list of actions for this tick.
+
+    dossier_heartbeats (Wave I, control.mode=strict): task_id -> latest
+    dossier work-log timestamp, pre-computed by the caller (decide() itself
+    does no filesystem I/O — same "pure" contract as always; the tick loop
+    reads dossier mtimes and passes the result in, exactly like state/cfg/now).
+    """
     now = now or datetime.now(timezone.utc)
+    control_mode = cfg.get("control", {}).get("mode", "legacy")
+    dossier_heartbeats = dossier_heartbeats or {}
     actions: list[Action] = []
 
     if stop_file_exists:
         return [Action("HALT", "STOP file present in repo root — halting per safety rail #3")]
 
     # 1. Protocol legality gate
-    rep: Report = validate(plan_text)
+    rep: Report = validate(plan_text, control_mode)
     if not rep.ok:
         return [Action("ESCALATE_P1",
                        "PLAN.md is protocol-illegal — loop paused. Violations: " + " | ".join(rep.errors[:5]))]
@@ -218,6 +236,10 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
     for t in real:
         if t.get("Status") in ("claimed", "in_progress"):
             ts = _parse_ts(t.get("Updated_At"))
+            if control_mode == "strict":
+                hb = dossier_heartbeats.get(t.task_id)
+                if hb is not None and (ts is None or hb > ts):
+                    ts = hb
             if ts is not None:
                 age_min = (now - ts).total_seconds() / 60.0
                 if age_min > cfg["stale_minutes"]:
@@ -435,6 +457,76 @@ def maybe_run_retro(repo: Path, cfg: dict, now: datetime) -> None:
             log_line(repo, f"RETRO: drafted {retro_path.name}")
     except Exception as exc:  # never let the retro drafter break a tick
         print(f"[retro] skipped this tick (non-fatal): {exc}", file=sys.stderr)
+
+
+def maybe_drain_control(repo: Path, cfg: dict, state: RuntimeState, now: datetime) -> None:
+    """Wave I (I1): apply every queued CONTROL block and no-block marker
+    before this tick's decide() call. A no-op (returns immediately) in
+    control.mode=legacy — builders still write PLAN.md themselves, so
+    there's nothing in .devteam/control/ to drain.
+
+    Tracks consecutive UNREPORTED runs per task (state.unreported_counts):
+    a successful CONTROL application resets the streak to 0; 2 consecutive
+    unreported runs for the same task escalate P2, mirroring the dead-
+    builder escalation posture already used elsewhere (same "retry once,
+    then ask a human" shape as OWNERSHIP_CONFLICT/TOOLING_FAILURE triage).
+    """
+    if cfg.get("control", {}).get("mode", "legacy") != "strict":
+        return
+    try:
+        ts = now.strftime(UTC_FMT)
+        ctrl_results = control.drain_control_queue(repo, ts)
+        for name, ok, detail in ctrl_results:
+            log_line(repo, f"CONTROL: {name} -> {'applied' if ok else 'REJECTED'} ({detail})")
+            if ok:
+                # A successful report resets any unreported streak for that task.
+                m = re.match(r"^(TASK-[A-Z0-9-]+)-", name)
+                if m:
+                    state.unreported_counts[m.group(1)] = 0
+            else:
+                task_match = re.search(r"'(TASK-[A-Z0-9-]+)'", detail)
+                task_ref = task_match.group(1) if task_match else name
+                if is_muted(state, now):
+                    log_line(repo, f"MUTED: suppressed P2 — CONTROL rejected {name}")
+                else:
+                    notify(cfg, "P2", f"⚠️ P2: CONTROL block rejected for {task_ref}\n{detail}", repo)
+
+        unrep_results = control.drain_unreported_queue(repo, ts)
+        for task_id, detail, changed in unrep_results:
+            n = state.unreported_counts.get(task_id, 0) + 1
+            state.unreported_counts[task_id] = n
+            log_line(repo, f"CONTROL: {task_id} UNREPORTED (streak={n}) — {detail}")
+            if n >= 2:
+                if is_muted(state, now):
+                    log_line(repo, f"MUTED: suppressed P2 — {task_id} unreported x{n}")
+                else:
+                    notify(cfg, "P2",
+                          f"⚠️ P2: {task_id} — {n} consecutive builder runs ended with no "
+                          f"CONTROL block. Investigate: is the builder crashing before its "
+                          f"final print, or silently violating the contract?", repo)
+                state.unreported_counts[task_id] = 0  # escalated — restart the streak
+    except Exception as exc:  # never let a bad control queue break a tick
+        print(f"[control] skipped this tick (non-fatal): {exc}", file=sys.stderr)
+
+
+def _dossier_heartbeats(repo: Path) -> dict[str, datetime]:
+    """Wave I: dossiers/<TASK-ID>.md mtime as the liveness signal for that
+    task, per the spec's 'dossier mtime/entries become the liveness signal'
+    rule. Fail-open: unreadable dossiers dir -> empty dict (falls back to
+    plain Updated_At staleness, same as legacy mode)."""
+    out: dict[str, datetime] = {}
+    d = repo / "dossiers"
+    if not d.is_dir():
+        return out
+    for p in d.glob("TASK-*.md"):
+        m = re.match(r"^(TASK-[A-Z0-9-]+)\.md$", p.name)
+        if not m:
+            continue
+        try:
+            out[m.group(1)] = datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc)
+        except OSError:
+            continue
+    return out
 
 
 def _notify_if_builder_unreachable(rc: int, unit: str, task_id: str | None, cfg: dict,
@@ -674,6 +766,7 @@ def load_config(repo: Path) -> dict:
     cfg["maintenance"] = {**DEFAULT_CONFIG["maintenance"], **cfg.get("maintenance", {})}
     cfg["budget"] = {**DEFAULT_CONFIG["budget"], **cfg.get("budget", {})}
     cfg["learning"] = {**DEFAULT_CONFIG["learning"], **cfg.get("learning", {})}
+    cfg["control"] = {**DEFAULT_CONFIG["control"], **cfg.get("control", {})}
     return cfg
 
 
@@ -779,8 +872,18 @@ def main(argv: list[str]) -> int:
                 maybe_distill(repo, cfg, state, now)
                 maybe_run_retro(repo, cfg, now)
 
+            # Wave I (I1): drain queued CONTROL blocks + no-block markers
+            # BEFORE decide() — exactly where the Telegram queue is already
+            # drained above, and for the same reason: a builder's reported
+            # state must be visible to this tick's decision.
+            if not args.dry_run:
+                maybe_drain_control(repo, cfg, state, now)
+
             plan_text = plan.read_text(encoding="utf-8")
-            actions = tg_actions + decide(plan_text, state, cfg, now=now, stop_file_exists=(repo / "STOP").exists())
+            dossier_heartbeats = _dossier_heartbeats(repo) if cfg.get("control", {}).get("mode") == "strict" else {}
+            actions = tg_actions + decide(plan_text, state, cfg, now=now,
+                                          stop_file_exists=(repo / "STOP").exists(),
+                                          dossier_heartbeats=dossier_heartbeats)
             keep_going = execute(actions, cfg, state, repo, args.dry_run, now=now)
             state.save(state_path)
 

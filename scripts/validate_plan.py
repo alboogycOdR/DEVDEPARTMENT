@@ -31,7 +31,7 @@ from pathlib import Path
 
 VALID_STATUSES = {"pending", "claimed", "in_progress", "needs_review", "done", "blocked"}
 ACTIVE_STATUSES = {"claimed", "in_progress", "needs_review"}
-VALID_UNITS = {"ORCH", "GB", "CX"}
+VALID_UNITS = {"ORCH", "GB", "CX", "SV"}
 VALID_ASSIGNEES = {"GB", "CX", "TBD"}
 VALID_PRIORITIES = {"critical", "high", "medium", "low"}
 BLOCKED_REASONS = {
@@ -169,7 +169,7 @@ def parse_owned_paths(raw: str) -> list[str]:
     return [p.strip() for p in re.split(r"[,\n]", raw) if p.strip() and p.strip() not in EMPTY_VALUES]
 
 
-def validate(text: str) -> Report:
+def validate(text: str, control_mode: str = "legacy") -> Report:
     rep = Report()
     parse_frontmatter(text, rep)
     tasks = parse_tasks(text, rep)
@@ -204,7 +204,16 @@ def validate(text: str) -> Report:
 
         upd_by = t.get("Updated_By")
         if upd_by and upd_by not in VALID_UNITS:
-            rep.error(f"{ctx}: Updated_By '{upd_by}' is not a known unit (ORCH/GB/CX)")
+            rep.error(f"{ctx}: Updated_By '{upd_by}' is not a known unit (ORCH/GB/CX/SV)")
+        # Wave I (control.mode=strict): the supervisor is the sole PLAN.md
+        # writer, so a builder-state transition (needs_review/blocked) whose
+        # Updated_By is GB/CX directly (not SV) suggests a bypassed CONTROL
+        # block — worth a warning, not a hard failure (this check only ever
+        # warns; it never blocks a tick the way an error does).
+        if control_mode == "strict" and status in ("needs_review", "blocked") and upd_by in ("GB", "CX"):
+            rep.warn(f"{ctx}: control.mode=strict but Updated_By is '{upd_by}', not 'SV' — "
+                    f"this task's PLAN.md state may have been written directly by a builder "
+                    f"instead of via a CONTROL block")
 
         if not t.is_empty("Updated_At"):
             check_timestamp(t.get("Updated_At"), f"{ctx}: Updated_At", rep)

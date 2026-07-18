@@ -80,9 +80,13 @@ orchestrator_notes: "Wave 3 running. Next: review TASK-020."
 **Updated_At:** 2026-07-13T08:00:00Z
 `;
 
-function makeTempRepo() {
+function makeTempRepo(opts) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'devteam-hooks-'));
-  fs.writeFileSync(path.join(dir, 'PLAN.md'), PLAN, 'utf-8');
+  fs.writeFileSync(path.join(dir, 'PLAN.md'), (opts && opts.plan) || PLAN, 'utf-8');
+  if (opts && opts.strict) {
+    fs.writeFileSync(path.join(dir, 'autopilot.json'),
+      JSON.stringify({ control: { mode: 'strict' } }), 'utf-8');
+  }
   return dir;
 }
 
@@ -193,6 +197,51 @@ test('firewall blocks GB write to .devteam/pending_amendments/** — Wave C', ()
     { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
   assert.strictEqual(r.code, 2);
   assert.ok(r.stderr.includes('protected path'));
+});
+
+test('firewall allows GB write to PLAN.md in control.mode=legacy (default) — Wave I', () => {
+  const repo = makeTempRepo();  // no strict flag -> legacy, same as today
+  const r = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'PLAN.md'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(r.code, 0, r.stderr);
+});
+
+test('firewall BLOCKS GB write to PLAN.md in control.mode=strict — Wave I', () => {
+  const repo = makeTempRepo({ strict: true });
+  const r = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'PLAN.md'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(r.code, 2);
+  assert.ok(r.stderr.includes('control.mode=strict'), r.stderr);
+});
+
+test('firewall allows GB write to its OWN active task dossier in strict mode — Wave I', () => {
+  const repo = makeTempRepo({ strict: true });  // TASK-020 is GB's active task in the PLAN fixture
+  const r = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'dossiers/TASK-020.md'), content: 'work log entry' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(r.code, 0, r.stderr);
+});
+
+test('firewall BLOCKS GB write to ANOTHER task\'s dossier in strict mode — Wave I', () => {
+  const repo = makeTempRepo({ strict: true });
+  const r = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'dossiers/TASK-999.md'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(r.code, 2);
+  assert.ok(r.stderr.includes('own active task'), r.stderr);
+});
+
+test('firewall resolves active task from .devteam/inflight/ when present — Wave I', () => {
+  const repo = makeTempRepo({ strict: true, plan: PLAN });  // PLAN fixture has no TASK-777
+  fs.mkdirSync(path.join(repo, '.devteam', 'inflight'), { recursive: true });
+  fs.writeFileSync(path.join(repo, '.devteam', 'inflight', 'GB.json'),
+    JSON.stringify({ task_id: 'TASK-777' }), 'utf-8');
+  const r = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'dossiers/TASK-777.md'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(r.code, 0, r.stderr);  // inflight record wins even though PLAN.md doesn't have TASK-777
 });
 
 test('firewall allows GB write to PLAN.md (block discipline is downstream)', () => {
