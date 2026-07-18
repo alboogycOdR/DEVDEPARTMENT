@@ -116,6 +116,7 @@ const PROTECTED_FOR_BUILDERS = [
   'specs/**', 'AGENTS.md', 'CLAUDE.md', 'docs/**', 'REVIEW.md',
   '.claude/**', '.codex/**', 'scripts/**', 'hooks/**', 'briefings/**', 'onboard.md',
   'autopilot.json', 'AUTOPILOT_LOG.md', 'deploy/**',
+  'INSTINCTS.md', '.devteam/pending_amendments/**',
 ];
 
 /** Secret patterns (superset of ECC's sk-/ghp_/AKIA idea, tuned to reduce noise). */

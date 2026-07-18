@@ -39,6 +39,8 @@ from tg_listener import TelegramListener  # noqa: E402
 import scheduling  # noqa: E402 — Wave B: shared daily/weekly idempotency-marker helper
 import budget  # noqa: E402 — Wave B: dispatch ceiling tracking
 import maintenance  # noqa: E402 — Wave B: nightly self-audit
+import distiller  # noqa: E402 — Wave C: post-review-batch distillation
+import retro  # noqa: E402 — Wave C: weekly retro drafter
 
 UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -75,6 +77,16 @@ DEFAULT_CONFIG = {
     # Wave B: nightly self-maintenance + dispatch ceiling.
     "maintenance": dict(maintenance.DEFAULT_MAINTENANCE_CFG),
     "budget": dict(budget.DEFAULT_BUDGET_CFG),
+    # Wave C: continuous learning loop (distiller trigger + weekly retro).
+    "learning": {
+        "min_new_findings": 3,
+        "distill_every_n_reviews": 5,
+        "model": "claude-sonnet-5",
+        "distill_timeout_seconds": 600,
+        "rationalization_threshold": 3,
+        "retro_day_of_week": 0,
+        "retro_hour_utc": 6,
+    },
 }
 
 
@@ -98,6 +110,7 @@ class RuntimeState:
     mute_until: str = ""   # Wave A-remainder: ISO-8601 UTC ts; "" = not muted. Set by /mute.
     dispatch_log: list[str] = field(default_factory=list)          # Wave B: budget.py timestamp log
     pending_digest_lines: list[str] = field(default_factory=list)  # Wave B: e.g. "Self-audit: PASS", folded into the next P0 digest
+    reviews_since_distill: int = 0  # Wave C: reset to 0 after each distiller.run()
 
     @classmethod
     def load(cls, path: Path) -> "RuntimeState":
@@ -311,6 +324,8 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
             halt = True
         elif a.kind == "REVIEW":
             rc = run_shell(cfg["review_cmd"], repo)
+            if rc == 0:
+                state.reviews_since_distill += 1
             if rc == 0 and a.task_id:
                 # If task still needs_review after the session, it was sent to rework upstream;
                 # rework accounting happens on next tick via REVIEW.md, conservatively bump here
@@ -328,6 +343,7 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
             scoped_prompt = f"/devteam-review {a.task_id}"
             rc = run_shell(f"claude -p {shlex.quote(scoped_prompt)} --model claude-sonnet-5 --dangerously-skip-permissions", repo)
             if rc == 0:
+                state.reviews_since_distill += 1
                 txt = (repo / "PLAN.md").read_text(encoding="utf-8")
                 rep = Report()
                 for t in parse_tasks(txt, rep):
@@ -355,6 +371,70 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
             rc = run_shell(cfg["dispatch_cmd"][a.unit], repo)
             _notify_if_builder_unreachable(rc, a.unit, a.task_id, cfg, state, repo, now)
     return not halt
+
+
+def maybe_distill(repo: Path, cfg: dict, state: RuntimeState, now: datetime) -> None:
+    """Wave C: post-review-batch distillation trigger (fail-open).
+
+    Counted in execute() above via state.reviews_since_distill; a
+    threshold-based trigger (rather than time-based) keeps distillation tied
+    to actual review activity, and distiller's own min_new_findings gate
+    prevents noise-distilling even if this fires more often than useful.
+
+    Amendments get their own P2 through the normal notify()/is_muted() path
+    — distiller.py itself can't check mute state (it has no RuntimeState),
+    and deliberately doesn't try to; that responsibility lives here.
+    """
+    try:
+        learning_cfg = cfg.get("learning", {})
+        n_trigger = int(learning_cfg.get("distill_every_n_reviews", 5))
+        if state.reviews_since_distill < n_trigger:
+            return
+        d_result = distiller.run(repo, cfg)
+        if not (d_result.ok and not d_result.skipped):
+            return
+        state.reviews_since_distill = 0
+        if d_result.new_instincts or d_result.updated_instincts:
+            log_line(repo, "DISTILL: "
+                     f"new={len(d_result.new_instincts)} "
+                     f"updated={len(d_result.updated_instincts)}")
+        for amend_id in d_result.amendments:
+            amend_file = repo / ".devteam" / "pending_amendments" / f"{amend_id}.md"
+            try:
+                body = amend_file.read_text(encoding="utf-8")
+            except OSError:
+                body = ""
+            head_lines = [ln.strip("# ").strip()
+                         for ln in body.splitlines()[3:6] if ln.strip()]
+            head = " / ".join(head_lines)[:300]
+            msg = (f"⚠️ P2: constitutional amendment proposed — {amend_id}\n"
+                  f"{head}\n"
+                  f"Reply: /approve {amend_id}  or  /rework {amend_id} <reason>")
+            if is_muted(state, now):
+                log_line(repo, f"MUTED: suppressed P2 — amendment {amend_id}")
+            else:
+                notify(cfg, "P2", msg, repo)
+    except Exception as exc:  # never let distillation break a tick
+        print(f"[distill] skipped this tick (non-fatal): {exc}", file=sys.stderr)
+
+
+def maybe_run_retro(repo: Path, cfg: dict, now: datetime) -> None:
+    """Wave C: weekly retro drafter (shared scheduling.py marker, same
+    idempotency pattern as the Wave B maintenance-hour gate)."""
+    try:
+        learning_cfg = cfg.get("learning", {})
+        retro_marker = repo / ".devteam" / "last_retro_week.txt"
+        if not scheduling.should_run_weekly(retro_marker,
+                                            int(learning_cfg.get("retro_day_of_week", 0)),
+                                            int(learning_cfg.get("retro_hour_utc", 6)),
+                                            now):
+            return
+        retro_path = retro.run(repo, cfg)
+        if retro_path is not None:
+            scheduling.mark_done_weekly(retro_marker, now)
+            log_line(repo, f"RETRO: drafted {retro_path.name}")
+    except Exception as exc:  # never let the retro drafter break a tick
+        print(f"[retro] skipped this tick (non-fatal): {exc}", file=sys.stderr)
 
 
 def _notify_if_builder_unreachable(rc: int, unit: str, task_id: str | None, cfg: dict,
@@ -500,16 +580,60 @@ def _process_tg_command(item: dict, repo: Path, cfg: dict, state: RuntimeState,
         return None
 
     if cmd == "/approve":
+        args_stripped = (args or "").strip()
+        amend_id = tgc.parse_amend_args(args_stripped)
+        if amend_id:
+            # Wave C constitutional gate: /approve on an AMEND-NNN only flips
+            # that proposal's own Status field. It never touches AGENTS.md,
+            # CLAUDE.md, or briefings/*.md — ORCH applies the actual edit in
+            # a supervised session (second lock on the gate, beyond the
+            # distiller itself never writing those files).
+            p = tgc.amend_path(repo, amend_id)
+            if not p.exists():
+                tgc.send_reply(token, chat_id, f"{amend_id} not found in pending_amendments.")
+                _tg_log(repo, cmd, None)
+                return None
+            result = tgc.apply_amend_approve(p.read_text(encoding="utf-8"))
+            _tg_log(repo, cmd, amend_id)
+            if result.changed:
+                p.write_text(result.text, encoding="utf-8")
+                tgc.send_reply(token, chat_id,
+                               f"✅ {amend_id} approved — ORCH will apply the amendment "
+                               f"in the next supervised review session.")
+            else:
+                tgc.send_reply(token, chat_id, f"⚠️ {amend_id}: {result.detail}")
+            return None
+
         task_id = tgc.parse_approve_args(args)
         if not task_id:
-            tgc.send_reply(token, chat_id, "Usage: /approve TASK-NNN")
+            tgc.send_reply(token, chat_id, "Usage: /approve TASK-NNN | AMEND-NNN")
             _tg_log(repo, cmd, None)
             return None
         _tg_log(repo, cmd, task_id)
         tgc.send_reply(token, chat_id, f"🔎 Review queued for {task_id}.")
         return Action("REVIEW_TG", f"TG /approve {task_id}", task_id=task_id)
 
-    if cmd in ("/answer", "/rework"):
+    if cmd == "/rework":
+        amend_parsed = tgc.parse_amend_and_text(args)
+        if amend_parsed:
+            amend_id, reason = amend_parsed
+            p = tgc.amend_path(repo, amend_id)
+            if not p.exists():
+                tgc.send_reply(token, chat_id, f"{amend_id} not found in pending_amendments.")
+                _tg_log(repo, cmd, None)
+                return None
+            result = tgc.apply_amend_rework(p.read_text(encoding="utf-8"), reason, ts)
+            _tg_log(repo, cmd, amend_id)
+            if result.changed:
+                p.write_text(result.text, encoding="utf-8")
+                tgc.send_reply(token, chat_id, f"✅ {amend_id} {result.detail}")
+            else:
+                tgc.send_reply(token, chat_id, f"⚠️ {amend_id}: {result.detail}")
+            return None
+        _process_tg_answer_or_rework(item, repo, cfg, ts, token)
+        return None
+
+    if cmd == "/answer":
         _process_tg_answer_or_rework(item, repo, cfg, ts, token)
         return None
 
@@ -549,6 +673,7 @@ def load_config(repo: Path) -> dict:
     cfg["telegram"] = {**DEFAULT_CONFIG["telegram"], **cfg.get("telegram", {})}
     cfg["maintenance"] = {**DEFAULT_CONFIG["maintenance"], **cfg.get("maintenance", {})}
     cfg["budget"] = {**DEFAULT_CONFIG["budget"], **cfg.get("budget", {})}
+    cfg["learning"] = {**DEFAULT_CONFIG["learning"], **cfg.get("learning", {})}
     return cfg
 
 
@@ -643,6 +768,16 @@ def main(argv: list[str]) -> int:
                             state.pending_digest_lines.append(m_result.digest_line)
                 except Exception as exc:  # never let maintenance break a tick
                     print(f"[maintenance] skipped this tick (non-fatal): {exc}", file=sys.stderr)
+
+            # Wave C: post-review-batch distillation trigger + weekly retro
+            # drafter. Both are standalone functions (maybe_distill /
+            # maybe_run_retro) precisely so they're unit-testable without
+            # driving this whole loop — same reasoning as maintenance.py's
+            # run_nightly_audit being a separate callable from its own outer
+            # gate above.
+            if not args.dry_run:
+                maybe_distill(repo, cfg, state, now)
+                maybe_run_retro(repo, cfg, now)
 
             plan_text = plan.read_text(encoding="utf-8")
             actions = tg_actions + decide(plan_text, state, cfg, now=now, stop_file_exists=(repo / "STOP").exists())

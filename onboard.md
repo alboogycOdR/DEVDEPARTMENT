@@ -25,6 +25,7 @@ Copy from the pack into the project root, skipping any file that already exists 
 - `.codex/config.toml` — if the project already has one, merge add-only (bring in missing keys: model, model_reasoning_effort, sandbox_mode, approval_policy, profiles, shell_environment_policy); on any conflicting key keep the existing value and flag it
 - `PLAN.md`, `REVIEW.md` — only if absent
 - `autopilot.json` — only if absent (copy the pack's template)
+- `INSTINCTS.md` — only if absent; create empty via `python3 -c "import sys; sys.path.insert(0,'scripts'); import instincts; instincts.save_atomic('.', [])"` (Wave C learning loop's instinct store, created empty per project — never copied from the pack)
 
 On macOS/Linux: `chmod +x scripts/*.sh scripts/*.py`. On Windows: skip chmod; nothing needed.
 
@@ -86,8 +87,8 @@ Run and report exact output + exit codes:
 macOS/Linux:
 ```bash
 python3 scripts/validate_plan.py PLAN.md
-python3 -m pytest tests/ -q          # expect 277 passed (validator 18 + supervisor 17 + board 8 + tg_commands 85 + tg_listener 18 + supervisor_telegram 21 + notify 6 + scheduling 14 + budget 23 + maintenance 49 + supervisor_maintenance 18)
-node hooks/run-tests.js              # expect 20 passed
+python3 -m pytest tests/ -q          # expect 358 passed (validator 18 + supervisor 17 + board 10 + tg_commands 85 + tg_listener 18 + supervisor_telegram 21 + notify 6 + scheduling 14 + budget 23 + maintenance 49 + supervisor_maintenance 18 + instincts 30 + distiller 15 + retro 10 + supervisor_learning 24)
+node hooks/run-tests.js              # expect 23 passed
 bash scripts/harness-audit.sh --no-shield
 python3 scripts/supervisor.py --once --dry-run
 ```
@@ -122,7 +123,7 @@ Report both results.
 Stage only what this onboarding created/changed:
 
 ```bash
-git add briefings/ docs/ scripts/ tests/ hooks/ specs/ .claude/ .codex/ PLAN.md REVIEW.md AGENTS.md CLAUDE.md autopilot.json
+git add briefings/ docs/ scripts/ tests/ hooks/ board/ dossiers/ deploy/ specs/ .claude/ .codex/ PLAN.md REVIEW.md AGENTS.md CLAUDE.md autopilot.json INSTINCTS.md
 git status
 ```
 

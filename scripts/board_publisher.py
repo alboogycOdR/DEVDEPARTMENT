@@ -135,6 +135,33 @@ def read_maintenance_summary(repo: Path) -> dict:
     return {"last_audit": last_audit, "status": status}
 
 
+def read_learning_summary(repo: Path) -> dict:
+    """Wave C: surface instinct/amendment counts on the board. Reads
+    INSTINCTS.md via instincts.load() (already fail-open/tolerant of a
+    missing or malformed file) and scans .devteam/pending_amendments/ for
+    proposals still at Status: pending — never invokes distiller.py itself,
+    so a broken distillation run can never break a board publish."""
+    try:
+        import instincts as inst_mod
+        insts = inst_mod.load(repo)
+        amend_dir = repo / ".devteam" / "pending_amendments"
+        pending = 0
+        if amend_dir.is_dir():
+            for f in amend_dir.glob("AMEND-*.md"):
+                try:
+                    if "**Status:** pending" in f.read_text(encoding="utf-8"):
+                        pending += 1
+                except OSError:
+                    pass
+        return {
+            "active_instincts": sum(1 for i in insts if i.status == "active"),
+            "probation_instincts": sum(1 for i in insts if i.status == "probation"),
+            "pending_amendments": pending,
+        }
+    except Exception:
+        return {}
+
+
 def build_board(repo: Path, cfg: dict, now: datetime | None = None) -> dict:
     now = now or now_utc()
     plan_path = repo / "PLAN.md"
@@ -206,6 +233,7 @@ def build_board(repo: Path, cfg: dict, now: datetime | None = None) -> dict:
                       "rework_counts": state.get("rework_counts", {}),
                       "stale_resets": state.get("stale_resets", {})},
         "maintenance": read_maintenance_summary(repo),
+        "learning": read_learning_summary(repo),
         "public_note": cfg.get("public_note", ""),
     }
 

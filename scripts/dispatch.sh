@@ -25,6 +25,20 @@ fi
 PROMPT="You are $ID, a builder in a multi-agent dev team. Working directory: $WT (your isolated git worktree; coordination PLAN.md lives at $REPO_ROOT/PLAN.md on main).
 Procedure: (1) Read AGENTS.md and $BRIEFING, then PLAN.md, fresh from disk. If dossiers/TASK-NNN.md exists for your task, read it in full before acting and append a Work Log entry each session — never ask for re-explanation of anything in the dossier. (2) RESUME CHECK FIRST — scan PLAN.md for any task with Assigned_To: $ID and Status: in_progress or claimed. If found, resume that task immediately: re-read its Owned_Paths files and the last Progress_Note to find the exact stopping point, then continue on the existing branch (do not re-claim or re-branch). Only if NO in_progress/claimed task exists: claim the highest-priority pending task Assigned_To: $ID whose dependencies are done — one atomic edit+commit setting Status: claimed, Branch: task/TASK-NNN-$SUFFIX, Started_At. (3) Create (or switch to) the task branch in your worktree and implement strictly against the task's Spec_References, touching ONLY files under its Owned_Paths. (4) Test everything; append Test_Evidence. (5) Append-only Progress_Notes with UTC timestamps and [$ID] tags — if your context is approaching its limit, write a detailed stopping-point note (what is done, what file, exact next step) and commit before stopping. (6) Finish at needs_review (never done), or blocked with a vocabulary reason. Conventional Commits ending [TASK-NNN]. Never write to specs/, docs/, REVIEW.md, scripts/, .claude/, other task blocks, or main."
 
+# Wave C: inject project instincts (fail-open — empty output when no match,
+# broken/missing store, or import failure). --unit rather than --paths:
+# this script doesn't pre-resolve which task $ID will end up claiming (that
+# happens inside the builder's own resume-first/claim logic above), so
+# instincts.py predicts the same task via the same priority rule and
+# resolves its Owned_Paths itself.
+INSTINCTS_SECTION="$(python3 scripts/instincts.py inject \
+  --unit "$ID" --repo "$REPO_ROOT" --limit 5 2>/dev/null || true)"
+if [[ -n "$INSTINCTS_SECTION" ]]; then
+  PROMPT="${PROMPT}
+
+${INSTINCTS_SECTION}"
+fi
+
 if [[ "$DRY" == "--dry-run" ]]; then
   echo "[dispatch] DRY RUN — would run: (cd $WT && ${CMD[*]} \"<prompt>\")"
   printf -- '--- Prompt ---\n%s\n' "$PROMPT"

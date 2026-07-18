@@ -177,6 +177,24 @@ test('firewall blocks GB write to protected path (deploy) — Wave B', () => {
   assert.ok(r.stderr.includes('protected path'));
 });
 
+test('firewall blocks GB write to INSTINCTS.md — Wave C', () => {
+  const repo = makeTempRepo();
+  const r = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'INSTINCTS.md'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(r.code, 2);
+  assert.ok(r.stderr.includes('protected path'));
+});
+
+test('firewall blocks GB write to .devteam/pending_amendments/** — Wave C', () => {
+  const repo = makeTempRepo();
+  const r = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, '.devteam/pending_amendments/AMEND-001.md'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(r.code, 2);
+  assert.ok(r.stderr.includes('protected path'));
+});
+
 test('firewall allows GB write to PLAN.md (block discipline is downstream)', () => {
   const repo = makeTempRepo();
   const r = runHook('territory-firewall.js',

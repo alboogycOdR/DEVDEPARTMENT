@@ -185,3 +185,37 @@ def test_empty_plan_is_safe(tmp_path):
     b = build_board(tmp_path, DEFAULT_BOARD_CFG, NOW)
     assert b["burndown"] == {"total": 0, "done": 0, "pct": 0}
     assert all(v == [] for v in b["columns"].values())
+
+
+def test_learning_key_counts_instincts_and_pending_amendments(tmp_path):
+    """Wave C: board surfaces active/probation instinct counts and pending
+    AMEND proposals without ever invoking distiller.py."""
+    repo = make_repo(tmp_path)
+    (repo / "INSTINCTS.md").write_text(
+        "### INST-001\n**Rule:** r1\n**Territory:** a/**\n**Confidence:** 0.7\n"
+        "**Source:** TASK-001\n**Status:** active\n\n"
+        "### INST-002\n**Rule:** r2\n**Territory:** b/**\n**Confidence:** 0.2\n"
+        "**Source:** TASK-002\n**Status:** probation\n\n"
+        "### INST-003\n**Rule:** r3\n**Territory:** c/**\n**Confidence:** 0.1\n"
+        "**Source:** TASK-003\n**Status:** retired\n",
+        encoding="utf-8")
+    amend_dir = repo / ".devteam" / "pending_amendments"
+    amend_dir.mkdir(parents=True)
+    (amend_dir / "AMEND-001.md").write_text(
+        "# AMEND-001\n**Proposed:** 2026-07-16T00:00:00Z\n**Status:** pending\n\nbody\n",
+        encoding="utf-8")
+    (amend_dir / "AMEND-002.md").write_text(
+        "# AMEND-002\n**Proposed:** 2026-07-15T00:00:00Z\n**Status:** approved\n\nbody\n",
+        encoding="utf-8")
+    b = build_board(repo, DEFAULT_BOARD_CFG, NOW)
+    assert b["learning"] == {
+        "active_instincts": 1,
+        "probation_instincts": 1,
+        "pending_amendments": 1,
+    }
+
+
+def test_learning_key_empty_when_no_instincts_file(tmp_path):
+    repo = make_repo(tmp_path)
+    b = build_board(repo, DEFAULT_BOARD_CFG, NOW)
+    assert b["learning"] == {"active_instincts": 0, "probation_instincts": 0, "pending_amendments": 0}

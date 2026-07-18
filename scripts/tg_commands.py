@@ -58,8 +58,10 @@ HELP_TEXT = (
     "/status \u2014 task board summary\n"
     "/board \u2014 board URL\n"
     "/answer TASK-NNN <text> \u2014 unblock / append a decision\n"
-    "/approve TASK-NNN \u2014 trigger a scoped ORCH review for that task\n"
-    "/rework TASK-NNN <reason> \u2014 send back to rework\n"
+    "/approve TASK-NNN | AMEND-NNN \u2014 review a task, or approve a pending "
+    "constitutional-amendment proposal (status flip only \u2014 ORCH applies the edit)\n"
+    "/rework TASK-NNN <reason> | AMEND-NNN <reason> \u2014 send back to rework, "
+    "or reject a pending amendment proposal\n"
     "/stop \u2014 halt the supervisor loop\n"
     "/resume \u2014 clear STOP and resume\n"
     "/wave \u2014 wake the loop early (skip remaining sleep)\n"
@@ -79,6 +81,58 @@ class ApplyResult:
     text: str
     changed: bool
     detail: str
+
+
+# ------------------------------------------------------ Wave C: AMEND-NNN ---
+# The distiller (scripts/distiller.py) writes constitutional-amendment
+# proposals to .devteam/pending_amendments/AMEND-NNN.md when it believes a
+# root cause is a gap in AGENTS.md/CLAUDE.md/briefings rather than something
+# a per-task instinct can fix. /approve and /rework also accept an AMEND-NNN
+# target so those proposals can be triaged from Telegram — but /approve only
+# flips the proposal's own Status field. It NEVER edits AGENTS.md, CLAUDE.md,
+# or briefings/*.md itself: the actual constitutional edit is always applied
+# by ORCH in a human-supervised session. This is the second lock on the gate
+# (the distiller never writing those files directly is the first).
+AMEND_RE = re.compile(r"^(AMEND-\d+)\s*$")
+_AMEND_AND_TEXT_RE = re.compile(r"^(AMEND-\d+)\s+(.+)$", re.DOTALL)
+AMEND_DIR_REL = Path(".devteam") / "pending_amendments"
+
+
+def parse_amend_args(args: str) -> str | None:
+    m = AMEND_RE.match((args or "").strip())
+    return m.group(1) if m else None
+
+
+def parse_amend_and_text(args: str) -> tuple[str, str] | None:
+    """Parse '<AMEND-NNN> <reason>' for /rework AMEND-NNN <reason>."""
+    m = _AMEND_AND_TEXT_RE.match((args or "").strip())
+    if not m:
+        return None
+    return m.group(1), m.group(2)
+
+
+def amend_path(repo: Path, amend_id: str) -> Path:
+    return repo / AMEND_DIR_REL / f"{amend_id}.md"
+
+
+def apply_amend_approve(text: str) -> ApplyResult:
+    """Flip Status: pending -> approved. Pure string operation — the caller
+    is responsible for reading/writing the file; this never touches
+    AGENTS.md/CLAUDE.md/briefings, only the proposal file's own text."""
+    if "**Status:** pending" not in text:
+        return ApplyResult(text, False, "amendment is not pending (already decided, or malformed)")
+    new_text = text.replace("**Status:** pending", "**Status:** approved", 1)
+    return ApplyResult(new_text, True, "approved — ORCH applies the edit in a supervised session")
+
+
+def apply_amend_rework(text: str, reason: str, ts: str) -> ApplyResult:
+    """Append the rework reason and flip Status: pending -> rejected."""
+    if "**Status:** pending" not in text:
+        return ApplyResult(text, False, "amendment is not pending (already decided, or malformed)")
+    clean_reason = _sanitize_free_text(reason)
+    new_text = text.rstrip("\n") + f"\n\n**Rework ({ts}):** {clean_reason}\n"
+    new_text = new_text.replace("**Status:** pending", "**Status:** rejected", 1)
+    return ApplyResult(new_text, True, "marked rejected with your reason")
 
 
 # --------------------------------------------------------------- grammar ----

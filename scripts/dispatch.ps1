@@ -68,6 +68,20 @@ You are $Id, a builder in a multi-agent dev team. Working directory: $Wt (your i
 Procedure: (1) Read AGENTS.md and $Briefing, then PLAN.md, fresh from disk. If dossiers/TASK-NNN.md exists for your task, read it in full before acting and append a Work Log entry each session - never ask for re-explanation of anything in the dossier. (2) RESUME CHECK FIRST - scan PLAN.md for any task with Assigned_To: $Id and Status: in_progress or claimed. If found, resume that task immediately: re-read its Owned_Paths files and the last Progress_Note to find the exact stopping point, then continue on the existing branch (do not re-claim or re-branch). Only if NO in_progress/claimed task exists: claim the highest-priority pending task Assigned_To: $Id whose dependencies are done - one atomic edit+commit setting Status: claimed, Branch: task/TASK-NNN-$Suffix, Started_At. (3) Create (or switch to) the task branch in your worktree and implement strictly against the task's Spec_References, touching ONLY files under its Owned_Paths. (4) Test everything; append Test_Evidence. (5) Append-only Progress_Notes with UTC timestamps and [$Id] tags - if your context is approaching its limit, write a detailed stopping-point note (what is done, what file, exact next step) and commit before stopping. (6) Finish at needs_review (never done), or blocked with a vocabulary reason. Conventional Commits ending [TASK-NNN]. Never write to specs/, docs/, REVIEW.md, scripts/, .claude/, other task blocks, or main.
 "@
 
+# --- 3b. Wave C: inject project instincts (fail-open) -------------------------------
+# --unit rather than --paths: this script doesn't pre-resolve which task $Id will end
+# up claiming (that happens inside the builder's own resume-first/claim logic above),
+# so instincts.py predicts the same task via the same priority rule.
+$InstinctsSection = ""
+try {
+    $InstinctsSection = & $Py "scripts\instincts.py" "inject" "--unit" $Id "--repo" $RepoRoot "--limit" "5" 2>$null | Out-String
+} catch {
+    $InstinctsSection = ""
+}
+if ($InstinctsSection.Trim().Length -gt 0) {
+    $Prompt = $Prompt + "`r`n`r`n" + $InstinctsSection.Trim() + "`r`n"
+}
+
 if ($DryRun) {
     Write-Host "[dispatch] DRY RUN - would run: (cd $Wt ; $Cmd $($CmdArgs -join ' ') `"<prompt>`")" -ForegroundColor Yellow
     Write-Host "--- Prompt ---"
