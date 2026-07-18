@@ -42,6 +42,7 @@ import maintenance  # noqa: E402 — Wave B: nightly self-audit
 import distiller  # noqa: E402 — Wave C: post-review-batch distillation
 import retro  # noqa: E402 — Wave C: weekly retro drafter
 import control  # noqa: E402 — Wave I (I1): CONTROL-block single-writer blackboard
+import usage_probe  # noqa: E402 — Wave I (I2): live usage-window meters
 
 UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -94,6 +95,12 @@ DEFAULT_CONFIG = {
     # devteam-control fence in real sessions, not a silent default flip.
     "control": {
         "mode": "legacy",
+    },
+    # Wave I (I2): usage-window meters + dispatch defer gate.
+    "usage": {
+        "cache_ttl_minutes": 15,
+        "defer_above_pct": 90,
+        "critical_overrides": True,
     },
 }
 
@@ -166,17 +173,24 @@ def _deps_done(task: Task, by_id: dict[str, Task]) -> bool:
 
 def decide(plan_text: str, state: RuntimeState, cfg: dict,
            now: datetime | None = None, stop_file_exists: bool = False,
-           dossier_heartbeats: dict[str, datetime] | None = None) -> list[Action]:
+           dossier_heartbeats: dict[str, datetime] | None = None,
+           usage: dict | None = None) -> list[Action]:
     """Pure decision engine: plan + runtime state -> ordered list of actions for this tick.
 
     dossier_heartbeats (Wave I, control.mode=strict): task_id -> latest
     dossier work-log timestamp, pre-computed by the caller (decide() itself
     does no filesystem I/O — same "pure" contract as always; the tick loop
     reads dossier mtimes and passes the result in, exactly like state/cfg/now).
+
+    usage (Wave I, I2): {"claude": {...}, "codex": {...}} from
+    usage_probe.get_usage(), pre-computed by the caller for the same
+    filesystem-purity reason — decide() never touches the usage cache file
+    itself, it just consults whatever the tick loop already read once.
     """
     now = now or datetime.now(timezone.utc)
     control_mode = cfg.get("control", {}).get("mode", "legacy")
     dossier_heartbeats = dossier_heartbeats or {}
+    usage = usage or {}
     actions: list[Action] = []
 
     if stop_file_exists:
@@ -271,13 +285,27 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
             # Wave B: budget ceiling gate. REDISPATCH_STALE (step 4, above) is a
             # heartbeat-recovery safety action and deliberately NOT budget-gated —
             # only genuinely NEW dispatches onto pending work are throttled here.
-            allowed, reason = budget.can_dispatch(state.dispatch_log, cfg.get("budget", {}), now)
-            if allowed:
+            # Wave I (I2): usage-window gate composes with it — either can defer,
+            # and if BOTH trip for the same pick, that's one combined log line,
+            # not two redundant defer actions for the same non-dispatch.
+            budget_ok, budget_reason = budget.can_dispatch(state.dispatch_log, cfg.get("budget", {}), now)
+            usage_ok, usage_reason = budget.can_dispatch_usage(
+                usage, unit, pick.get("Priority"), cfg.get("usage", {}))
+            if budget_ok and usage_ok:
                 actions.append(Action("DISPATCH", f"{unit} idle; dispatching onto {pick.task_id} ({pick.get('Title')})",
                                       unit=unit, task_id=pick.task_id))
-            else:
+            elif not budget_ok and not usage_ok:
                 actions.append(Action("DEFER_BUDGET",
-                                      f"{unit} idle, {pick.task_id} eligible, but budget ceiling hit ({reason}) — retried next tick",
+                                      f"{unit} idle, {pick.task_id} eligible, but deferred — budget ceiling "
+                                      f"({budget_reason}) AND usage gate ({usage_reason}) both tripped — retried next tick",
+                                      unit=unit, task_id=pick.task_id))
+            elif not budget_ok:
+                actions.append(Action("DEFER_BUDGET",
+                                      f"{unit} idle, {pick.task_id} eligible, but budget ceiling hit ({budget_reason}) — retried next tick",
+                                      unit=unit, task_id=pick.task_id))
+            else:
+                actions.append(Action("DEFER_USAGE",
+                                      f"{unit} idle, {pick.task_id} eligible, but usage gate hit ({usage_reason}) — retried next tick",
                                       unit=unit, task_id=pick.task_id))
 
     # 6. Wave complete?
@@ -671,6 +699,16 @@ def _process_tg_command(item: dict, repo: Path, cfg: dict, state: RuntimeState,
         tgc.send_reply(token, chat_id, tgc.render_board_url(cfg))
         return None
 
+    if cmd == "/usage":
+        try:
+            from board_publisher import read_usage_summary
+            text = tgc.render_usage(read_usage_summary(repo))
+        except Exception as exc:
+            text = f"/usage failed: {exc}"
+        _tg_log(repo, cmd, None)
+        tgc.send_reply(token, chat_id, text)
+        return None
+
     if cmd == "/approve":
         args_stripped = (args or "").strip()
         amend_id = tgc.parse_amend_args(args_stripped)
@@ -767,6 +805,7 @@ def load_config(repo: Path) -> dict:
     cfg["budget"] = {**DEFAULT_CONFIG["budget"], **cfg.get("budget", {})}
     cfg["learning"] = {**DEFAULT_CONFIG["learning"], **cfg.get("learning", {})}
     cfg["control"] = {**DEFAULT_CONFIG["control"], **cfg.get("control", {})}
+    cfg["usage"] = {**DEFAULT_CONFIG["usage"], **cfg.get("usage", {})}
     return cfg
 
 
@@ -881,9 +920,22 @@ def main(argv: list[str]) -> int:
 
             plan_text = plan.read_text(encoding="utf-8")
             dossier_heartbeats = _dossier_heartbeats(repo) if cfg.get("control", {}).get("mode") == "strict" else {}
+            try:
+                # Cache-only read in the common case — get_usage() only
+                # re-probes (burning real usage) when its own TTL has
+                # expired. Not gated on args.dry_run: like
+                # dossier_heartbeats above, this is a read the decision
+                # needs to be accurate, and skipping it would make a
+                # --dry-run preview silently disagree with what a real
+                # tick would actually decide.
+                usage = usage_probe.get_usage(repo, cfg)
+            except Exception as exc:
+                print(f"[usage] skipped this tick (non-fatal): {exc}", file=sys.stderr)
+                usage = {}
             actions = tg_actions + decide(plan_text, state, cfg, now=now,
                                           stop_file_exists=(repo / "STOP").exists(),
-                                          dossier_heartbeats=dossier_heartbeats)
+                                          dossier_heartbeats=dossier_heartbeats,
+                                          usage=usage)
             keep_going = execute(actions, cfg, state, repo, args.dry_run, now=now)
             state.save(state_path)
 

@@ -48,7 +48,7 @@ EMPTY_VALUES = {"", "\u2014", "-", "--", "n/a", "none"}  # \u2014 = em dash "—
 
 COMMANDS = {
     "/status", "/board", "/answer", "/approve", "/rework",
-    "/stop", "/resume", "/wave", "/digest", "/mute",
+    "/stop", "/resume", "/wave", "/digest", "/mute", "/usage",
 }
 
 MAX_FREE_TEXT_LEN = 2000
@@ -67,6 +67,8 @@ HELP_TEXT = (
     "/wave \u2014 wake the loop early (skip remaining sleep)\n"
     "/digest \u2014 send a digest now\n"
     "/mute <duration e.g. 2h, 30m> \u2014 suppress P0/P2 alerts (P1 always gets through)\n"
+    "/usage \u2014 claude/codex 5h + 7d usage-window percentages (cached, refreshed every "
+    "usage.cache_ttl_minutes)\n"
 )
 
 STATUS_ICON = {
@@ -427,6 +429,39 @@ def render_status(board: dict) -> str:
         lines.append(f"{STATUS_ICON['done']} done: {done_n}")
     if (board.get("autopilot") or {}).get("stop_file"):
         lines.append("\u26D4 STOP file present \u2014 supervisor halted.")
+    usage = board.get("usage")
+    if usage:
+        lines.append("\U0001F4CA " + _usage_one_liner(usage))
+    return "\n".join(lines)
+
+
+def _usage_pct_str(entry: dict, key: str) -> str:
+    v = (entry or {}).get(key)
+    return f"{v:.0f}%" if isinstance(v, (int, float)) else "\u2014"
+
+
+def _usage_one_liner(usage: dict) -> str:
+    parts = []
+    for provider in ("claude", "codex"):
+        entry = usage.get(provider) or {}
+        parts.append(f"{provider} 5h={_usage_pct_str(entry, 'pct_5h')} 7d={_usage_pct_str(entry, 'pct_7d')}")
+    return " \u00b7 ".join(parts)
+
+
+def render_usage(usage: dict) -> str:
+    """/usage command reply — same table shape as usage_probe.py's own CLI,
+    just Telegram-formatted. Missing/None values render as \u2014 and never
+    imply anything (the fail-open contract holds all the way to the phone)."""
+    lines = ["\U0001F4CA Usage windows (cached):"]
+    for provider in ("claude", "codex"):
+        entry = usage.get(provider) or {}
+        p5 = _usage_pct_str(entry, "pct_5h")
+        p7 = _usage_pct_str(entry, "pct_7d")
+        reset7 = entry.get("reset_7d") or "\u2014"
+        lines.append(f"{provider}: 5h={p5}  7d={p7}  reset_7d={reset7}")
+        probed_at = entry.get("probed_at")
+        if probed_at:
+            lines.append(f"  (probed {probed_at})")
     return "\n".join(lines)
 
 

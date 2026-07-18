@@ -33,6 +33,10 @@ try:
     from team_stats import compute as compute_team  # noqa: E402
 except Exception:  # pragma: no cover
     compute_team = None
+try:
+    import usage_probe  # noqa: E402 — Wave I (I2)
+except Exception:  # pragma: no cover
+    usage_probe = None
 
 UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
 COLUMNS = ["pending", "claimed", "in_progress", "needs_review", "blocked", "done"]
@@ -162,6 +166,20 @@ def read_learning_summary(repo: Path) -> dict:
         return {}
 
 
+def read_usage_summary(repo: Path) -> dict:
+    """Wave I (I2): surface cached usage-window percentages on the board.
+    Reads ONLY the cache (usage_probe.load_cache) — NEVER probes inside a
+    publish, matching read_maintenance_summary's own "never invoke the
+    real subsystem, just read what it already wrote" pattern. A live probe
+    from inside a board publish would make every publish burn real usage
+    and could stall a publish on a slow/hanging CLI; the tick loop's own
+    usage_probe.get_usage() call is the only place that ever re-probes."""
+    try:
+        return usage_probe.load_cache(repo) if usage_probe else {}
+    except Exception:
+        return {}
+
+
 def build_board(repo: Path, cfg: dict, now: datetime | None = None) -> dict:
     now = now or now_utc()
     plan_path = repo / "PLAN.md"
@@ -234,6 +252,7 @@ def build_board(repo: Path, cfg: dict, now: datetime | None = None) -> dict:
                       "stale_resets": state.get("stale_resets", {})},
         "maintenance": read_maintenance_summary(repo),
         "learning": read_learning_summary(repo),
+        "usage": read_usage_summary(repo),
         "public_note": cfg.get("public_note", ""),
     }
 

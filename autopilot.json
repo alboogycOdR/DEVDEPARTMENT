@@ -47,5 +47,10 @@
   },
   "control": {
     "mode": "legacy"
+  },
+  "usage": {
+    "cache_ttl_minutes": 15,
+    "defer_above_pct": 90,
+    "critical_overrides": true
   }
 }

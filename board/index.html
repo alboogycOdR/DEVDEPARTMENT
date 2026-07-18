@@ -141,6 +141,8 @@ a{color:inherit}
   <div class="meter" id="tm-blocked"><span>BLOCKED</span><b>—</b></div>
   <div class="meter" id="tm-team"><span>FIRST-PASS GB·CX</span><b>—</b></div>
   <div class="meter" id="tm-pilot"><span>AUTOPILOT</span><b>—</b></div>
+  <div class="meter" id="tm-usage-claude"><span>CLAUDE 5H/7D</span><b>—</b></div>
+  <div class="meter" id="tm-usage-codex"><span>CODEX 5H/7D</span><b>—</b></div>
   <div id="clockcell" class="meter"><span id="projname">PORTFOLIO</span><b id="gen">—</b></div>
 </div>
 <div id="stale">⚠ BOARD STALE — LAST PUBLISH OVER 3 TICKS AGO. SUPERVISOR MAY BE OFFLINE.</div>
@@ -205,6 +207,27 @@ $("#backlink").onclick=()=>location.hash="#/";
 
 /* ------------------------------------------------ portfolio ---------------- */
 async function fetchJSON(f){ const r=await fetch(f+"?t="+Date.now()); if(!r.ok)throw 0; return r.json(); }
+
+/* Wave I (I2): usage-window meter — parity with Dispatch's top-strip.
+   USAGE_DEFER_ABOVE_PCT mirrors autopilot.json's usage.defer_above_pct
+   default; it's a display-only threshold for the red accent, not read from
+   the board payload itself, so a custom override in autopilot.json won't
+   move this line without also editing it here. */
+const USAGE_DEFER_ABOVE_PCT = 90;
+function renderUsageMeter(elId, entry){
+  const el = $("#"+elId+" b");
+  if(!el) return;
+  if(!entry || (entry.pct_5h==null && entry.pct_7d==null)){
+    el.innerHTML = "—";
+    return;
+  }
+  const fmt = (v)=> v==null ? "—" : Math.round(v)+"%";
+  const over = (v)=> v!=null && v>=USAGE_DEFER_ABOVE_PCT;
+  const span = (v)=> over(v) ? '<span style="color:var(--red)">'+fmt(v)+'</span>' : fmt(v);
+  el.innerHTML = span(entry.pct_5h)+" / "+span(entry.pct_7d);
+  const resetLine = entry.reset_7d ? " RST "+new Date(entry.reset_7d).toUTCString().slice(0,22) : "";
+  el.title = (entry.probed_at? "probed "+entry.probed_at : "")+resetLine;
+}
 async function showPortfolio(){
   $("#portfolio").style.display="block"; $("#board").style.display="none";
   $("#projname").textContent="PORTFOLIO"; $("#viewlabel").textContent="MISSION CONTROL";
@@ -243,6 +266,8 @@ async function showProject(name){
   const g=b.team.GB?.first_pass_rate, c=b.team.CX?.first_pass_rate;
   $("#tm-team b").textContent=(g??"—")+" · "+(c??"—");
   $("#tm-pilot b").innerHTML=b.autopilot.stop_file?'<span class="dot stuck"></span>STOPPED':'<span class="dot live"></span>RUNNING';
+  renderUsageMeter("tm-usage-claude", (b.usage||{}).claude);
+  renderUsageMeter("tm-usage-codex", (b.usage||{}).codex);
 
   // rail
   $("#rail").innerHTML=COLS.map(col=>{
