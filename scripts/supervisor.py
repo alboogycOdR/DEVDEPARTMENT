@@ -70,7 +70,14 @@ DEFAULT_CONFIG = {
     "digest_hours": 4,
     "notify_channels": ["console", "file"],
     # review uses sonnet-5 per ORCH model discipline table (CLAUDE.md 1020f7a)
-    "review_cmd": "claude -p \"/devteam-review\" --model claude-sonnet-5 --dangerously-skip-permissions",
+    "review_cmd": "claude -p \"/devteam-review\" --model claude-opus-4-8 --dangerously-skip-permissions",
+    # Model for the autopilot's OTHER headless judgment calls (scoped /approve
+    # reviews, blocked-task triage). One key, consumed everywhere, so the
+    # discipline table in CLAUDE.md never has to be hunted down across
+    # hardcoded strings again. Opus rather than sonnet-5 since the S5 builder
+    # IS sonnet-5 — same-model review shares the maker's failure distribution
+    # (see CLAUDE.md "ORCH model discipline" for the full decision record).
+    "judgment_model": "claude-opus-4-8",
     "dispatch_cmd": _DISPATCH_DEFAULTS,
     "builders": ["GB", "CX", "S5"],
     "autonomy_level": 2,
@@ -448,7 +455,8 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
             # task (unlike the generic REVIEW action, which lets /devteam-review pick
             # whatever's needs_review on its own).
             scoped_prompt = f"/devteam-review {a.task_id}"
-            rc = run_shell(f"claude -p {shlex.quote(scoped_prompt)} --model claude-sonnet-5 --dangerously-skip-permissions", repo)
+            jm = cfg.get("judgment_model", DEFAULT_CONFIG["judgment_model"])
+            rc = run_shell(f"claude -p {shlex.quote(scoped_prompt)} --model {jm} --dangerously-skip-permissions", repo)
             if rc == 0:
                 state.reviews_since_distill += 1
                 txt = (repo / "PLAN.md").read_text(encoding="utf-8")
@@ -464,10 +472,13 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
         elif a.kind == "TRIAGE_UNBLOCK" and a.task_id:
             if "OWNERSHIP_CONFLICT" in a.detail:
                 state.conflict_counts[a.task_id] = state.conflict_counts.get(a.task_id, 0) + 1
-            # Scope triage = architectural judgment → sonnet-5 per ORCH model discipline (CLAUDE.md 1020f7a)
+            # Scope triage = architectural judgment → judgment_model (opus-4-8) per
+            # ORCH model discipline in CLAUDE.md — must NOT share a model with the
+            # S5 builder (sonnet-5) whose blocked tasks it may be triaging.
             triage_prompt = (f"/devteam-status then triage blocked task {a.task_id} per protocol section 7: "
                              f"resolve and unblock if within ORCH authority; otherwise leave blocked and state why.")
-            run_shell(f"claude -p {shlex.quote(triage_prompt)} --model claude-sonnet-5 --dangerously-skip-permissions", repo)
+            jm = cfg.get("judgment_model", DEFAULT_CONFIG["judgment_model"])
+            run_shell(f"claude -p {shlex.quote(triage_prompt)} --model {jm} --dangerously-skip-permissions", repo)
         elif a.kind == "REDISPATCH_STALE" and a.task_id and a.unit:
             state.stale_resets[a.task_id] = state.stale_resets.get(a.task_id, 0) + 1
             # Protocol §10a: do NOT reset the task to pending. The builder's own

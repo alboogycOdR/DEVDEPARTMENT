@@ -4,7 +4,7 @@ description: Review needs_review tasks — verify, verdict, merge or rework
 
 You are ORCH executing **Phase 4 — Review & Integration**. Review standard per CLAUDE.md; you are the quality gate and the only unit that can mark work done.
 
-> **Model discipline:** run this command on `claude-sonnet-5`. Switch before proceeding.
+> **Model discipline:** run this command on `claude-opus-4-8`. Switch before proceeding. Not sonnet-5: the S5 builder IS sonnet-5, and a reviewer sharing the maker's model shares its blind spots — the checker needs a genuine capability edge (see CLAUDE.md "ORCH model discipline").
 
 For each task with `Status: needs_review` (or the specific task in $ARGUMENTS):
 

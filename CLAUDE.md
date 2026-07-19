@@ -26,17 +26,23 @@ Read `AGENTS.md` and `docs/COORDINATION_PROTOCOL.md` at the start of every sessi
 
 Switch models mid-session based on the cognitive weight of the operation. Do not use the heavier model for mechanical operations — it wastes token budget without improving output.
 
+**Why the judgment rows moved off `claude-sonnet-5` (decision, 2026-07-19):** the S5 builder unit runs on `claude-sonnet-5`. A reviewer on the same model as the builder it reviews shares that builder's exact failure distribution — the same rationalizations feel plausible, the same edge cases don't come to mind — which quietly hollows out the maker–checker discipline for S5's work specifically, and starves the Wave C learning loop of the rework findings it mines (a missed review produces no finding). The three upgraded rows are also the lowest-frequency operations in the system, so the cost premium lands precisely where errors are most expensive and volume is smallest.
+
 | Operation | Model | Rationale |
 |---|---|---|
-| `/devteam-review` — full territory diff + spec verification + test run | `claude-sonnet-5` | High-stakes judgment; rework verdict must be correct |
-| Scope triage — unblocking, re-carving territories, dependency re-sequencing | `claude-sonnet-5` | Architectural reasoning; a wrong call cascades across tasks |
-| Architectural decisions — task decomposition, Owned_Paths design | `claude-sonnet-5` | Planning errors are expensive to unwind mid-wave |
+| Architectural decisions — `/devteam-decompose`, spec authoring, Owned_Paths design | `claude-fable-5` (medium reasoning effort minimum; high for complex waves) | The highest-leverage judgment in the system — every downstream unit faithfully executes whatever this produces, so errors here are the most expensive to unwind. Effort is a depth knob, not a discount knob: do not run decompose at low effort. |
+| `/devteam-review` — full territory diff + spec verification + test run | `claude-opus-4-8` | The only gate between builder output and `main`, and it now reviews a same-tier peer (S5 = sonnet-5). The checker needs a real capability edge over the maker — and must not share a model with the spec-author chain (fable) either, so it stays the independent voice in the loop. |
+| Scope triage — unblocking, re-carving territories, dependency re-sequencing | `claude-opus-4-8` | Architectural reasoning; a wrong call cascades across tasks. Low frequency, high blast radius. |
 | `/devteam-status` — sync scan, health report, PLAN.md read | `claude-sonnet-4-6` | Pattern-matching over structured state; no deep judgment needed |
 | PLAN.md updates — frontmatter, orchestrator_notes, status writes | `claude-sonnet-4-6` | Mechanical structured writes |
 | `/devteam-dispatch` — validate + launch builders | `claude-sonnet-4-6` | Script execution; decision already made at planning time |
 | AUTOPILOT_LOG.md and REVIEW.md append operations | `claude-sonnet-4-6` | Logging; no reasoning required |
 
-**How to switch in Claude Code:** use the model selector in the UI before running the command, or prefix a headless session with the appropriate `--model` flag. Revert to your session default after the high-stakes operation completes.
+The Wave C distiller stays on `claude-sonnet-5` (`autopilot.json` → `learning.model`) deliberately: it is not a gate — its confidence math is code-owned, its instinct output is data, and its amendment proposals are locked behind the constitutional gate — so the same-model concern doesn't apply, and its per-run stakes don't justify the premium.
+
+Usage accounting: `claude-opus-4-8` and `claude-fable-5` draw from the same Claude 5h/7d usage windows as sonnet-5, so the Wave I meters and `budget.py`'s S5/usage gating cover them with zero changes — but they burn those windows faster per invocation. That's acceptable at these rows' frequency; do not let either model creep into the high-frequency mechanical rows.
+
+**How to switch in Claude Code:** use the model selector in the UI before running the command, or prefix a headless session with the appropriate `--model` flag. Revert to your session default after the high-stakes operation completes. The autopilot's headless judgment calls (review, `/approve`-scoped review, blocked-task triage) take their model from `autopilot.json` → `review_cmd` and `judgment_model` — keep those aligned with this table; the unattended path is exactly where a silently-downgraded reviewer is most dangerous.
 
 ## Review standard (non-negotiable)
 

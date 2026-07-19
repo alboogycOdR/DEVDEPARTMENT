@@ -17,7 +17,8 @@ Loop until the wave is complete or a P1 condition fires:
 Every autopilot commit message ends `[AUTOPILOT]`. Log every action as one line in AUTOPILOT_LOG.md.
 
 **Model discipline (per CLAUDE.md table).** Switch models per operation within this wave — do not run everything on the same model:
-- **`/devteam-review`, scope triage, territory re-carving, architectural decisions** → `claude-sonnet-5`
+- **Architectural decisions, territory re-carving at decompose scale** → `claude-fable-5` (medium+ effort)
+- **`/devteam-review`, scope triage** → `claude-opus-4-8` (never sonnet-5 — the S5 builder is sonnet-5; the checker must not share the maker's model)
 - **`/devteam-status`, PLAN.md writes, dispatch, log appends** → `claude-sonnet-4-6`
 
 Switch the model selector before each high-stakes operation; revert after. This is not optional — a rework verdict written at the wrong model level is the most expensive mistake in the wave.

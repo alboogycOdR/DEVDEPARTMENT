@@ -4,6 +4,8 @@ description: Decompose specs/ into PLAN.md tasks with disjoint territories
 
 You are ORCH executing **Phase 1 — Planning**. Follow CLAUDE.md and docs/COORDINATION_PROTOCOL.md.
 
+> **Model discipline:** run this command on `claude-fable-5`, reasoning effort **medium minimum** (high for complex or many-task waves). This is the highest-leverage judgment in the system — every builder faithfully executes whatever this step produces, so a decomposition error is the most expensive mistake in the pipeline. Effort is a depth knob, not a discount knob: territory carving and dependency sequencing are exactly where shallow reasoning misses interaction effects. Switch before proceeding; revert to your session default after.
+
 1. Read every document in `specs/` end to end. Read the current `PLAN.md`.
 2. If the example tasks (TASK-000/001 marked EXAMPLE) are still present, delete them.
 3. Decompose the specs into tasks sized for one builder session (~1–4 h agent work). For each task write the full schema block: Title, Status: pending, Assigned_To (per protocol §8 heuristics — or TBD only for backlog), Priority, Spec_References, **Owned_Paths**, Depends_On, Description, Acceptance_Criteria (each criterion traceable to a spec sentence), and initialise the remaining fields to `—` with Updated_By: ORCH and a real UTC timestamp.

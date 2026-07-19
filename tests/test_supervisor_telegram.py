@@ -228,7 +228,7 @@ class TestApprove:
         execute([Action("REVIEW_TG", "TG /approve TASK-016", task_id="TASK-016")],
                 CFG, RuntimeState(), repo, dry_run=False, now=NOW)
         assert len(calls) == 1
-        assert "claude-sonnet-5" in calls[0]
+        assert "claude-opus-4-8" in calls[0]  # judgment_model, never the S5 builder's model
         assert "TASK-016" in calls[0]
         assert "/devteam-review" in calls[0]
 

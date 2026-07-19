@@ -7,7 +7,7 @@
     "console",
     "file"
   ],
-  "review_cmd": "claude -p \"/devteam-review\" --model claude-sonnet-5 --dangerously-skip-permissions",
+  "review_cmd": "claude -p \"/devteam-review\" --model claude-opus-4-8 --dangerously-skip-permissions",
   "builders": [
     "GB",
     "CX",
@@ -53,5 +53,6 @@
     "cache_ttl_minutes": 15,
     "defer_above_pct": 90,
     "critical_overrides": true
-  }
+  },
+  "judgment_model": "claude-opus-4-8"
 }

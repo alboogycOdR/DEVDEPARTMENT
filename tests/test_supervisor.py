@@ -176,17 +176,30 @@ def test_team_stats_compute():
 
 
 # ------------------------------------------------- model discipline tests ---
-def test_review_cmd_default_uses_sonnet5():
-    """ORCH model discipline: review must use claude-sonnet-5 (CLAUDE.md 1020f7a)."""
-    assert "claude-sonnet-5" in DEFAULT_CONFIG["review_cmd"]
+def test_review_cmd_default_uses_opus():
+    """ORCH model discipline: review must use claude-opus-4-8, and specifically
+    must NOT share a model with the S5 builder (claude-sonnet-5) it reviews —
+    same-model review shares the maker's failure distribution (CLAUDE.md
+    "ORCH model discipline", 2026-07-19 decision)."""
+    assert "claude-opus-4-8" in DEFAULT_CONFIG["review_cmd"]
+    assert "claude-sonnet-5" not in DEFAULT_CONFIG["review_cmd"]
 
 
-def test_triage_unblock_uses_sonnet5(monkeypatch):
-    """Scope triage is architectural judgment — must run on sonnet-5."""
+def test_judgment_model_default_is_opus():
+    """The autopilot's other headless judgment calls (scoped /approve reviews,
+    triage) read one shared config key — and it must not be the S5 builder's
+    model either."""
+    assert DEFAULT_CONFIG["judgment_model"] == "claude-opus-4-8"
+
+
+def test_triage_unblock_uses_judgment_model(monkeypatch):
+    """Scope triage is architectural judgment — must run on the judgment_model
+    (opus-4-8), never the S5 builder's own model."""
     calls = []
     monkeypatch.setattr("supervisor.run_shell", lambda cmd, repo: calls.append(cmd) or 0)
     from supervisor import execute, RuntimeState, Action
     import pathlib
     execute([Action("TRIAGE_UNBLOCK", "TASK-001: ORCH to re-sequence dependencies", task_id="TASK-001")],
             DEFAULT_CONFIG, RuntimeState(), pathlib.Path("/tmp"), dry_run=False)
-    assert calls and "claude-sonnet-5" in calls[0]
+    assert calls and "claude-opus-4-8" in calls[0]
+    assert "claude-sonnet-5" not in calls[0]
