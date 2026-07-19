@@ -15,16 +15,49 @@ DRY="${2:-}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# Worktree paths are namespaced by this project's own folder name (not just
+# "wt-grok"/"wt-codex") because they're created as SIBLINGS of the project
+# root, not siblings of DEVDEPARTMENT itself. Two DEVDEPARTMENT-onboarded
+# projects sharing a parent directory (a common layout) would otherwise
+# compute the exact same worktree path and silently collide — dispatch
+# would treat a stale worktree from a DIFFERENT project as its own and
+# hand a builder the wrong repo's checkout.
+PROJECT_NAME="$(basename "$REPO_ROOT")"
+
 case "$BUILDER" in
-  grok)  ID="GB"; WT="$(dirname "$REPO_ROOT")/wt-grok";  CMD=(grok --always-approve --permission-mode bypassPermissions); BRIEFING="briefings/GROK_BUILD_BRIEFING.md"; SUFFIX="gb" ;;
-  codex) ID="CX"; WT="$(dirname "$REPO_ROOT")/wt-codex"; CMD=(codex exec --model gpt-5.6-sol --reasoning-effort medium -s danger-full-access); BRIEFING="briefings/CODEX_BRIEFING.md"; SUFFIX="cx" ;;
+  grok)  ID="GB"; WT="$(dirname "$REPO_ROOT")/wt-grok-${PROJECT_NAME}";  CMD=(grok --always-approve --permission-mode bypassPermissions); BRIEFING="briefings/GROK_BUILD_BRIEFING.md"; SUFFIX="gb" ;;
+  codex) ID="CX"; WT="$(dirname "$REPO_ROOT")/wt-codex-${PROJECT_NAME}"; CMD=(codex exec --model gpt-5.6-sol --reasoning-effort medium -s danger-full-access); BRIEFING="briefings/CODEX_BRIEFING.md"; SUFFIX="cx" ;;
   *) echo "Unknown builder: $BUILDER" >&2; exit 1 ;;
 esac
 
 echo "[dispatch] Validating PLAN.md..."
 python3 scripts/validate_plan.py PLAN.md || { echo "[dispatch] PLAN.md illegal — fix before dispatching." >&2; exit 1; }
 
-if [[ ! -d "$WT" ]]; then
+# Warn (not block) if an OLD-style unnamespaced worktree sits at the legacy
+# path — a leftover from before this fix, or from a pre-fix dispatch of
+# this exact project. It's orphaned now, not reused, so it's safe to leave,
+# but flag it so it doesn't sit there silently confusing a future `ls`.
+LEGACY_WT=""
+case "$BUILDER" in grok) LEGACY_WT="$(dirname "$REPO_ROOT")/wt-grok" ;; codex) LEGACY_WT="$(dirname "$REPO_ROOT")/wt-codex" ;; esac
+if [[ -d "$LEGACY_WT" && "$LEGACY_WT" != "$WT" ]]; then
+  echo "[dispatch] NOTE: found an old-style unnamespaced worktree at $LEGACY_WT (pre-dates per-project namespacing)." >&2
+  echo "[dispatch] It is NOT being used by this dispatch. If it belongs to this project, remove it with:" >&2
+  echo "[dispatch]   git worktree remove \"$LEGACY_WT\" --force   (run from $REPO_ROOT)" >&2
+fi
+
+if [[ -d "$WT" ]]; then
+  # Reuse only if it's actually a registered worktree of THIS repo — not
+  # just "a directory happens to be sitting there." Catches the case where
+  # a foreign/stale directory occupies the expected path for any reason.
+  REGISTERED_WORKTREES="$(git -C "$REPO_ROOT" worktree list --porcelain | awk '/^worktree /{ $1=""; sub(/^ /,""); print }')"
+  if ! grep -qxF "$WT" <<< "$REGISTERED_WORKTREES"; then
+    echo "[dispatch] ERROR: $WT exists but is not a registered worktree of this repo ($REPO_ROOT)." >&2
+    echo "[dispatch] This usually means a stale or foreign directory occupies the expected worktree path." >&2
+    echo "[dispatch] Inspect it manually, then either remove it or let git reclaim it, and re-run dispatch:" >&2
+    echo "[dispatch]   git worktree list   (from $REPO_ROOT, to see what git actually knows about)" >&2
+    exit 1
+  fi
+else
   echo "[dispatch] Creating worktree at $WT..."
   git worktree add --detach "$WT" main
 fi

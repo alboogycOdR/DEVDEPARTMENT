@@ -32,17 +32,24 @@ function Get-PythonCmd {
 }
 $Py = Get-PythonCmd
 
+# Worktree paths are namespaced by this project's own folder name (not just
+# "wt-grok"/"wt-codex") because they're created as SIBLINGS of the project
+# root, not siblings of DEVDEPARTMENT itself. Two DEVDEPARTMENT-onboarded
+# projects sharing a parent directory (a common layout) would otherwise
+# compute the exact same worktree path and silently collide.
+$ProjectName = Split-Path $RepoRoot -Leaf
+
 switch ($Builder) {
     "grok" {
         $Id = "GB"; $Suffix = "gb"
-        $Wt = Join-Path $ParentDir "wt-grok"
+        $Wt = Join-Path $ParentDir "wt-grok-$ProjectName"
         $Cmd = "grok"
         $CmdArgs = @("--always-approve", "--permission-mode", "bypassPermissions")
         $Briefing = "briefings/GROK_BUILD_BRIEFING.md"
     }
     "codex" {
         $Id = "CX"; $Suffix = "cx"
-        $Wt = Join-Path $ParentDir "wt-codex"
+        $Wt = Join-Path $ParentDir "wt-codex-$ProjectName"
         $Cmd = "codex"
         $CmdArgs = @("exec", "--model", "gpt-5.6-sol", "--reasoning-effort", "medium", "-s", "danger-full-access")
         $Briefing = "briefings/CODEX_BRIEFING.md"
@@ -56,7 +63,35 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-if (-not (Test-Path $Wt)) {
+# Warn (not block) about an old-style unnamespaced worktree left over from
+# before this fix -- it is NOT reused, just flagged so it doesn't sit there
+# silently confusing a future look at the folder.
+$LegacyName = if ($Builder -eq "grok") { "wt-grok" } else { "wt-codex" }
+$LegacyWt = Join-Path $ParentDir $LegacyName
+if ((Test-Path $LegacyWt) -and ($LegacyWt -ne $Wt)) {
+    Write-Warning "[dispatch] Found an old-style unnamespaced worktree at $LegacyWt (pre-dates per-project namespacing)."
+    Write-Warning "[dispatch] It is NOT being used by this dispatch. If it belongs to this project, remove it with:"
+    Write-Warning "[dispatch]   git worktree remove `"$LegacyWt`" --force   (run from $RepoRoot)"
+}
+
+function Normalize-WtPath([string]$p) {
+    return ($p -replace '\\', '/').TrimEnd('/').ToLowerInvariant()
+}
+
+if (Test-Path $Wt) {
+    # Reuse only if it's actually a registered worktree of THIS repo -- not
+    # just "a directory happens to be sitting there."
+    $registeredRaw = git -C $RepoRoot worktree list --porcelain | Where-Object { $_ -like "worktree *" } | ForEach-Object { $_.Substring(10) }
+    $registeredNorm = $registeredRaw | ForEach-Object { Normalize-WtPath $_ }
+    $wtNorm = Normalize-WtPath $Wt
+    if ($registeredNorm -notcontains $wtNorm) {
+        Write-Error "[dispatch] $Wt exists but is not a registered worktree of this repo ($RepoRoot)."
+        Write-Error "[dispatch] This usually means a stale or foreign directory occupies the expected worktree path."
+        Write-Error "[dispatch] Inspect it manually, then either remove it or let git reclaim it, and re-run dispatch:"
+        Write-Error "[dispatch]   git worktree list   (from $RepoRoot, to see what git actually knows about)"
+        exit 1
+    }
+} else {
     Write-Host "[dispatch] Creating worktree at $Wt..." -ForegroundColor Cyan
     git worktree add --detach $Wt main
     if ($LASTEXITCODE -ne 0) { Write-Error "[dispatch] git worktree add failed."; exit 1 }

@@ -75,10 +75,12 @@ Three independent layers; all must hold:
 Each builder operates in its own worktree:
 
 ```
-main checkout          →  ORCH (planning, review, merging)
-../wt-grok  (branch task/TASK-NNN-gb)  →  GB
-../wt-codex (branch task/TASK-NNN-cx)  →  CX
+main checkout                          →  ORCH (planning, review, merging)
+../wt-grok-<project>   (branch task/TASK-NNN-gb)  →  GB
+../wt-codex-<project>  (branch task/TASK-NNN-cx)  →  CX
 ```
+
+Worktree paths are namespaced by the project's own folder name — not a bare `../wt-grok`/`../wt-codex` — because they're created as siblings of the project root itself, not of DEVDEPARTMENT. Two DEVDEPARTMENT-onboarded projects sharing a parent directory would otherwise compute the identical worktree path and collide; `dispatch.sh`/`.ps1` also refuse to reuse a directory at that path unless it's a confirmed registered worktree of the current repo.
 
 Builders commit to their task branch only, referencing the task ID in every commit (Conventional Commits): `feat(auth): implement login route [TASK-001]`. Only ORCH merges to `main`, and only after review verdict.
 

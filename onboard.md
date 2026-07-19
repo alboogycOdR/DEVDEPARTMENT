@@ -92,7 +92,7 @@ Run and report exact output + exit codes:
 macOS/Linux:
 ```bash
 python3 scripts/validate_plan.py PLAN.md
-python3 -m pytest tests/ -q          # expect 471 passed (validator 18 + supervisor 17 + board 10 + tg_commands 86 + tg_listener 18 + supervisor_telegram 21 + notify 6 + scheduling 14 + budget 23 + maintenance 49 + supervisor_maintenance 18 + instincts 30 + distiller 15 + retro 10 + supervisor_learning 24 + control 52 + supervisor_control 17 + usage 43)
+python3 -m pytest tests/ -q          # expect 479 passed (validator 18 + supervisor 17 + board 10 + tg_commands 86 + tg_listener 18 + supervisor_telegram 21 + notify 6 + scheduling 14 + budget 23 + maintenance 49 + supervisor_maintenance 18 + instincts 30 + distiller 15 + retro 10 + supervisor_learning 24 + control 52 + supervisor_control 17 + usage 43 + dispatch_worktree 8)
 node hooks/run-tests.js              # expect 28 passed
 bash scripts/harness-audit.sh --no-shield
 python3 scripts/supervisor.py --once --dry-run
