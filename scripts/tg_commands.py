@@ -388,7 +388,7 @@ def git_pull(repo: Path) -> bool:
     never a crash."""
     try:
         r = subprocess.run(["git", "pull", "--rebase", "--autostash"],
-                            cwd=repo, capture_output=True, text=True, timeout=30)
+                            cwd=repo, capture_output=True, encoding="utf-8", errors="replace", timeout=30)
         return r.returncode == 0
     except Exception:
         return False
@@ -397,11 +397,11 @@ def git_pull(repo: Path) -> bool:
 def git_commit_and_push(repo: Path, message: str) -> bool:
     """Stage+commit+push ONLY PLAN.md. Never touches any other file."""
     try:
-        subprocess.run(["git", "add", "PLAN.md"], cwd=repo, capture_output=True, text=True, timeout=30)
-        r = subprocess.run(["git", "commit", "-m", message], cwd=repo, capture_output=True, text=True, timeout=30)
+        subprocess.run(["git", "add", "PLAN.md"], cwd=repo, capture_output=True, encoding="utf-8", errors="replace", timeout=30)
+        r = subprocess.run(["git", "commit", "-m", message], cwd=repo, capture_output=True, encoding="utf-8", errors="replace", timeout=30)
         if r.returncode != 0:
             return False
-        r2 = subprocess.run(["git", "push"], cwd=repo, capture_output=True, text=True, timeout=30)
+        r2 = subprocess.run(["git", "push"], cwd=repo, capture_output=True, encoding="utf-8", errors="replace", timeout=30)
         return r2.returncode == 0
     except Exception:
         return False

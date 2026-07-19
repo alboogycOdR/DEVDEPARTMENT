@@ -222,7 +222,7 @@ def _run_probe_subprocess(cmd: list[str], parse_line) -> dict:
     result: dict = {}
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                text=True, bufsize=1)
+                                encoding="utf-8", errors="replace", bufsize=1)
     except (OSError, FileNotFoundError):
         return result
     try:

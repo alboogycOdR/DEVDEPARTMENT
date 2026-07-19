@@ -91,7 +91,7 @@ def _step_harness_audit(repo: Path) -> StepResult:
     if not script.exists():
         return StepResult("harness_audit", False, f"{script.name} not found")
     try:
-        r = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, timeout=1800)
+        r = subprocess.run(cmd, cwd=repo, capture_output=True, encoding="utf-8", errors="replace", timeout=1800)
         ok = r.returncode == 0
         tail = _oneline((r.stdout or "") + " " + (r.stderr or ""), max_len=600)
         return StepResult("harness_audit", ok, "harness-audit PASS" if ok else f"harness-audit FAILED (exit {r.returncode}): {tail}")
@@ -121,7 +121,7 @@ def _step_pytest(repo: Path) -> StepResult:
         return StepResult("pytest", True, "no tests/ directory \u2014 skipped")
     try:
         r = subprocess.run([sys.executable, "-m", "pytest", "tests/", "-q"], cwd=repo,
-                           capture_output=True, text=True, timeout=600)
+                           capture_output=True, encoding="utf-8", errors="replace", timeout=600)
         ok = r.returncode == 0
         tail = _oneline((r.stdout or "") + " " + (r.stderr or ""), max_len=500)
         return StepResult("pytest", ok, "pytest PASS" if ok else f"pytest FAILED: {tail}")
@@ -136,7 +136,7 @@ def _step_node_tests(repo: Path) -> StepResult:
     if not runner.exists():
         return StepResult("node_tests", True, "no hooks/run-tests.js \u2014 skipped")
     try:
-        r = subprocess.run(["node", str(runner)], cwd=repo, capture_output=True, text=True, timeout=300)
+        r = subprocess.run(["node", str(runner)], cwd=repo, capture_output=True, encoding="utf-8", errors="replace", timeout=300)
         ok = r.returncode == 0
         tail = _oneline((r.stdout or "") + " " + (r.stderr or ""), max_len=500)
         return StepResult("node_tests", ok, "node hook tests PASS" if ok else f"node hook tests FAILED: {tail}")
@@ -171,7 +171,7 @@ def _step_hygiene(repo: Path) -> StepResult:
     ok = True
 
     try:
-        r = subprocess.run(["git", "worktree", "prune"], cwd=repo, capture_output=True, text=True, timeout=60)
+        r = subprocess.run(["git", "worktree", "prune"], cwd=repo, capture_output=True, encoding="utf-8", errors="replace", timeout=60)
         if r.returncode != 0:
             notes.append(f"worktree prune: {_oneline(r.stderr, 150)}")
     except FileNotFoundError:
@@ -183,7 +183,7 @@ def _step_hygiene(repo: Path) -> StepResult:
     done_ids = _done_task_ids(repo)
     try:
         merged = subprocess.run(["git", "branch", "--merged", "main"], cwd=repo,
-                                capture_output=True, text=True, timeout=60)
+                                capture_output=True, encoding="utf-8", errors="replace", timeout=60)
         if merged.returncode == 0:
             deleted = []
             for line in merged.stdout.splitlines():
@@ -193,7 +193,7 @@ def _step_hygiene(repo: Path) -> StepResult:
                 m = _MERGED_TASK_BRANCH_RE.match(branch)
                 if m and m.group(1) in done_ids:
                     dr = subprocess.run(["git", "branch", "-d", branch], cwd=repo,
-                                        capture_output=True, text=True, timeout=30)
+                                        capture_output=True, encoding="utf-8", errors="replace", timeout=30)
                     if dr.returncode == 0:
                         deleted.append(branch)
             if deleted:
@@ -239,7 +239,7 @@ def _step_backup(repo: Path, retain_days: int) -> StepResult:
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         bundle_path = backups_dir / f"{date_str}.bundle"
         r = subprocess.run(["git", "bundle", "create", str(bundle_path), "--all"],
-                           cwd=repo, capture_output=True, text=True, timeout=300)
+                           cwd=repo, capture_output=True, encoding="utf-8", errors="replace", timeout=300)
         if r.returncode != 0:
             return StepResult("backup", False, f"git bundle create failed: {_oneline(r.stderr, 300)}")
 

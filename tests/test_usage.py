@@ -394,9 +394,17 @@ class TestFrontendJsSanity:
         m = re.search(r"<script>([\s\S]*)</script>", html)
         assert m is not None
         script = m.group(1)
+        # encoding="utf-8" explicitly, NOT text=True: text=True decodes/encodes
+        # subprocess I/O using the OS's locale-preferred encoding, which is
+        # UTF-8 on most Linux boxes but cp1252 on Windows by default — and
+        # this script block legitimately contains non-ASCII characters
+        # (▲ ■ ⚠ · —, used as board UI icons/dashes) that cp1252 can't
+        # represent. Surfaced by a live diagnostic run on Windows; this
+        # pins the encoding so the test is deterministic on every platform
+        # regardless of the runner's OS locale.
         result = subprocess.run(
             ["node", "-e", "new Function(require('fs').readFileSync(0,'utf-8'))"],
-            input=script, capture_output=True, text=True)
+            input=script, capture_output=True, encoding="utf-8")
         assert result.returncode == 0, result.stderr
 
     def test_render_usage_meter_function_present_and_null_safe(self):

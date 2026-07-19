@@ -134,7 +134,8 @@ def call_model(prompt: str, cfg: dict) -> str:
         "claude", "-p", "--model", learning.get("model", "claude-sonnet-5"),
         "--dangerously-skip-permissions",
     ]
-    proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True,
+    proc = subprocess.run(cmd, input=prompt, capture_output=True,
+                          encoding="utf-8", errors="replace",
                           timeout=int(learning.get("distill_timeout_seconds", 600)))
     if proc.returncode != 0:
         raise RuntimeError(f"distill model call failed rc={proc.returncode}: "
