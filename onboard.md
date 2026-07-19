@@ -1,18 +1,21 @@
-# DEVDEPARTMENT v2.0 — Unified Onboarding Prompt
+# DEVDEPARTMENT v4.5 — Unified Onboarding Prompt
 # Run this in Claude Code from the TARGET PROJECT ROOT.
 # The DEVDEPARTMENT pack folder must be reachable (default: ../DEVDEPARTMENT/).
 # Idempotent — safe to re-run when DEVDEPARTMENT updates.
 #
 # Installs in one pass: core protocol + blackboard, devteam-* commands,
-# autopilot layer, and ECC waves (write-time hooks, Codex config, harness audit).
+# the autopilot layer (dispatch/review/self-maintenance), ECC waves
+# (write-time hooks, Codex config, harness audit), Mission Control board,
+# two-way Telegram, the continuous learning loop, and Wave I (CONTROL-block
+# single-writer blackboard + usage-window meters).
 
 ---
 
-You are ORCH (Claude Code), onboarding this project into the DEVDEPARTMENT v2.0 multi-agent workflow system. Working directory: the **project root**. The pack is at `../DEVDEPARTMENT/` (ask once if the path differs; do not guess twice). Execute all steps in order; read every existing file before writing to it; report copied / skipped / merged / conflicts at the end.
+You are ORCH (Claude Code), onboarding this project into the DEVDEPARTMENT v4.5 multi-agent workflow system. Working directory: the **project root**. The pack is at `../DEVDEPARTMENT/` (ask once if the path differs; do not guess twice). Execute all steps in order; read every existing file before writing to it; report copied / skipped / merged / conflicts at the end.
 
 ## STEP 0 — Preconditions
 
-Verify and report versions of: `git`, Python 3.10+ (`python3` on macOS/Linux; `python` or `py` on Windows), `node` (18+). **Windows note:** all commands below written as `python3` should be run as `python` on Windows; all `bash scripts/*.sh` invocations have PowerShell 5.1 mirrors — use `powershell -ExecutionPolicy Bypass -File scripts\<name>.ps1` instead. Never add `#requires -Version 7` to any script. Node is a hard requirement for the hooks layer; if missing, complete the rest and flag hooks as NOT INSTALLED in the final report.
+Verify and report versions of: `git`, Python 3.10+ (`python3` on macOS/Linux; `python` or `py` on Windows), `node` (18+). **Windows note:** all commands below written as `python3` should be run as `python` on Windows; all `bash scripts/*.sh` invocations have PowerShell 5.1 mirrors — use `powershell -ExecutionPolicy Bypass -File scripts\<name>.ps1` instead. Never add `#requires -Version 7` to any script. Node is a hard requirement for the hooks layer; if missing, complete the rest and flag hooks as NOT INSTALLED in the final report. `claude`/`codex` CLIs are NOT hard requirements for onboarding itself, but are needed for: `control.mode=strict` (builders must be able to emit the `devteam-control` fence — see Step 1's control.mode note) and live usage-window data (`scripts/usage_probe.py` — see `docs/USAGE.md`). Report whether they're on PATH; a missing CLI just means those two features stay at their fail-open defaults (legacy mode, `—` usage) until installed.
 
 Confirm the pack contains: `PLAN.md`, `AGENTS.md`, `CLAUDE.md`, `REVIEW.md`, `briefings/`, `docs/`, `scripts/`, `hooks/`, `.codex/`, `.claude/commands/` (5 devteam-* files), `tests/`, `specs/`. Stop and ask if anything is missing.
 
@@ -24,8 +27,10 @@ Copy from the pack into the project root, skipping any file that already exists 
 - `.claude/commands/` — **hidden directory; list its 5 files explicitly** (devteam-decompose, devteam-dispatch, devteam-status, devteam-review, devteam-autopilot) and confirm each landed
 - `.codex/config.toml` — if the project already has one, merge add-only (bring in missing keys: model, model_reasoning_effort, sandbox_mode, approval_policy, profiles, shell_environment_policy); on any conflicting key keep the existing value and flag it
 - `PLAN.md`, `REVIEW.md` — only if absent
-- `autopilot.json` — only if absent (copy the pack's template)
+- `autopilot.json` — only if absent (copy the pack's template). The template ships `control.mode: "legacy"` — builders still write PLAN.md themselves, which is the safe default for a project onboarding for the first time. **Ask the human whether they want `control.mode: "strict"` instead** (the CONTROL-block single-writer blackboard — builders never touch PLAN.md; the dispatcher claims tasks and the supervisor applies builder-reported state via a fenced `devteam-control` block) before flipping it; see `docs/CONTROL.md`. Do not flip it unasked — it changes what `dispatch.sh`/`.ps1` do and what briefings/GROK_BUILD_BRIEFING.md + CODEX_BRIEFING.md tell the builder to do.
 - `INSTINCTS.md` — only if absent; create empty via `python3 -c "import sys; sys.path.insert(0,'scripts'); import instincts; instincts.save_atomic('.', [])"` (Wave C learning loop's instinct store, created empty per project — never copied from the pack)
+
+Usage-window meters (`scripts/usage_probe.py`) work out of the box (fail-open — renders `—` until real data exists) but the exact fields it parses out of `claude`/`codex`'s stream output have only been verified against the reference implementation's source, not a live installed CLI (see `docs/USAGE.md`'s verification commands). Mention this in the final report as a "not yet live-verified" item rather than silently asserting it works.
 
 On macOS/Linux: `chmod +x scripts/*.sh scripts/*.py`. On Windows: skip chmod; nothing needed.
 
@@ -51,7 +56,7 @@ If CLAUDE.md exists AND does not already contain a `## Multi-Agent Orchestration
 
 ```markdown
 ## Multi-Agent Orchestration — DEVDEPARTMENT (ORCH)
-> Auto-appended by DEVDEPARTMENT v2.0 onboarding. Re-run onboard.md to refresh.
+> Auto-appended by DEVDEPARTMENT v4.5 onboarding. Re-run onboard.md to refresh.
 ```
 
 Then add the project territory map with the REAL paths from Step 3:
@@ -128,18 +133,20 @@ git status
 ```
 
 Show the status and WAIT for confirmation. Suggested message:
-`chore: onboard DEVDEPARTMENT v2.0 (core + autopilot + ECC waves) [ORCH]`
+`chore: onboard DEVDEPARTMENT v4.5 (core + autopilot + ECC waves + learning loop + Wave I) [ORCH]`
 
 ## STEP 10 — Final report
 
 ```
-DEVDEPARTMENT v2.0 ONBOARDING COMPLETE
+DEVDEPARTMENT v4.5 ONBOARDING COMPLETE
 =======================================
 Project / stack / source root / test root:  [...]
 Copied (new) / Skipped (existed) / Merged (appended) / Conflicts:  [...]
 Hooks wired into .claude/settings.json:  yes / already / SKIPPED (no node)
 Tests:  pytest [n], hooks [n], validator [OK/FAIL], audit [PASS/FAIL], supervisor dry-run [actions]
 Firewall smoke test:  GB blocked=?, ORCH allowed=?
+control.mode:  legacy (default) / strict (confirmed with human)
+Usage-window meters:  live-verified against installed claude/codex CLIs? yes/no/not attempted — see docs/USAGE.md
 
 Operating guide:
   /devteam-decompose            → turn specs/ into the task plan   (model: claude-sonnet-5)
@@ -152,6 +159,7 @@ Operating guide:
                                    auto-routes to dispatch.ps1 via platform detection)
   touch STOP                    → halt the loop
   export DEVTEAM_TG_TOKEN/DEVTEAM_TG_CHAT + "telegram" in autopilot.json → phone alerts
+                                  (once wired: /status /approve /rework /usage /mute /stop from Telegram)
 
 Next: drop spec documents into specs/, run /devteam-decompose, confirm the git commit.
 Needs attention: [anything flagged above]
