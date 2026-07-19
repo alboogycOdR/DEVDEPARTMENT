@@ -28,6 +28,7 @@ One pack, three layers, one onboarding prompt. Basileia Technologies.
 PLAN.md  AGENTS.md  CLAUDE.md  REVIEW.md  autopilot.json  onboard.md
 briefings/   GROK_BUILD_BRIEFING.md · CODEX_BRIEFING.md   (filesystem-check mandate, resume-first)
 docs/        COORDINATION_PROTOCOL.md · AUTOPILOT.md · HOOKS.md · BOARD.md · TELEGRAM.md · DEPLOY_CLAWSRV.md
+             LEARNING.md · CONTROL.md · USAGE.md · MODEL_DISCIPLINE.md
 scripts/     board_publisher.py · validate_plan.py · dispatch.sh + dispatch.ps1 · worktree.ps1 · harness-audit.sh + harness-audit.ps1 · supervisor.py (platform-aware) · notify.py · team_stats.py · tg_listener.py · tg_commands.py · maintenance.py · budget.py · scheduling.py
 deploy/      ecosystem.config.js (PM2 process definition for clawsrv)
 hooks/       territory-firewall.js · secret-scan.js · session-start.js · pre-compact.js · session-end.js · lib.js · hooks.json · run-tests.js

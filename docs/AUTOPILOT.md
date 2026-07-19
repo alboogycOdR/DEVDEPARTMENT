@@ -19,16 +19,20 @@ per project via `autopilot.scope_envelope` in the config.
 
 ## The core loop (one "tick")
 
-Model assignments per tick action (CLAUDE.md model discipline, 1020f7a):
-- **REVIEW, TRIAGE_UNBLOCK** → `claude-sonnet-5` (judgment calls; wrong verdict cascades)
+Model assignments per tick action (CLAUDE.md model discipline; rationale in docs/MODEL_DISCIPLINE.md):
+- **REVIEW, REVIEW_TG, TRIAGE_UNBLOCK** → `claude-opus-4-8` (judgment calls; wrong verdict cascades).
+  Taken from `autopilot.json` → `review_cmd` / `judgment_model`, never hardcoded. Specifically NOT
+  `claude-sonnet-5`: that is the S5 builder's own model, and a checker must not share the maker's
+  blind spots.
 - **DISPATCH, status reads, PLAN.md writes, log appends** → `claude-sonnet-4-6` (mechanical)
+- **Distiller** (Wave C) → `claude-sonnet-5` via `learning.model` — deliberate; it is not a gate.
 
 ```
 tick:
   1. validate_plan.py          → illegal plan?            ESCALATE (P1)
   2. scan tasks
      needs_review exists?      → launch ORCH review session (headless claude -p /devteam-review
-                                  --model claude-sonnet-5)
+                                  --model claude-opus-4-8, per review_cmd)
                                   verdict approved → merge happens inside review
                                   verdict rework   → count rework cycles
   3. blocked exists?           → classify:
