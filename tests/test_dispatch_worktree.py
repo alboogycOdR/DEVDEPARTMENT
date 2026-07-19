@@ -34,17 +34,26 @@ def make_project(parent: Path, name: str, repo_root: Path) -> Path:
     proj.mkdir(parents=True)
     (proj / "scripts").mkdir()
     (proj / "briefings").mkdir()
-    (proj / "autopilot.json").write_text('{"control": {"mode": "legacy"}}', encoding="utf-8")
+    (proj / "autopilot.json").write_text('{"control": {"mode": "legacy"}}', encoding="utf-8", newline="\n")
     for fname in ("dispatch.sh", "validate_plan.py", "instincts.py"):
         src = repo_root / "scripts" / fname
         if src.exists():
-            (proj / "scripts" / fname).write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+            # Byte-exact copy, NOT read_text()/write_text(). write_text()'s
+            # default newline handling translates "\n" to the OS's native
+            # line ending on write (CRLF on Windows) even when the source
+            # bytes and the read were pure LF — which corrupts dispatch.sh's
+            # `set -euo pipefail` line and breaks every test that shells out
+            # to the copy. Confirmed via a live diagnostic during real
+            # onboarding: the shipped scripts/dispatch.sh itself is clean
+            # LF-only and works correctly when run directly; only this
+            # fixture's copy step reintroduced the corruption.
+            (proj / "scripts" / fname).write_bytes(src.read_bytes())
     (proj / "scripts" / "dispatch.sh").chmod(0o755)
-    (proj / "briefings" / "GROK_BUILD_BRIEFING.md").write_text("briefing", encoding="utf-8")
-    (proj / "briefings" / "CODEX_BRIEFING.md").write_text("briefing", encoding="utf-8")
+    (proj / "briefings" / "GROK_BUILD_BRIEFING.md").write_text("briefing", encoding="utf-8", newline="\n")
+    (proj / "briefings" / "CODEX_BRIEFING.md").write_text("briefing", encoding="utf-8", newline="\n")
     (proj / "PLAN.md").write_text(
         "---\nplan_version: 4.5\nlast_updated: 2026-07-20T00:00:00Z\noverall_status: in_progress\n---\n",
-        encoding="utf-8")
+        encoding="utf-8", newline="\n")
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=proj, check=True)
     subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=proj, check=True)
     subprocess.run(["git", "config", "user.name", "T"], cwd=proj, check=True)
@@ -92,7 +101,7 @@ class TestForeignDirectorySafetyNet:
         # any stray folder that happens to occupy the expected path.
         foreign = tmp_path / "wt-grok-projectC"
         foreign.mkdir()
-        (foreign / "not_a_worktree.txt").write_text("stray", encoding="utf-8")
+        (foreign / "not_a_worktree.txt").write_text("stray", encoding="utf-8", newline="\n")
 
         result = run_dispatch(proj, dry_run=False)
         assert result.returncode == 1
@@ -117,7 +126,7 @@ class TestLegacyWorktreeWarning:
         proj = make_project(tmp_path, "projectE", REPO_ROOT)
         legacy = tmp_path / "wt-grok"
         legacy.mkdir()
-        (legacy / "old_leftover.txt").write_text("leftover", encoding="utf-8")
+        (legacy / "old_leftover.txt").write_text("leftover", encoding="utf-8", newline="\n")
 
         result = run_dispatch(proj)
         assert result.returncode == 0, result.stderr
