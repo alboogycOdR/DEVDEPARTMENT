@@ -26,7 +26,10 @@ PROJECT_NAME="$(basename "$REPO_ROOT")"
 
 case "$BUILDER" in
   grok)  ID="GB"; WT="$(dirname "$REPO_ROOT")/wt-grok-${PROJECT_NAME}";  CMD=(grok --always-approve --permission-mode bypassPermissions); BRIEFING="briefings/GROK_BUILD_BRIEFING.md"; SUFFIX="gb" ;;
-  codex) ID="CX"; WT="$(dirname "$REPO_ROOT")/wt-codex-${PROJECT_NAME}"; CMD=(codex exec --model gpt-5.6-sol --reasoning-effort medium -s danger-full-access); BRIEFING="briefings/CODEX_BRIEFING.md"; SUFFIX="cx" ;;
+  # --reasoning-effort is not a valid `codex exec` CLI flag (confirmed against
+  # codex-cli 0.144.5 -- it errors "unexpected argument"); model_reasoning_effort
+  # is already authoritative via .codex/config.toml, per that file's own comment.
+  codex) ID="CX"; WT="$(dirname "$REPO_ROOT")/wt-codex-${PROJECT_NAME}"; CMD=(codex exec --model gpt-5.6-sol -s danger-full-access); BRIEFING="briefings/CODEX_BRIEFING.md"; SUFFIX="cx" ;;
   *) echo "Unknown builder: $BUILDER" >&2; exit 1 ;;
 esac
 

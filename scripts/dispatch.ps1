@@ -50,8 +50,21 @@ switch ($Builder) {
     "codex" {
         $Id = "CX"; $Suffix = "cx"
         $Wt = Join-Path $ParentDir "wt-codex-$ProjectName"
-        $Cmd = "codex"
-        $CmdArgs = @("exec", "--model", "gpt-5.6-sol", "--reasoning-effort", "medium", "-s", "danger-full-access")
+        # --reasoning-effort is not a valid `codex exec` CLI flag (confirmed against
+        # codex-cli 0.144.5 -- it errors "unexpected argument"); model_reasoning_effort
+        # is already authoritative via .codex/config.toml, per that file's own comment.
+        #
+        # Routed through cmd /c rather than invoking codex(.ps1) directly: npm's
+        # generated .ps1 shim (AppData\Roaming\npm\codex.ps1) checks
+        # $MyInvocation.ExpectingInput and pipes $input into the underlying node
+        # process when true. That check spuriously fires when this splatted-array
+        # invocation pattern (`& $Cmd @($CmdArgs + @($Prompt))`) is used from inside
+        # a script -- reproduced live: codex then blocks on stdin and fails with
+        # "Error: stdin is not a terminal" in any non-interactive/background
+        # invocation, even though the exact same args work fine called literally.
+        # cmd /c invokes codex.cmd instead, which has no such pipeline semantics.
+        $Cmd = "cmd"
+        $CmdArgs = @("/c", "codex", "exec", "--model", "gpt-5.6-sol", "-s", "danger-full-access")
         $Briefing = "briefings/CODEX_BRIEFING.md"
     }
 }
@@ -81,7 +94,7 @@ function Normalize-WtPath([string]$p) {
 if (Test-Path $Wt) {
     # Reuse only if it's actually a registered worktree of THIS repo -- not
     # just "a directory happens to be sitting there."
-    $registeredRaw = git -C $RepoRoot worktree list --porcelain | Where-Object { $_ -like "worktree *" } | ForEach-Object { $_.Substring(10) }
+    $registeredRaw = git -C $RepoRoot worktree list --porcelain | Where-Object { $_ -like "worktree *" } | ForEach-Object { $_.Substring(9) }
     $registeredNorm = $registeredRaw | ForEach-Object { Normalize-WtPath $_ }
     $wtNorm = Normalize-WtPath $Wt
     if ($registeredNorm -notcontains $wtNorm) {
