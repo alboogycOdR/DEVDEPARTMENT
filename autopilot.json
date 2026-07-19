@@ -10,7 +10,8 @@
   "review_cmd": "claude -p \"/devteam-review\" --model claude-sonnet-5 --dangerously-skip-permissions",
   "builders": [
     "GB",
-    "CX"
+    "CX",
+    "S5"
   ],
   "autonomy_level": 2,
   "board": {

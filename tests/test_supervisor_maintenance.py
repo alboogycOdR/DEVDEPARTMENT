@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import supervisor as sup  # noqa: E402
 import maintenance as maint  # noqa: E402
 from supervisor import (  # noqa: E402
-    Action, RuntimeState, DEFAULT_CONFIG, decide, execute,
+    Action, RuntimeState, DEFAULT_CONFIG, decide, execute, reap_inflight,
 )
 
 NOW = datetime(2026, 7, 19, 12, 0, 0, tzinfo=timezone.utc)
@@ -136,48 +136,78 @@ class TestBudgetGatingInDecide:
 
 
 # ============================================== unreachable builder (T1) ===
+class _FakeProc:
+    """Stand-in for subprocess.Popen: poll() returns the preset exit code
+    immediately, simulating a background dispatch that has already finished
+    by the time reap_inflight() checks it."""
+    def __init__(self, rc: int):
+        self._rc = rc
+
+    def poll(self):
+        return self._rc
+
+
 class TestUnreachableBuilderEscalation:
+    """DISPATCH/REDISPATCH_STALE are non-blocking (subprocess.Popen via
+    launch_shell_bg) so builders can run concurrently instead of starving
+    each other within one tick -- see launch_shell_bg's docstring. execute()
+    only queues the action into `inflight`; the exit code (and any
+    unreachable-builder P2) only surfaces once reap_inflight() notices the
+    process has finished, which may be a later tick in real usage but is
+    called directly here to exercise both halves in one test."""
+
     def test_dispatch_nonzero_exit_fires_p2(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(sup, "run_shell", lambda cmd, repo: 127)  # "command not found"
+        monkeypatch.setattr(sup.subprocess, "Popen", lambda *a, **k: _FakeProc(127))  # "command not found"
         sent = []
         monkeypatch.setattr(sup, "notify", lambda cfg, prio, msg, repo: sent.append((prio, msg)))
         repo = make_repo(tmp_path, FM + task())
         state = RuntimeState()
+        inflight: dict = {}
         execute([Action("DISPATCH", "GB idle; dispatching", unit="GB", task_id="TASK-001")],
-                CFG, state, repo, dry_run=False, now=NOW)
+                CFG, state, repo, dry_run=False, now=NOW, inflight=inflight)
+        assert sent == []  # not yet -- still "in flight" until reaped
+        assert "GB" in inflight
+        reap_inflight(inflight, CFG, state, repo, NOW)
+        assert "GB" not in inflight
         assert len(sent) == 1
         assert sent[0][0] == "P2"
         assert "unreachable" in sent[0][1].lower()
         assert "TASK-001" in sent[0][1]
 
     def test_dispatch_success_no_escalation(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(sup, "run_shell", lambda cmd, repo: 0)
+        monkeypatch.setattr(sup.subprocess, "Popen", lambda *a, **k: _FakeProc(0))
         sent = []
         monkeypatch.setattr(sup, "notify", lambda cfg, prio, msg, repo: sent.append(prio))
         repo = make_repo(tmp_path, FM + task())
         state = RuntimeState()
+        inflight: dict = {}
         execute([Action("DISPATCH", "GB idle; dispatching", unit="GB", task_id="TASK-001")],
-                CFG, state, repo, dry_run=False, now=NOW)
+                CFG, state, repo, dry_run=False, now=NOW, inflight=inflight)
+        reap_inflight(inflight, CFG, state, repo, NOW)
         assert sent == []
 
     def test_redispatch_stale_nonzero_exit_fires_p2(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(sup, "run_shell", lambda cmd, repo: 1)
+        monkeypatch.setattr(sup.subprocess, "Popen", lambda *a, **k: _FakeProc(1))
         sent = []
         monkeypatch.setattr(sup, "notify", lambda cfg, prio, msg, repo: sent.append(prio))
         repo = make_repo(tmp_path, FM + task())
         state = RuntimeState()
+        inflight: dict = {}
         execute([Action("REDISPATCH_STALE", "heartbeat stale", unit="GB", task_id="TASK-001")],
-                CFG, state, repo, dry_run=False, now=NOW)
+                CFG, state, repo, dry_run=False, now=NOW, inflight=inflight)
+        reap_inflight(inflight, CFG, state, repo, NOW)
         assert sent == ["P2"]
 
     def test_unreachable_escalation_respects_mute(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(sup, "run_shell", lambda cmd, repo: 1)
+        monkeypatch.setattr(sup.subprocess, "Popen", lambda *a, **k: _FakeProc(1))
         sent = []
         monkeypatch.setattr(sup, "notify", lambda cfg, prio, msg, repo: sent.append(prio))
         repo = make_repo(tmp_path, FM + task())
         state = RuntimeState(mute_until="2026-07-20T00:00:00Z")
+        inflight: dict = {}
         execute([Action("DISPATCH", "GB idle", unit="GB", task_id="TASK-001")],
-                CFG, state, repo, dry_run=False, now=NOW)
+                CFG, state, repo, dry_run=False, now=NOW, inflight=inflight)
+        reap_inflight(inflight, CFG, state, repo, NOW)
         assert sent == []
         log = (repo / "AUTOPILOT_LOG.md").read_text(encoding="utf-8")
         assert "MUTED" in log
@@ -192,6 +222,37 @@ class TestUnreachableBuilderEscalation:
         keep_going = execute([Action("DISPATCH", "GB idle", unit="GB", task_id="TASK-001")],
                              cfg, state, repo, dry_run=False, now=NOW)
         assert keep_going is True  # a failed dispatch is a P2, not a halt
+
+    def test_two_dispatches_in_one_tick_both_launch_without_blocking(self, tmp_path, monkeypatch):
+        """The actual regression this fix closes: CX sat idle behind a
+        long-running GB session because DISPATCH used to be a blocking
+        subprocess.run() -- the second action in the list never even started
+        until the first's whole builder session exited. Both units' Popen
+        calls must fire within the same execute() pass now."""
+        launched = []
+
+        class _SlowFakeProc:
+            def poll(self):
+                return None  # never finishes -- would hang forever under the old blocking call
+
+        def fake_popen(cmd, shell=True, cwd=None):
+            launched.append(cmd)
+            return _SlowFakeProc()
+
+        monkeypatch.setattr(sup.subprocess, "Popen", fake_popen)
+        repo = make_repo(tmp_path, FM + task())
+        state = RuntimeState()
+        inflight: dict = {}
+        keep_going = execute(
+            [
+                Action("DISPATCH", "GB idle; dispatching", unit="GB", task_id="TASK-001"),
+                Action("DISPATCH", "CX idle; dispatching", unit="CX", task_id="TASK-002"),
+            ],
+            CFG, state, repo, dry_run=False, now=NOW, inflight=inflight,
+        )
+        assert keep_going is True
+        assert len(launched) == 2  # both fired -- neither blocked behind the other
+        assert set(inflight.keys()) == {"GB", "CX"}
 
 
 # ======================================================= maintenance tick ==

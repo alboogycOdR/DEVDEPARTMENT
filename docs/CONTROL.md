@@ -71,7 +71,7 @@ The builder is **told its task ID explicitly** in the dispatch prompt — no mor
 
 ## Updated_By: SV
 
-One writer identity for the whole single-writer blackboard — claim-at-dispatch and CONTROL-block application are both "the dispatcher/supervisor wrote this," never a builder. `validate_plan.py`'s `VALID_UNITS` was extended to `{ORCH, GB, CX, SV}` for this reason (an error otherwise — `PLAN.md` would become protocol-illegal the instant a strict-mode claim landed). A soft, warn-only check flags `Updated_By: GB`/`CX` directly on a `needs_review`/`blocked` transition while `control.mode=strict` — a signal that a CONTROL block may have been bypassed, not a hard failure.
+One writer identity for the whole single-writer blackboard — claim-at-dispatch and CONTROL-block application are both "the dispatcher/supervisor wrote this," never a builder. `validate_plan.py`'s `VALID_UNITS` was extended to `{ORCH, GB, CX, S5, SV}` for this reason (an error otherwise — `PLAN.md` would become protocol-illegal the instant a strict-mode claim landed). A soft, warn-only check flags `Updated_By: GB`/`CX` directly on a `needs_review`/`blocked` transition while `control.mode=strict` — a signal that a CONTROL block may have been bypassed, not a hard failure.
 
 ## No-block fallback (§6)
 

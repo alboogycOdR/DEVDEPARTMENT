@@ -31,8 +31,8 @@ from pathlib import Path
 
 VALID_STATUSES = {"pending", "claimed", "in_progress", "needs_review", "done", "blocked"}
 ACTIVE_STATUSES = {"claimed", "in_progress", "needs_review"}
-VALID_UNITS = {"ORCH", "GB", "CX", "SV"}
-VALID_ASSIGNEES = {"GB", "CX", "TBD"}
+VALID_UNITS = {"ORCH", "GB", "CX", "S5", "SV"}
+VALID_ASSIGNEES = {"GB", "CX", "S5", "TBD"}
 VALID_PRIORITIES = {"critical", "high", "medium", "low"}
 BLOCKED_REASONS = {
     "SPEC_AMBIGUITY", "MISSING_DEPENDENCY", "OWNERSHIP_CONFLICT",
@@ -43,7 +43,7 @@ REQUIRED_FIELDS = [
     "Owned_Paths", "Description", "Acceptance_Criteria",
     "Updated_By", "Updated_At",
 ]
-BRANCH_SUFFIX = {"GB": "-gb", "CX": "-cx"}
+BRANCH_SUFFIX = {"GB": "-gb", "CX": "-cx", "S5": "-s5"}
 TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 EMPTY_VALUES = {"", "—", "-", "--", "n/a", "none"}
 

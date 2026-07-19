@@ -21,10 +21,12 @@ from collections import defaultdict
 from pathlib import Path
 
 ROW_RE = re.compile(
-    r"^\|\s*(TASK-[A-Z0-9-]+)\s*\|\s*(GB|CX)\s*\|\s*(approved|rework)\s*\|"
+    r"^\|\s*(TASK-[A-Z0-9-]+)\s*\|\s*(GB|CX|S5)\s*\|\s*(approved|rework)\s*\|"
     r"\s*(.*?)\s*\|\s*(?:first-pass:\s*)?(yes|no)\s*\|\s*([0-9T:Z-]+)\s*\|\s*$",
     re.IGNORECASE,
 )
+
+BUILDER_UNITS = ("GB", "CX", "S5")
 
 REWORK_CATEGORIES = {
     "territory": ["territory", "owned_paths", "outside"],
@@ -47,7 +49,7 @@ def compute(text: str) -> dict:
     units: dict[str, dict] = {
         u: {"reviews": 0, "approved": 0, "rework": 0, "first_pass": 0,
             "rework_causes": defaultdict(int), "tasks": []}
-        for u in ("GB", "CX")
+        for u in BUILDER_UNITS
     }
     for line in text.splitlines():
         m = ROW_RE.match(line.strip())
@@ -76,20 +78,24 @@ def compute(text: str) -> dict:
             "first_pass_rate": round(u["first_pass"] / n, 2) if n else None,
             "rework_causes": dict(u["rework_causes"]),
         }
-    # Assignment hint
-    gb, cx = out["GB"], out["CX"]
-    if (gb["reviews"] + cx["reviews"]) >= 10 and gb["first_pass_rate"] is not None and cx["first_pass_rate"] is not None:
-        diff = gb["first_pass_rate"] - cx["first_pass_rate"]
-        if abs(diff) >= 0.2:
-            better = "GB" if diff > 0 else "CX"
-            out["assignment_hint"] = (f"{better} has a materially higher first-pass rate "
-                                      f"({max(gb['first_pass_rate'], cx['first_pass_rate'])} vs "
-                                      f"{min(gb['first_pass_rate'], cx['first_pass_rate'])}) — "
-                                      f"weight critical-priority tasks toward {better}.")
+    # Assignment hint — generalized over however many builder units have
+    # evidence (originally GB-vs-CX only; now N-way so a third+ unit like S5
+    # participates in the same evidence-based heuristic instead of being
+    # silently excluded from the comparison).
+    total_reviews = sum(out[u]["reviews"] for u in BUILDER_UNITS)
+    rated = {u: out[u]["first_pass_rate"] for u in BUILDER_UNITS if out[u]["first_pass_rate"] is not None}
+    if total_reviews >= 10 and len(rated) >= 2:
+        best_unit = max(rated, key=rated.get)
+        worst_unit = min(rated, key=rated.get)
+        diff = rated[best_unit] - rated[worst_unit]
+        if diff >= 0.2:
+            out["assignment_hint"] = (f"{best_unit} has a materially higher first-pass rate "
+                                      f"({rated[best_unit]} vs {worst_unit}'s {rated[worst_unit]}) — "
+                                      f"weight critical-priority tasks toward {best_unit}.")
         else:
             out["assignment_hint"] = "Units performing comparably — keep balanced assignment."
     else:
-        out["assignment_hint"] = "Insufficient evidence (<10 reviews) — use protocol §8 static heuristics."
+        out["assignment_hint"] = "Insufficient evidence (<10 reviews, or <2 rated units) — use protocol §8 static heuristics."
     return out
 
 
@@ -107,7 +113,7 @@ def main(argv: list[str]) -> int:
     if args.json:
         print(json.dumps(stats, indent=2))
     else:
-        for unit in ("GB", "CX"):
+        for unit in BUILDER_UNITS:
             s = stats[unit]
             print(f"{unit}: {s['reviews']} reviews | {s['approved']} approved | {s['rework']} rework | "
                   f"first-pass rate: {s['first_pass_rate']} | rework causes: {s['rework_causes']}")

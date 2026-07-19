@@ -29,14 +29,15 @@ a session; it can only lose the early warning.
 ## Unit identity & harness coverage
 
 Hooks resolve the unit from the `DEVTEAM_UNIT` environment variable
-(`ORCH` default, `GB`, `CX`).
+(`ORCH` default, `GB`, `CX`, `S5`).
 
 | Unit / harness | Firewall coverage |
 |---|---|
 | ORCH (Claude Code) | Hooks active; firewall intentionally inert (ORCH has structural authority), secret-scan + lifecycle fully active |
 | CX (Codex CLI) | **No hook execution parity in Codex yet** — enforcement remains instruction-based (AGENTS.md/briefing) + sandbox config + review audit. `.codex/config.toml` sets `DEVTEAM_UNIT=CX` so hooks activate automatically if/when Codex ships hook support |
 | GB (Grok) | Depends on harness hook support; briefing + review remain the enforcement path |
-| Any Claude Code-based builder session | Full firewall coverage with `DEVTEAM_UNIT=GB|CX` exported |
+| S5 (Claude Code, headless builder) | **Full firewall coverage** — S5 runs the literal `claude` CLI, so `.claude/settings.json`'s hooks load exactly as they do for ORCH. `dispatch.ps1`/`dispatch.sh` export `DEVTEAM_UNIT=S5` before launching it specifically so `territory-firewall.js` enforces Owned_Paths mechanically instead of relying on instruction-following alone — the one builder unit that actually gets this today |
+| Any Claude Code-based builder session | Full firewall coverage with `DEVTEAM_UNIT=GB|CX|S5` exported |
 
 Asymmetric coverage is accepted and documented: the unit with merge authority
 (ORCH) and any Claude-based session are mechanically protected; the rest keep

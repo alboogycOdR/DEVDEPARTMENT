@@ -1,6 +1,6 @@
 # Coordination Protocol v1.0.0
 
-This document is the constitution of the multi-agent dev team. **AGENTS.md summarises it; this file is authoritative.** All three units (ORCH = Claude Code, GB = Grok Build, CX = Codex AI) must comply. The orchestrator enforces compliance via `scripts/validate_plan.py` and git history review.
+This document is the constitution of the multi-agent dev team. **AGENTS.md summarises it; this file is authoritative.** All four units (ORCH = Claude Code, GB = Grok Build, CX = Codex AI, S5 = Sonnet 5 — Claude Code again, dispatched headless as a third builder) must comply. The orchestrator enforces compliance via `scripts/validate_plan.py` and git history review.
 
 ---
 
@@ -11,6 +11,9 @@ This document is the constitution of the multi-agent dev team. **AGENTS.md summa
 | `ORCH` | Claude Code | Yes — full authority | Yes (spec clarifications only, versioned) | No (except merge operations) | Yes — exclusive |
 | `GB` | Grok Build | Only its own task blocks, append-only fields | **Never** | Only within `Owned_Paths` of its claimed task | Never |
 | `CX` | Codex AI | Only its own task blocks, append-only fields | **Never** | Only within `Owned_Paths` of its claimed task | Never |
+| `S5` | Claude Code (headless builder session) | Only its own task blocks, append-only fields | **Never** | Only within `Owned_Paths` of its claimed task | Never |
+
+`S5` runs the identical CLI as `ORCH` — the only thing that distinguishes them is the session: `ORCH` is the interactive session a human drives; `S5` is a headless `claude -p` session launched by `dispatch.ps1`/`dispatch.sh -Builder claude`, whose prompt and `briefings/S5_BUILD_BRIEFING.md` explicitly override CLAUDE.md's ORCH-role framing for that session only. `S5` never has ORCH's powers, regardless of which CLI process happens to be running it.
 
 Every write to PLAN.md must set `Updated_By` to the writer's ID and `Updated_At` to UTC ISO-8601 (`YYYY-MM-DDTHH:MM:SSZ`).
 
@@ -48,7 +51,7 @@ Each task is a `### TASK-NNN` block. Fields:
 |---|---|---|---|
 | `Title` | Yes | No | Set by ORCH |
 | `Status` | Yes | Per §2 only | |
-| `Assigned_To` | Yes | No | `GB`, `CX`, or `TBD` |
+| `Assigned_To` | Yes | No | `GB`, `CX`, `S5`, or `TBD` |
 | `Priority` | Yes | No | `critical` / `high` / `medium` / `low` |
 | `Spec_References` | Yes | No | Paths under `specs/` |
 | `Owned_Paths` | Yes | No | **Exclusive write territory.** Glob patterns, e.g. `src/auth/**` |
@@ -78,9 +81,10 @@ Each builder operates in its own worktree:
 main checkout                          →  ORCH (planning, review, merging)
 ../wt-grok-<project>   (branch task/TASK-NNN-gb)  →  GB
 ../wt-codex-<project>  (branch task/TASK-NNN-cx)  →  CX
+../wt-s5-<project>     (branch task/TASK-NNN-s5)  →  S5
 ```
 
-Worktree paths are namespaced by the project's own folder name — not a bare `../wt-grok`/`../wt-codex` — because they're created as siblings of the project root itself, not of DEVDEPARTMENT. Two DEVDEPARTMENT-onboarded projects sharing a parent directory would otherwise compute the identical worktree path and collide; `dispatch.sh`/`.ps1` also refuse to reuse a directory at that path unless it's a confirmed registered worktree of the current repo.
+Worktree paths are namespaced by the project's own folder name — not a bare `../wt-grok`/`../wt-codex`/`../wt-s5` — because they're created as siblings of the project root itself, not of DEVDEPARTMENT. Two DEVDEPARTMENT-onboarded projects sharing a parent directory would otherwise compute the identical worktree path and collide; `dispatch.sh`/`.ps1` also refuse to reuse a directory at that path unless it's a confirmed registered worktree of the current repo.
 
 Builders commit to their task branch only, referencing the task ID in every commit (Conventional Commits): `feat(auth): implement login route [TASK-001]`. Only ORCH merges to `main`, and only after review verdict.
 
@@ -113,6 +117,7 @@ PLAN.md lives on `main`. Builders update it via a **pull → edit own block → 
 
 - **GB (Grok Build):** terminal-native, plan/approve loops, git-heavy refactors, infrastructure/scripting, tasks benefiting from parallel sub-agents within one territory.
 - **CX (Codex AI):** broad implementation sweeps, sandboxed execution/verification, UI or multi-file feature builds, tasks with heavy tool/computer-use.
+- **S5 (Sonnet 5, headless builder):** same model as ORCH's own judgment — tasks with real spec ambiguity risk, cross-cutting refactors that benefit from careful reading before writing, or anything where a lower-capability builder has shown repeat rework. Shares ORCH's own usage-window budget (`scripts/budget.py`'s `UNIT_TO_PROVIDER`), so heavy S5 dispatch genuinely competes with ORCH's own session for quota — weigh that against GB/CX when assigning.
 - Track per-unit outcomes in REVIEW.md (`first-pass approval rate`, rework causes). After ~10 reviews, ORCH updates this section with observed strengths.
 
 ## 9. Change Control
@@ -125,7 +130,7 @@ This protocol and AGENTS.md are versioned. Only ORCH edits them, only between ba
 
 All three units can hit context limits. The design principle is that **PLAN.md + git history = complete recoverable state**. No information that matters for resumption should live only in a unit's context window.
 
-### 10a. Builders (GB and CX)
+### 10a. Builders (GB, CX, and S5)
 
 **When approaching context limit (~80% used):**
 1. Commit all pending code changes to the task branch with a conventional commit message.

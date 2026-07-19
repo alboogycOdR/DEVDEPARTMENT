@@ -10,7 +10,7 @@
 # mode gate below is a hard branch, never a partial mix of both behaviors.
 set -euo pipefail
 
-BUILDER="${1:?Usage: dispatch.sh <grok|codex> [--dry-run]}"
+BUILDER="${1:?Usage: dispatch.sh <grok|codex|claude> [--dry-run]}"
 DRY="${2:-}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -25,11 +25,27 @@ cd "$REPO_ROOT"
 PROJECT_NAME="$(basename "$REPO_ROOT")"
 
 case "$BUILDER" in
-  grok)  ID="GB"; WT="$(dirname "$REPO_ROOT")/wt-grok-${PROJECT_NAME}";  CMD=(grok --always-approve --permission-mode bypassPermissions); BRIEFING="briefings/GROK_BUILD_BRIEFING.md"; SUFFIX="gb" ;;
+  # Bare `grok <prompt>` starts the INTERACTIVE TUI, which shows a "Do you
+  # trust this directory?" dialog on every freshly (re)created worktree --
+  # confirmed live: a headless dispatch just hung on this for hours, because
+  # --always-approve/--permission-mode bypassPermissions cover tool-call
+  # approval but not this separate trust gate. -p/--single switches to
+  # single-turn non-interactive mode ("prints the response and exits"),
+  # which does not show it -- confirmed with a live scratch-directory test
+  # (completed in ~15s vs. the multi-hour hang). -p must be the LAST flag
+  # here: its value is the next argv entry, and $PROMPT is appended right
+  # after this array at the call site.
+  grok)  ID="GB"; WT="$(dirname "$REPO_ROOT")/wt-grok-${PROJECT_NAME}";  CMD=(grok --always-approve --permission-mode bypassPermissions -p); BRIEFING="briefings/GROK_BUILD_BRIEFING.md"; SUFFIX="gb" ;;
   # --reasoning-effort is not a valid `codex exec` CLI flag (confirmed against
   # codex-cli 0.144.5 -- it errors "unexpected argument"); model_reasoning_effort
   # is already authoritative via .codex/config.toml, per that file's own comment.
   codex) ID="CX"; WT="$(dirname "$REPO_ROOT")/wt-codex-${PROJECT_NAME}"; CMD=(codex exec --model gpt-5.6-sol -s danger-full-access); BRIEFING="briefings/CODEX_BRIEFING.md"; SUFFIX="cx" ;;
+  # S5: Claude Code (Sonnet 5) as a third builder, alongside GB (grok) and
+  # CX (codex) -- same CLI as ORCH itself, launched headless with an
+  # explicit builder-role prompt (S5_BUILD_BRIEFING.md) that overrides
+  # CLAUDE.md's ORCH identity for this session. -p takes the prompt as a
+  # trailing positional argument, same shape as review_cmd elsewhere.
+  claude) ID="S5"; WT="$(dirname "$REPO_ROOT")/wt-s5-${PROJECT_NAME}";   CMD=(claude -p --model claude-sonnet-5 --dangerously-skip-permissions); BRIEFING="briefings/S5_BUILD_BRIEFING.md"; SUFFIX="s5" ;;
   *) echo "Unknown builder: $BUILDER" >&2; exit 1 ;;
 esac
 
@@ -41,7 +57,7 @@ python3 scripts/validate_plan.py PLAN.md || { echo "[dispatch] PLAN.md illegal �
 # this exact project. It's orphaned now, not reused, so it's safe to leave,
 # but flag it so it doesn't sit there silently confusing a future `ls`.
 LEGACY_WT=""
-case "$BUILDER" in grok) LEGACY_WT="$(dirname "$REPO_ROOT")/wt-grok" ;; codex) LEGACY_WT="$(dirname "$REPO_ROOT")/wt-codex" ;; esac
+case "$BUILDER" in grok) LEGACY_WT="$(dirname "$REPO_ROOT")/wt-grok" ;; codex) LEGACY_WT="$(dirname "$REPO_ROOT")/wt-codex" ;; claude) LEGACY_WT="$(dirname "$REPO_ROOT")/wt-s5" ;; esac
 if [[ -d "$LEGACY_WT" && "$LEGACY_WT" != "$WT" ]]; then
   echo "[dispatch] NOTE: found an old-style unnamespaced worktree at $LEGACY_WT (pre-dates per-project namespacing)." >&2
   echo "[dispatch] It is NOT being used by this dispatch. If it belongs to this project, remove it with:" >&2
@@ -101,8 +117,21 @@ if [[ "$CONTROL_MODE" == "strict" ]]; then
   echo "[dispatch] $RESUME_OR_CLAIM $TASK_ID for $ID (control.mode=strict$( [[ "$DRY" == "--dry-run" ]] && echo ", DRY RUN — no write performed" ))."
 fi
 
+# S5 runs the literal `claude` CLI, which auto-loads CLAUDE.md as ambient
+# project context regardless of what this prompt tells it to read -- and
+# CLAUDE.md's own orchestration section says "You are ORCH". Without an
+# explicit override, S5 would start this session confused about its own
+# identity. GB/CX don't have this problem (grok/codex don't auto-load
+# CLAUDE.md), so this prefix is S5-only.
+IDENTITY_OVERRIDE=""
+if [[ "$ID" == "S5" ]]; then
+  IDENTITY_OVERRIDE="IMPORTANT IDENTITY OVERRIDE: your project context auto-loaded CLAUDE.md, which contains a \"## Multi-Agent Orchestration\" section describing an ORCH role and saying \"You are ORCH\". That does NOT apply to this session. You are S5 — a builder unit, exactly parallel to GB and CX, just implemented via Claude Code instead of Grok/Codex. Ignore CLAUDE.md's ORCH role assignment entirely for this session: you have none of ORCH's exclusive powers here — no merging task branches, no review verdicts, no editing PLAN.md frontmatter, no editing any task block but your own claimed one. Those remain the separate, interactive ORCH session's job. Follow the builder procedure below exactly as GB/CX would.
+
+"
+fi
+
 if [[ "$CONTROL_MODE" == "strict" ]]; then
-  PROMPT="You are $ID, a builder in a multi-agent dev team. Working directory: $WT (your isolated git worktree; coordination PLAN.md lives at $REPO_ROOT/PLAN.md on main — control.mode=strict: you never write PLAN.md yourself).
+  PROMPT="${IDENTITY_OVERRIDE}You are $ID, a builder in a multi-agent dev team. Working directory: $WT (your isolated git worktree; coordination PLAN.md lives at $REPO_ROOT/PLAN.md on main — control.mode=strict: you never write PLAN.md yourself).
 Your task is $TASK_ID ($RESUME_OR_CLAIM by the dispatcher before this session started — do not re-claim or re-branch).
 Procedure: (1) Read AGENTS.md and $BRIEFING, then PLAN.md, fresh from disk, for $TASK_ID's Spec_References/Owned_Paths/Acceptance_Criteria. Read dossiers/$TASK_ID.md in full if it exists (your prior work log) before acting. (2) If resuming: continue on the existing branch task/$TASK_ID-$SUFFIX at the exact stopping point recorded in the dossier. If newly claimed: create branch task/$TASK_ID-$SUFFIX in your worktree. (3) Implement strictly against Spec_References, touching ONLY files under Owned_Paths plus your own dossier (dossiers/$TASK_ID.md — append a Work Log entry at minimum every ~30 minutes of work and at every stopping point; it is your heartbeat, since you never touch PLAN.md for this). (4) Test everything. (5) Emit a devteam-control block as the LAST thing you print, fenced exactly like this:
 \`\`\`devteam-control
@@ -110,7 +139,7 @@ Procedure: (1) Read AGENTS.md and $BRIEFING, then PLAN.md, fresh from disk, for 
 \`\`\`
 status must be exactly one of in_progress (mid-session checkpoint — dossier note + next_step, nothing else changes) / needs_review (requires non-empty test_evidence) / blocked (blocked_reason must start with SPEC_AMBIGUITY, MISSING_DEPENDENCY, OWNERSHIP_CONFLICT, SYNC_MISMATCH, TOOLING_FAILURE, or OTHER:). Never done/pending/claimed — those are the supervisor's alone. Conventional Commits ending [$TASK_ID] for your code commits (never for PLAN.md — you don't touch it). Never write to specs/, docs/, REVIEW.md, scripts/, .claude/, PLAN.md, other dossiers, or main."
 else
-  PROMPT="You are $ID, a builder in a multi-agent dev team. Working directory: $WT (your isolated git worktree; coordination PLAN.md lives at $REPO_ROOT/PLAN.md on main).
+  PROMPT="${IDENTITY_OVERRIDE}You are $ID, a builder in a multi-agent dev team. Working directory: $WT (your isolated git worktree; coordination PLAN.md lives at $REPO_ROOT/PLAN.md on main).
 Procedure: (1) Read AGENTS.md and $BRIEFING, then PLAN.md, fresh from disk. If dossiers/TASK-NNN.md exists for your task, read it in full before acting and append a Work Log entry each session — never ask for re-explanation of anything in the dossier. (2) RESUME CHECK FIRST — scan PLAN.md for any task with Assigned_To: $ID and Status: in_progress or claimed. If found, resume that task immediately: re-read its Owned_Paths files and the last Progress_Note to find the exact stopping point, then continue on the existing branch (do not re-claim or re-branch). Only if NO in_progress/claimed task exists: claim the highest-priority pending task Assigned_To: $ID whose dependencies are done — one atomic edit+commit setting Status: claimed, Branch: task/TASK-NNN-$SUFFIX, Started_At. (3) Create (or switch to) the task branch in your worktree and implement strictly against the task's Spec_References, touching ONLY files under its Owned_Paths. (4) Test everything; append Test_Evidence. (5) Append-only Progress_Notes with UTC timestamps and [$ID] tags — if your context is approaching its limit, write a detailed stopping-point note (what is done, what file, exact next step) and commit before stopping. (6) Finish at needs_review (never done), or blocked with a vocabulary reason. Conventional Commits ending [TASK-NNN]. Never write to specs/, docs/, REVIEW.md, scripts/, .claude/, other task blocks, or main."
 fi
 
@@ -133,6 +162,15 @@ if [[ "$DRY" == "--dry-run" ]]; then
   printf -- '--- Prompt ---\n%s\n' "$PROMPT"
   exit 0
 fi
+
+# hooks/lib.js's unit() defaults to 'ORCH' (unrestricted) when DEVTEAM_UNIT
+# is unset -- harmless for grok/codex (neither reads .claude/settings.json,
+# so territory-firewall.js never fires for them at all), but load-bearing
+# for S5: it runs the literal `claude` CLI, which DOES load the hooks, so
+# without this the firewall would silently treat S5 as unrestricted ORCH
+# instead of enforcing its Owned_Paths. Set for every builder regardless,
+# for consistency and to future-proof if GB/CX ever gain hook support.
+export DEVTEAM_UNIT="$ID"
 
 echo "[dispatch] Launching $BUILDER ($ID) in $WT..."
 if [[ "$CONTROL_MODE" == "strict" ]]; then

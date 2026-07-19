@@ -54,11 +54,13 @@ if _os.name == "nt":
     _DISPATCH_DEFAULTS = {
         "GB": "powershell -ExecutionPolicy Bypass -File scripts\\dispatch.ps1 -Builder grok",
         "CX": "powershell -ExecutionPolicy Bypass -File scripts\\dispatch.ps1 -Builder codex",
+        "S5": "powershell -ExecutionPolicy Bypass -File scripts\\dispatch.ps1 -Builder claude",
     }
 else:
     _DISPATCH_DEFAULTS = {
         "GB": "bash scripts/dispatch.sh grok",
         "CX": "bash scripts/dispatch.sh codex",
+        "S5": "bash scripts/dispatch.sh claude",
     }
 
 DEFAULT_CONFIG = {
@@ -70,7 +72,7 @@ DEFAULT_CONFIG = {
     # review uses sonnet-5 per ORCH model discipline table (CLAUDE.md 1020f7a)
     "review_cmd": "claude -p \"/devteam-review\" --model claude-sonnet-5 --dangerously-skip-permissions",
     "dispatch_cmd": _DISPATCH_DEFAULTS,
-    "builders": ["GB", "CX"],
+    "builders": ["GB", "CX", "S5"],
     "autonomy_level": 2,
     # Wave A-remainder: two-way Telegram. Listener only starts if
     # "telegram" is in notify_channels AND both DEVTEAM_TG_TOKEN/DEVTEAM_TG_CHAT
@@ -338,10 +340,65 @@ def run_shell(cmd: str, repo: Path) -> int:
     return subprocess.run(cmd, shell=True, cwd=repo).returncode
 
 
+def refresh_plan_from_head(repo: Path) -> None:
+    """Force PLAN.md's working-tree copy to match HEAD before every tick's read.
+
+    Builders' PLAN-only fallback landing (git update-ref, used when
+    `git push . HEAD:main` is rejected by receive.denyCurrentBranch on this
+    checked-out primary repo) moves the main ref but never touches this
+    checkout's index/working tree. Without this refresh, decide() reads a
+    stale on-disk PLAN.md and re-dispatches a builder onto a task that is
+    already needs_review/done on HEAD (observed live: TASK-012 repeatedly
+    redispatched to GB after such a landing). Best-effort/non-fatal: a
+    failure here just leaves the previous (possibly stale) file in place for
+    this tick, same as before this fix existed.
+    """
+    try:
+        subprocess.run(
+            ["git", "checkout", "HEAD", "--", "PLAN.md"],
+            cwd=repo, capture_output=True, text=True, check=False,
+        )
+    except Exception as exc:
+        print(f"[supervisor] refresh_plan_from_head skipped (non-fatal): {exc}", file=sys.stderr)
+
+
+def launch_shell_bg(cmd: str, repo: Path) -> subprocess.Popen:
+    """Fire-and-forget launch for DISPATCH/REDISPATCH_STALE: builders must run
+    concurrently (one per unit), but execute()'s single-threaded action loop
+    would otherwise block on subprocess.run() until the whole builder session
+    exits -- starving every other unit's dispatch in the same tick (found live:
+    CX sat idle behind a 20+ minute GB session because this call used to be
+    synchronous). Popen returns immediately; the caller tracks the handle in
+    `inflight` and reap_inflight() below picks up the exit code on a later
+    tick. Safe because decide()'s dispatch-eligibility check reads PLAN.md's
+    Status field, not any in-process bookkeeping -- once the builder's own
+    claim commit lands (Status: claimed/in_progress), decide() already skips
+    that unit on its own, with or without inflight tracking."""
+    print(f"  $ {cmd}  (background)")
+    return subprocess.Popen(cmd, shell=True, cwd=repo)
+
+
+def reap_inflight(inflight: dict[str, tuple[subprocess.Popen, str]], cfg: dict,
+                  state: RuntimeState, repo: Path, now: datetime) -> None:
+    """Check every tracked background dispatch for completion; surface
+    _notify_if_builder_unreachable for any that exited nonzero, exactly as
+    the old synchronous path did, just deferred to whichever later tick
+    notices the process has actually finished."""
+    for unit in list(inflight.keys()):
+        proc, task_id = inflight[unit]
+        rc = proc.poll()
+        if rc is None:
+            continue  # still running
+        del inflight[unit]
+        _notify_if_builder_unreachable(rc, unit, task_id or None, cfg, state, repo, now)
+
+
 def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, dry_run: bool,
-            now: datetime | None = None) -> bool:
+            now: datetime | None = None,
+            inflight: dict[str, tuple[subprocess.Popen, str]] | None = None) -> bool:
     """Execute actions. Returns False if the loop must halt."""
     now = now or datetime.now(timezone.utc)
+    inflight = inflight if inflight is not None else {}
     halt = False
     for a in actions:
         line = f"{a.kind}: {a.detail}"
@@ -400,10 +457,10 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
                     if t.task_id == a.task_id and t.get("Status") == "in_progress":
                         state.rework_counts[a.task_id] = state.rework_counts.get(a.task_id, 0) + 1
         elif a.kind == "DISPATCH" and a.unit:
-            rc = run_shell(cfg["dispatch_cmd"][a.unit], repo)
+            proc = launch_shell_bg(cfg["dispatch_cmd"][a.unit], repo)
+            inflight[a.unit] = (proc, a.task_id or "")
             state.busy_units[a.unit] = a.task_id or ""
             state.dispatch_log = budget.record_dispatch(state.dispatch_log, now)
-            _notify_if_builder_unreachable(rc, a.unit, a.task_id, cfg, state, repo, now)
         elif a.kind == "TRIAGE_UNBLOCK" and a.task_id:
             if "OWNERSHIP_CONFLICT" in a.detail:
                 state.conflict_counts[a.task_id] = state.conflict_counts.get(a.task_id, 0) + 1
@@ -418,8 +475,8 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
             # task, re-reads the last Progress_Note, and continues on the
             # existing branch. Resetting here would create the ghost-task
             # failure mode the protocol explicitly warns about.
-            rc = run_shell(cfg["dispatch_cmd"][a.unit], repo)
-            _notify_if_builder_unreachable(rc, a.unit, a.task_id, cfg, state, repo, now)
+            proc = launch_shell_bg(cfg["dispatch_cmd"][a.unit], repo)
+            inflight[a.unit] = (proc, a.task_id or "")
     return not halt
 
 
@@ -871,6 +928,14 @@ def main(argv: list[str]) -> int:
 
     start = time.monotonic()
     ticks = 0
+    # Background dispatch tracking (Popen handles, not persisted -- see
+    # launch_shell_bg's docstring): lives for the lifetime of this process
+    # only. A supervisor restart while a builder is mid-session (before its
+    # claim commit lands) loses this bookkeeping, but decide()'s own
+    # PLAN.md-based busy check is what actually prevents double-dispatch,
+    # not this dict -- it just carries the exit code through to
+    # _notify_if_builder_unreachable once a background dispatch finishes.
+    inflight: dict[str, tuple[subprocess.Popen, str]] = {}
     print(f"[supervisor] Autopilot L{cfg['autonomy_level']} — repo {repo} — "
           f"{'DRY RUN' if args.dry_run else 'LIVE'} — {'loop' if args.loop else 'single tick'}")
 
@@ -879,6 +944,11 @@ def main(argv: list[str]) -> int:
             ticks += 1
             now = datetime.now(timezone.utc)
             print(f"\n===== TICK {ticks} — {now.strftime(UTC_FMT)} =====")
+
+            # Pick up exit codes from any background dispatch that finished
+            # since the last tick (see launch_shell_bg/reap_inflight above).
+            if not args.dry_run:
+                reap_inflight(inflight, cfg, state, repo, now)
 
             # Drain Telegram commands BEFORE deciding, so /answer / /rework edits
             # (and /stop) are visible to this tick's decision and PLAN.md read.
@@ -918,6 +988,8 @@ def main(argv: list[str]) -> int:
             if not args.dry_run:
                 maybe_drain_control(repo, cfg, state, now)
 
+            if not args.dry_run:
+                refresh_plan_from_head(repo)
             plan_text = plan.read_text(encoding="utf-8")
             dossier_heartbeats = _dossier_heartbeats(repo) if cfg.get("control", {}).get("mode") == "strict" else {}
             try:
@@ -936,7 +1008,7 @@ def main(argv: list[str]) -> int:
                                           stop_file_exists=(repo / "STOP").exists(),
                                           dossier_heartbeats=dossier_heartbeats,
                                           usage=usage)
-            keep_going = execute(actions, cfg, state, repo, args.dry_run, now=now)
+            keep_going = execute(actions, cfg, state, repo, args.dry_run, now=now, inflight=inflight)
             state.save(state_path)
 
             # v4: publish Mission Control board (throttled; a dead board never blocks a wave)

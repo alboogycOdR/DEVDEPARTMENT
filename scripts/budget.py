@@ -76,8 +76,12 @@ def record_dispatch(dispatch_log: list[str], now: datetime, max_keep: int = 500)
 # CX is dispatched via the codex CLI; GB is dispatched via grok, which has
 # no defined provider in this spec, so the usage gate is deliberately a
 # no-op for GB (no data to gate on -> never block, per the fail-open rule
-# that runs through this entire subsystem).
-UNIT_TO_PROVIDER = {"CX": "codex"}
+# that runs through this entire subsystem). S5 is dispatched via the same
+# `claude` CLI as ORCH itself, so it shares ORCH's own usage-window bucket
+# -- gating S5 dispatches against "claude" usage is intentional, not a bug:
+# a heavy S5 dispatch schedule really does compete with ORCH's own session
+# for the same account-level quota.
+UNIT_TO_PROVIDER = {"CX": "codex", "S5": "claude"}
 
 
 def can_dispatch_usage(usage: dict, unit: str, priority: str, cfg: dict) -> tuple[bool, str]:

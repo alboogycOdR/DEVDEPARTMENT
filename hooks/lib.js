@@ -19,10 +19,10 @@ function repoRoot() {
   return process.env.CLAUDE_PROJECT_DIR || process.cwd();
 }
 
-/** Current unit identity: ORCH (default), GB, or CX via DEVTEAM_UNIT env. */
+/** Current unit identity: ORCH (default), GB, CX, or S5 via DEVTEAM_UNIT env. */
 function unit() {
   const u = (process.env.DEVTEAM_UNIT || 'ORCH').toUpperCase();
-  return ['ORCH', 'GB', 'CX'].includes(u) ? u : 'ORCH';
+  return ['ORCH', 'GB', 'CX', 'S5'].includes(u) ? u : 'ORCH';
 }
 
 /** Read hook input JSON from stdin (Claude Code hook contract). */

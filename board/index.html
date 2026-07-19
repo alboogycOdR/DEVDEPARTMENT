@@ -7,13 +7,13 @@
 <style>
 /* DEVDEPARTMENT MISSION CONTROL — tactical telemetry printed on warm documentation
    paper. Design parity with Starbird's Dispatch board (ISC), adapted to the
-   DEVDEPARTMENT protocol: units ORCH/GB/CX, columns = the protocol state machine.
+   DEVDEPARTMENT protocol: units ORCH/GB/CX/S5, columns = the protocol state machine.
    The interface is printed, not backlit. */
 :root{
   --bg:#e3d9bd; --bg-1:#ede6d2; --bg-2:#f4efe1; --line:#c6ba95;
   --fg:#2e2a20; --fg-dim:#7d7358; --fg-faint:#ab9f7d;
   --red:#bd4326; --green:#5a7d24; --amber:#a8781c;
-  --orch:#3f7288; --gb:#7c5b8f; --cx:#6f8f3a;
+  --orch:#3f7288; --gb:#7c5b8f; --cx:#6f8f3a; --s5:#b5652e;
   --mono:"JetBrains Mono","IBM Plex Mono",ui-monospace,"Cascadia Mono",Menlo,monospace;
 }
 *{margin:0;padding:0;box-sizing:border-box;border-radius:0!important}
@@ -139,7 +139,7 @@ a{color:inherit}
   <div class="meter" id="tm-wave"><span>WAVE</span><b>—</b></div>
   <div class="meter" id="tm-flight"><span>IN FLIGHT</span><b>—</b></div>
   <div class="meter" id="tm-blocked"><span>BLOCKED</span><b>—</b></div>
-  <div class="meter" id="tm-team"><span>FIRST-PASS GB·CX</span><b>—</b></div>
+  <div class="meter" id="tm-team"><span>FIRST-PASS GB·CX·S5</span><b>—</b></div>
   <div class="meter" id="tm-pilot"><span>AUTOPILOT</span><b>—</b></div>
   <div class="meter" id="tm-usage-claude"><span>CLAUDE 5H/7D</span><b>—</b></div>
   <div class="meter" id="tm-usage-codex"><span>CODEX 5H/7D</span><b>—</b></div>
@@ -172,6 +172,8 @@ const UNITS = {
     svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 5l5 5-9 9H5v-5z"/><path d="M13 6l5 5"/><circle cx="18" cy="4" r="1.6"/></svg>'}, // the chisel
   CX:{color:"var(--cx)",name:"CODEX",
     svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6L3 12l5 6"/><path d="M16 6l5 6-5 6"/><path d="M13 4l-2 16"/></svg>'}, // the code brackets
+  S5:{color:"var(--s5)",name:"SONNET 5",
+    svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.2 6.8H21l-5.6 4.1 2.2 6.8L12 16.6l-5.6 4.1 2.2-6.8L3 9.8h6.8z"/></svg>'}, // the spark
   TBD:{color:"var(--fg-faint)",name:"UNASSIGNED",
     svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 8v5M12 16.5v.5"/></svg>'}
 };
@@ -263,8 +265,8 @@ async function showProject(name){
   $("#tm-wave b").textContent=b.burndown.done+"/"+b.burndown.total+" · "+b.burndown.pct+"%";
   $("#tm-flight b").textContent=b.in_flight.length;
   $("#tm-blocked b").innerHTML=(b.columns.blocked.length? '<span style="color:var(--red)">'+b.columns.blocked.length+'</span>':'0');
-  const g=b.team.GB?.first_pass_rate, c=b.team.CX?.first_pass_rate;
-  $("#tm-team b").textContent=(g??"—")+" · "+(c??"—");
+  const g=b.team.GB?.first_pass_rate, c=b.team.CX?.first_pass_rate, s=b.team.S5?.first_pass_rate;
+  $("#tm-team b").textContent=(g??"—")+" · "+(c??"—")+" · "+(s??"—");
   $("#tm-pilot b").innerHTML=b.autopilot.stop_file?'<span class="dot stuck"></span>STOPPED':'<span class="dot live"></span>RUNNING';
   renderUsageMeter("tm-usage-claude", (b.usage||{}).claude);
   renderUsageMeter("tm-usage-codex", (b.usage||{}).codex);

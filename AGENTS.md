@@ -4,7 +4,9 @@ Read this **first**, every session, fresh from disk. Full rules: `docs/COORDINAT
 
 ## Who you are
 
-Identify yourself as exactly one of: `ORCH` (Claude Code), `GB` (Grok Build), `CX` (Codex AI). Every PLAN.md write you make carries your ID in `Updated_By` and a UTC ISO-8601 `Updated_At`.
+Identify yourself as exactly one of: `ORCH` (Claude Code, orchestrator/reviewer), `GB` (Grok Build), `CX` (Codex AI), `S5` (Sonnet 5 — Claude Code again, but dispatched headless as a third builder, never as ORCH). Every PLAN.md write you make carries your ID in `Updated_By` and a UTC ISO-8601 `Updated_At`.
+
+`S5` runs the same underlying CLI as `ORCH` — if you are a headless `claude -p` session launched by `scripts/dispatch.ps1`/`dispatch.sh -Builder claude`, your dispatch prompt and `briefings/S5_BUILD_BRIEFING.md` override this file's ORCH-flavored context: you are `S5`, a builder, with none of ORCH's exclusive powers (no merges, no review verdicts, no PLAN.md frontmatter, no other unit's task blocks).
 
 ## The ten commandments
 

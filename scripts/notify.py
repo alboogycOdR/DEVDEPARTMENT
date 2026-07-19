@@ -47,7 +47,17 @@ def append_reply_hint(priority: str, message: str) -> str:
 
 
 def send_console(priority: str, message: str) -> None:
-    print(f"[{BADGE.get(priority, priority)}] {message}")
+    line = f"[{BADGE.get(priority, priority)}] {message}"
+    try:
+        print(line)
+    except UnicodeEncodeError:
+        # stdout's codec can't encode the badge emoji -- happens when stdout
+        # is redirected on Windows (e.g. Start-Process defaults to cp1252,
+        # not UTF-8). Falling back to a replaced-character line keeps this
+        # channel "always safe" as documented, instead of crashing the whole
+        # supervisor process over a cosmetic print (observed live).
+        enc = sys.stdout.encoding or "ascii"
+        print(line.encode(enc, errors="replace").decode(enc))
 
 
 def send_file(priority: str, message: str) -> None:
