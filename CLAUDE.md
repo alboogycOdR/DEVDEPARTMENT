@@ -24,32 +24,39 @@ Read `AGENTS.md` and `docs/COORDINATION_PROTOCOL.md` at the start of every sessi
 
 ## ORCH model discipline
 
-Switch models mid-session based on the cognitive weight of the operation. Do not use the heavier model for mechanical operations — it wastes token budget without improving output.
+Switch models based on the cognitive weight of the operation. Do not use a heavier model for mechanical operations — it wastes token budget without improving output.
 
-**Why the judgment rows moved off `claude-sonnet-5` (decision, 2026-07-19):** the S5 builder unit runs on `claude-sonnet-5`. A reviewer on the same model as the builder it reviews shares that builder's exact failure distribution — the same rationalizations feel plausible, the same edge cases don't come to mind — which quietly hollows out the maker–checker discipline for S5's work specifically, and starves the Wave C learning loop of the rework findings it mines (a missed review produces no finding). The three upgraded rows are also the lowest-frequency operations in the system, so the cost premium lands precisely where errors are most expensive and volume is smallest.
+Full reasoning for each row (and the S5 reviewer-parity decision of 2026-07-19 behind it) lives in **`docs/MODEL_DISCIPLINE.md`** — read it when questioning or amending the table, not on every session.
 
-| Operation | Model | Rationale |
-|---|---|---|
-| Architectural decisions — `/devteam-decompose`, spec authoring, Owned_Paths design | `claude-fable-5` (medium reasoning effort minimum; high for complex waves) | The highest-leverage judgment in the system — every downstream unit faithfully executes whatever this produces, so errors here are the most expensive to unwind. Effort is a depth knob, not a discount knob: do not run decompose at low effort. |
-| `/devteam-review` — full territory diff + spec verification + test run | `claude-opus-4-8` | The only gate between builder output and `main`, and it now reviews a same-tier peer (S5 = sonnet-5). The checker needs a real capability edge over the maker — and must not share a model with the spec-author chain (fable) either, so it stays the independent voice in the loop. |
-| Scope triage — unblocking, re-carving territories, dependency re-sequencing | `claude-opus-4-8` | Architectural reasoning; a wrong call cascades across tasks. Low frequency, high blast radius. |
-| `/devteam-status` — sync scan, health report, PLAN.md read | `claude-sonnet-4-6` | Pattern-matching over structured state; no deep judgment needed |
-| PLAN.md updates — frontmatter, orchestrator_notes, status writes | `claude-sonnet-4-6` | Mechanical structured writes |
-| `/devteam-dispatch` — validate + launch builders | `claude-sonnet-4-6` | Script execution; decision already made at planning time |
-| AUTOPILOT_LOG.md and REVIEW.md append operations | `claude-sonnet-4-6` | Logging; no reasoning required |
+| Operation | Model |
+|---|---|
+| Architectural decisions — `/devteam-decompose`, spec authoring, Owned_Paths design | `claude-fable-5` (medium reasoning effort minimum; high for complex waves) |
+| `/devteam-review` — full territory diff + spec verification + test run | `claude-opus-4-8` |
+| Scope triage — unblocking, re-carving territories, dependency re-sequencing | `claude-opus-4-8` |
+| `/devteam-status` — sync scan, health report, PLAN.md read | `claude-sonnet-4-6` |
+| PLAN.md updates — frontmatter, orchestrator_notes, status writes | `claude-sonnet-4-6` |
+| `/devteam-dispatch` — validate + launch builders | `claude-sonnet-4-6` |
+| AUTOPILOT_LOG.md and REVIEW.md append operations | `claude-sonnet-4-6` |
 
-The Wave C distiller stays on `claude-sonnet-5` (`autopilot.json` → `learning.model`) deliberately: it is not a gate — its confidence math is code-owned, its instinct output is data, and its amendment proposals are locked behind the constitutional gate — so the same-model concern doesn't apply, and its per-run stakes don't justify the premium.
+Hard rules that follow from it:
+- **Never run `/devteam-review` on `claude-sonnet-5`** — that is the S5 builder's own model; a checker must not share the maker's blind spots.
+- The Wave C distiller stays on `claude-sonnet-5` (`autopilot.json` → `learning.model`) deliberately — it is not a gate.
+- Keep `autopilot.json`'s `review_cmd` and `judgment_model` aligned with this table. The unattended autopilot path is where a silently-downgraded reviewer does the most damage.
 
-Usage accounting: `claude-opus-4-8` and `claude-fable-5` draw from the same Claude 5h/7d usage windows as sonnet-5, so the Wave I meters and `budget.py`'s S5/usage gating cover them with zero changes — but they burn those windows faster per invocation. That's acceptable at these rows' frequency; do not let either model creep into the high-frequency mechanical rows.
+**How to switch — batch, don't thrash.** Each model keeps its own prompt cache, so every mid-session `/model` swap re-reads the whole prefix at full price. Group mechanical operations together on sonnet-4-6, then switch once for the judgment operation — don't alternate turn by turn. For a self-contained judgment op, prefer a separate headless invocation (`claude -p "/devteam-review" --model claude-opus-4-8 --dangerously-skip-permissions`): it gets its own clean cache and leaves the interactive session's prefix intact. That's already how the autopilot runs every judgment call.
 
-**How to switch in Claude Code:** use the model selector in the UI before running the command, or prefix a headless session with the appropriate `--model` flag. Revert to your session default after the high-stakes operation completes. The autopilot's headless judgment calls (review, `/approve`-scoped review, blocked-task triage) take their model from `autopilot.json` → `review_cmd` and `judgment_model` — keep those aligned with this table; the unattended path is exactly where a silently-downgraded reviewer is most dangerous.
+## Context & prefix hygiene
+
+`CLAUDE.md` auto-loads into every ORCH session and every S5 builder session — it is a hot file, paid for on every turn. Keep it to rules and pointers; rationale, decision records, and background belong in `docs/` (read on demand, free until needed). Same principle as `instincts.py inject --limit 5`: the store grows without bound, but only the slice the current task needs enters the prefix.
+
+When a command would pull a wall of output into the session — a full test suite, a long spec document, a stack trace — hand it to a subagent and take back the summary. The verdict needs the result, not four thousand lines of it. See `/devteam-review` steps 4–5 for the worked example.
 
 ## Review standard (non-negotiable)
 
 For every `needs_review` task:
 1. `git diff main...task/TASK-NNN-xx --stat` — **any file outside `Owned_Paths` = automatic rework**, no exceptions.
 2. Check every acceptance criterion against the referenced spec text itself, not the builder's summary.
-3. Re-run the tests yourself in the worktree. Test_Evidence is a claim; you verify claims.
+3. Re-run the tests yourself in the worktree — via a subagent, taking back only pass/fail counts and failure detail. Test_Evidence is a claim; you verify claims. Delegating *where the output lands* does not delegate the verification: the run must actually happen and you must see its result.
 4. Read the diff for: error handling, input validation, logging, dead code, protocol-violating PLAN.md edits (`git log -p -- PLAN.md`).
 5. Record verdict in REVIEW.md: `TASK-NNN | <unit> | approved/rework | findings | first-pass? yes/no`.
 6. Approved → merge, `Status: done`, delete branch, check whether any `Depends_On` unlocks (flip dependents' readiness note). Rework → findings into `Review_Findings`, `Status: in_progress`, notify via orchestrator_notes.

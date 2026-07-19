@@ -48,7 +48,7 @@ and friends into real PLAN.md edits and supervisor actions.
 | `/status` | none | Compact task-board summary (burndown %, per-column task IDs, STOP status) |
 | `/board` | none | Replies with the URL from `autopilot.json → board.url` |
 | `/answer` | `TASK-NNN <free text>` | Appends a `[TG-DECISION]` Progress_Note. If the task was `blocked`, flips it to `pending` and clears `Blocked_Reason`. Commits `[TG]`. |
-| `/approve` | `TASK-NNN` | Runs a headless ORCH review session scoped to exactly that task (`/devteam-review TASK-NNN` on `claude-sonnet-5`, per the model discipline table) |
+| `/approve` | `TASK-NNN` | Runs a headless ORCH review session scoped to exactly that task (`/devteam-review TASK-NNN` on `judgment_model` — `claude-opus-4-8` by default, per the model discipline table) |
 | `/rework` | `TASK-NNN <reason>` | Appends a `[TG-REWORK]` Review_Finding; flips Status to `in_progress`. Commits `[TG]`. |
 | `/stop` | none | Creates the `STOP` file in repo root — the same kill switch `/devteam-autopilot` and the supervisor already respect. Works even if PLAN.md is corrupted or every other subsystem is broken. |
 | `/resume` | none | Deletes `STOP` if present |
@@ -125,7 +125,7 @@ supervisor.drain_tg_queue()                                  │
       │                     → git commit+push [TG] → reply    │
       │  /approve → Action("REVIEW_TG", task_id=...)  ────────┘
       ▼
-supervisor.execute()  (REVIEW_TG scoped to claude-sonnet-5, same as REVIEW)
+supervisor.execute()  (REVIEW_TG scoped to judgment_model, same as REVIEW)
 ```
 
 The listener thread never touches PLAN.md or git — mutation happens only on
