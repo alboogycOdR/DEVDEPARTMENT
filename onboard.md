@@ -1,7 +1,9 @@
 # DEVDEPARTMENT v4.5 — Unified Onboarding Prompt
 # Run this in Claude Code from the TARGET PROJECT ROOT.
 # The DEVDEPARTMENT pack folder must be reachable (default: ../DEVDEPARTMENT/).
-# Idempotent — safe to re-run when DEVDEPARTMENT updates.
+# Idempotent — safe to re-run when DEVDEPARTMENT updates. NOTE: re-running
+# onboarding only ADDS missing files; to pull pack IMPROVEMENTS into an
+# already-onboarded project, use scripts/sync_from_pack.py instead (docs/SYNC.md).
 #
 # Installs in one pass: core protocol + blackboard, devteam-* commands,
 # the autopilot layer (dispatch/review/self-maintenance), ECC waves
@@ -33,6 +35,8 @@ Copy from the pack into the project root, skipping any file that already exists 
 Usage-window meters (`scripts/usage_probe.py`) work out of the box (fail-open — renders `—` until real data exists) but the exact fields it parses out of `claude`/`codex`'s stream output have only been verified against the reference implementation's source, not a live installed CLI (see `docs/USAGE.md`'s verification commands). Mention this in the final report as a "not yet live-verified" item rather than silently asserting it works.
 
 On macOS/Linux: `chmod +x scripts/*.sh scripts/*.py`. On Windows: skip chmod; nothing needed.
+
+**Establish the sync baseline** (v4.6+): after copying, run `python3 scripts/sync_from_pack.py --pack <pack path> --apply` from the project root. On a fresh onboarding everything just copied is identical to the pack, so this writes no file changes — it records `.devteam/sync_state.json`, the baseline that lets every FUTURE `sync_from_pack.py` run distinguish "pack improved this file" from "this project customized it" (docs/SYNC.md). Skipping this leaves the project a 'legacy' sync target where every future pack change shows as a conflict instead of a clean update.
 
 ## STEP 2 — Read existing project files (CRITICAL, before any merge)
 
@@ -92,7 +96,7 @@ Run and report exact output + exit codes:
 macOS/Linux:
 ```bash
 python3 scripts/validate_plan.py PLAN.md
-python3 -m pytest tests/ -q          # expect 479 passed (validator 18 + supervisor 17 + board 10 + tg_commands 86 + tg_listener 18 + supervisor_telegram 21 + notify 6 + scheduling 14 + budget 23 + maintenance 49 + supervisor_maintenance 18 + instincts 30 + distiller 15 + retro 10 + supervisor_learning 24 + control 52 + supervisor_control 17 + usage 43 + dispatch_worktree 8)
+python3 -m pytest tests/ -q          # expect 507 passed (validator 18 + supervisor 18 + board 10 + tg_commands 86 + tg_listener 18 + supervisor_telegram 21 + notify 6 + scheduling 14 + budget 23 + maintenance 49 + supervisor_maintenance 19 + instincts 30 + distiller 15 + retro 10 + supervisor_learning 24 + control 52 + supervisor_control 17 + usage 43 + dispatch_worktree 8 + sync_from_pack 26)
 node hooks/run-tests.js              # expect 28 passed
 bash scripts/harness-audit.sh --no-shield
 python3 scripts/supervisor.py --once --dry-run
@@ -147,6 +151,7 @@ Tests:  pytest [n], hooks [n], validator [OK/FAIL], audit [PASS/FAIL], superviso
 Firewall smoke test:  GB blocked=?, ORCH allowed=?
 control.mode:  legacy (default) / strict (confirmed with human)
 Usage-window meters:  live-verified against installed claude/codex CLIs? yes/no/not attempted — see docs/USAGE.md
+Sync baseline written (.devteam/sync_state.json):  yes/no
 
 Operating guide:
   /devteam-decompose            → turn specs/ into the task plan   (model: claude-sonnet-5)

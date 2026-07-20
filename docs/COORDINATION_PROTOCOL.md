@@ -1,4 +1,6 @@
-# Coordination Protocol v1.0.0
+# Coordination Protocol
+
+**Pack version:** tracks the DEVDEPARTMENT pack release (see README.md version history). A project's copy of this file is kept current via `scripts/sync_from_pack.py` (docs/SYNC.md) — if this file in YOUR project lacks the sections referenced by newer briefings/scripts, run a sync.
 
 This document is the constitution of the multi-agent dev team. **AGENTS.md summarises it; this file is authoritative.** All four units (ORCH = Claude Code, GB = Grok Build, CX = Codex AI, S5 = Sonnet 5 — Claude Code again, dispatched headless as a third builder) must comply. The orchestrator enforces compliance via `scripts/validate_plan.py` and git history review.
 
