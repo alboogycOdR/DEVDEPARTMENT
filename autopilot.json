@@ -5,7 +5,8 @@
   "digest_hours": 4,
   "notify_channels": [
     "console",
-    "file"
+    "file",
+    "telegram"
   ],
   "review_cmd": "claude -p \"/devteam-review\" --model claude-opus-4-8 --dangerously-skip-permissions",
   "builders": [
