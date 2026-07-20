@@ -86,9 +86,19 @@ main checkout                          →  ORCH (planning, review, merging)
 
 Worktree paths are namespaced by the project's own folder name — not a bare `../wt-grok`/`../wt-codex`/`../wt-s5` — because they're created as siblings of the project root itself, not of DEVDEPARTMENT. Two DEVDEPARTMENT-onboarded projects sharing a parent directory would otherwise compute the identical worktree path and collide; `dispatch.sh`/`.ps1` also refuse to reuse a directory at that path unless it's a confirmed registered worktree of the current repo.
 
-Builders commit to their task branch only, referencing the task ID in every commit (Conventional Commits): `feat(auth): implement login route [TASK-001]`. Only ORCH merges to `main`, and only after review verdict.
+Builders commit **code** to their task branch only, referencing the task ID in every commit (Conventional Commits): `feat(auth): implement login route [TASK-001]`. Only ORCH merges code to `main`, and only after review verdict. (PLAN.md coordination commits are the deliberate exception — see Layer 3 below.)
 
 **Layer 3 — PLAN.md write discipline (coordination).**
+> **Named failure mode — "which tree do I commit PLAN.md to?"** This has now been misread in both directions, by different builder CLIs, in live sessions. Getting it backwards is silent — the content of the commit is usually correct either way, so nothing looks broken until coordination state goes stale or a second builder claims an already-claimed task.
+>
+> The rule, stated once, unambiguously:
+> - **Code** → your task branch, in your worktree. Never on `main`. ORCH merges after review.
+> - **PLAN.md coordination commits** (claim, status transitions, Progress_Notes, `needs_review`) → **`main`, immediately**, via `git add PLAN.md && git commit && git push . HEAD:main`. Leaving these on your task branch is the violation: a claim nobody else can see is not a claim, and the blackboard stops being a blackboard.
+>
+> Note the asymmetry is deliberate and not a wart: `main` is the *coordination* surface (must be current for everyone) and simultaneously the *integration* surface (must be gated by review). PLAN.md is coordination, code is integration, so they go to different places by different routes. Anyone auditing a builder's behaviour against "never commit to `main`" without that distinction will flag correct behaviour as a violation — which has happened.
+>
+> `control.mode: "strict"` (Wave I) removes this class of ambiguity entirely: builders never write PLAN.md at all, and the supervisor is the sole writer. If this failure mode recurs, that is the structural fix, not more prompt wording.
+
 PLAN.md lives on `main`. Builders update it via a **pull → edit own block → commit → push/merge immediately** micro-transaction (or, in the simplest single-machine setup, edit the main-checkout PLAN.md directly since blocks are disjoint — blocks never overlap, so line-level merges are trivially clean). If a merge conflict on PLAN.md ever occurs, the builder resolves only within its own block and never deletes another unit's lines. Frontmatter (`plan_version`, `overall_status`, `orchestrator_notes`) is ORCH-only.
 
 ## 5. Sync Protocol — how drift becomes impossible
