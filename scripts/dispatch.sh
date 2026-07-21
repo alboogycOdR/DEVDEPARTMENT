@@ -24,29 +24,54 @@ cd "$REPO_ROOT"
 # hand a builder the wrong repo's checkout.
 PROJECT_NAME="$(basename "$REPO_ROOT")"
 
-case "$BUILDER" in
+# v4.7: builder identity comes from the registry (autopilot.json's builders
+# key, dual-shape — see scripts/builder_registry.py). argv may be a unit ID
+# (GB/CX/S5/S5B/...) or, as a compatibility shim, a legacy CLI-family name
+# (grok/codex/claude -> first ACTIVE unit on that cli). FAIL-CLOSED on
+# anything unresolvable: unlike control.mode (safe universal fallback =
+# legacy behavior), a wrong guess here hands a builder the wrong
+# worktree/CLI — there is no safe default, so we refuse instead.
+REG_KV="$(python3 scripts/builder_registry.py resolve "$BUILDER" --repo "$REPO_ROOT")" || {
+  echo "[dispatch] ERROR: cannot resolve builder '$BUILDER' from the registry — refusing to dispatch." >&2
+  exit 1
+}
+ID="";      CLI="";        MODEL="";      WORKTREE_SUFFIX=""
+SUFFIX="";  BRIEFING="";   AUTO_LOADS_CONTEXT="false"
+AUTH_MODE="default";       AUTH_VALUE=""
+while IFS='=' read -r k v; do
+  case "$k" in
+    UNIT) ID="$v" ;; CLI) CLI="$v" ;; MODEL) MODEL="$v" ;;
+    WORKTREE_SUFFIX) WORKTREE_SUFFIX="$v" ;; BRANCH_SUFFIX) SUFFIX="$v" ;;
+    BRIEFING) BRIEFING="$v" ;; AUTO_LOADS_CONTEXT) AUTO_LOADS_CONTEXT="$v" ;;
+    AUTH_MODE) AUTH_MODE="$v" ;; AUTH_VALUE) AUTH_VALUE="$v" ;;
+  esac
+done <<< "$REG_KV"
+[[ -n "$ID" && -n "$CLI" && -n "$WORKTREE_SUFFIX" && -n "$SUFFIX" && -n "$BRIEFING" ]] || {
+  echo "[dispatch] ERROR: registry resolution for '$BUILDER' returned an incomplete entry — refusing to dispatch." >&2
+  exit 1
+}
+WT="$(dirname "$REPO_ROOT")/wt-${WORKTREE_SUFFIX}-${PROJECT_NAME}"
+
+# CLI-invocation table — keyed by CLI FAMILY, not unit (S5 and S5B share the
+# claude row verbatim). These quirks are properties of the CLI binaries, not
+# project configuration, so they stay here rather than in the registry:
+case "$CLI" in
   # Bare `grok <prompt>` starts the INTERACTIVE TUI, which shows a "Do you
   # trust this directory?" dialog on every freshly (re)created worktree --
   # confirmed live: a headless dispatch just hung on this for hours, because
   # --always-approve/--permission-mode bypassPermissions cover tool-call
   # approval but not this separate trust gate. -p/--single switches to
-  # single-turn non-interactive mode ("prints the response and exits"),
-  # which does not show it -- confirmed with a live scratch-directory test
-  # (completed in ~15s vs. the multi-hour hang). -p must be the LAST flag
-  # here: its value is the next argv entry, and $PROMPT is appended right
-  # after this array at the call site.
-  grok)  ID="GB"; WT="$(dirname "$REPO_ROOT")/wt-grok-${PROJECT_NAME}";  CMD=(grok --always-approve --permission-mode bypassPermissions -p); BRIEFING="briefings/GROK_BUILD_BRIEFING.md"; SUFFIX="gb" ;;
+  # single-turn non-interactive mode, which does not show it -- confirmed
+  # with a live scratch-directory test. -p must be the LAST flag here: its
+  # value is the next argv entry, and $PROMPT is appended at the call site.
+  grok)  CMD=(grok --always-approve --permission-mode bypassPermissions -p) ;;
   # --reasoning-effort is not a valid `codex exec` CLI flag (confirmed against
-  # codex-cli 0.144.5 -- it errors "unexpected argument"); model_reasoning_effort
-  # is already authoritative via .codex/config.toml, per that file's own comment.
-  codex) ID="CX"; WT="$(dirname "$REPO_ROOT")/wt-codex-${PROJECT_NAME}"; CMD=(codex exec --model gpt-5.6-sol -s danger-full-access); BRIEFING="briefings/CODEX_BRIEFING.md"; SUFFIX="cx" ;;
-  # S5: Claude Code (Sonnet 5) as a third builder, alongside GB (grok) and
-  # CX (codex) -- same CLI as ORCH itself, launched headless with an
-  # explicit builder-role prompt (S5_BUILD_BRIEFING.md) that overrides
-  # CLAUDE.md's ORCH identity for this session. -p takes the prompt as a
-  # trailing positional argument, same shape as review_cmd elsewhere.
-  claude) ID="S5"; WT="$(dirname "$REPO_ROOT")/wt-s5-${PROJECT_NAME}";   CMD=(claude -p --model claude-sonnet-5 --dangerously-skip-permissions); BRIEFING="briefings/S5_BUILD_BRIEFING.md"; SUFFIX="s5" ;;
-  *) echo "Unknown builder: $BUILDER" >&2; exit 1 ;;
+  # codex-cli 0.144.5); model_reasoning_effort is authoritative via
+  # .codex/config.toml, per that file's own comment.
+  codex) CMD=(codex exec ${MODEL:+--model "$MODEL"} -s danger-full-access) ;;
+  # claude: -p takes the prompt as a trailing positional argument.
+  claude) CMD=(claude -p ${MODEL:+--model "$MODEL"} --dangerously-skip-permissions) ;;
+  *) echo "[dispatch] ERROR: unknown CLI family '$CLI' for unit $ID — refusing to dispatch." >&2; exit 1 ;;
 esac
 
 echo "[dispatch] Validating PLAN.md..."
@@ -56,8 +81,7 @@ python3 scripts/validate_plan.py PLAN.md || { echo "[dispatch] PLAN.md illegal �
 # path — a leftover from before this fix, or from a pre-fix dispatch of
 # this exact project. It's orphaned now, not reused, so it's safe to leave,
 # but flag it so it doesn't sit there silently confusing a future `ls`.
-LEGACY_WT=""
-case "$BUILDER" in grok) LEGACY_WT="$(dirname "$REPO_ROOT")/wt-grok" ;; codex) LEGACY_WT="$(dirname "$REPO_ROOT")/wt-codex" ;; claude) LEGACY_WT="$(dirname "$REPO_ROOT")/wt-s5" ;; esac
+LEGACY_WT="$(dirname "$REPO_ROOT")/wt-${WORKTREE_SUFFIX}"
 if [[ -d "$LEGACY_WT" && "$LEGACY_WT" != "$WT" ]]; then
   echo "[dispatch] NOTE: found an old-style unnamespaced worktree at $LEGACY_WT (pre-dates per-project namespacing)." >&2
   echo "[dispatch] It is NOT being used by this dispatch. If it belongs to this project, remove it with:" >&2
@@ -123,9 +147,18 @@ fi
 # explicit override, S5 would start this session confused about its own
 # identity. GB/CX don't have this problem (grok/codex don't auto-load
 # CLAUDE.md), so this prefix is S5-only.
+PEERS="$(python3 -c "
+import sys; sys.path.insert(0, 'scripts')
+import builder_registry as br
+try:
+    ids = [u for u in br.active_units('$REPO_ROOT') if u != '$ID']
+    print(' and '.join([', '.join(ids[:-1]), ids[-1]]) if len(ids) > 1 else (ids[0] if ids else 'the other builders'))
+except Exception:
+    print('the other builders')
+" 2>/dev/null || echo "the other builders")"
 IDENTITY_OVERRIDE=""
-if [[ "$ID" == "S5" ]]; then
-  IDENTITY_OVERRIDE="IMPORTANT IDENTITY OVERRIDE: your project context auto-loaded CLAUDE.md, which contains a \"## Multi-Agent Orchestration\" section describing an ORCH role and saying \"You are ORCH\". That does NOT apply to this session. You are S5 — a builder unit, exactly parallel to GB and CX, just implemented via Claude Code instead of Grok/Codex. Ignore CLAUDE.md's ORCH role assignment entirely for this session: you have none of ORCH's exclusive powers here — no merging task branches, no review verdicts, no editing PLAN.md frontmatter, no editing any task block but your own claimed one. Those remain the separate, interactive ORCH session's job. Follow the builder procedure below exactly as GB/CX would.
+if [[ "$AUTO_LOADS_CONTEXT" == "true" ]]; then
+  IDENTITY_OVERRIDE="IMPORTANT IDENTITY OVERRIDE: your project context auto-loaded CLAUDE.md, which contains a \"## Multi-Agent Orchestration\" section describing an ORCH role and saying \"You are ORCH\". That does NOT apply to this session. You are $ID — a builder unit, exactly parallel to $PEERS, implemented via Claude Code. Ignore CLAUDE.md's ORCH role assignment entirely for this session: you have none of ORCH's exclusive powers here — no merging task branches, no review verdicts, no editing PLAN.md frontmatter, no editing any task block but your own claimed one. Those remain the separate, interactive ORCH session's job. Follow the builder procedure below exactly as GB/CX would.
 
 "
 fi
@@ -157,8 +190,19 @@ if [[ -n "$INSTINCTS_SECTION" ]]; then
 ${INSTINCTS_SECTION}"
 fi
 
+# v4.7: per-unit auth, resolved BEFORE the dry-run branch so previews are
+# accurate about it. config_dir mode sets CLAUDE_CONFIG_DIR for the launch
+# only (scoped inside the launch subshell via env(1) — it must not leak
+# into this script's own environment or any post-launch step).
+AUTH_ENV=()
+if [[ "$AUTH_MODE" == "config_dir" ]]; then
+  AUTH_DIR="${AUTH_VALUE/#\~/$HOME}"
+  AUTH_ENV=(env "CLAUDE_CONFIG_DIR=$AUTH_DIR")
+  echo "[dispatch] Unit $ID authenticates via CLAUDE_CONFIG_DIR=$AUTH_DIR (scoped to this launch)."
+fi
+
 if [[ "$DRY" == "--dry-run" ]]; then
-  echo "[dispatch] DRY RUN — would run: (cd $WT && ${CMD[*]} \"<prompt>\")"
+  echo "[dispatch] DRY RUN — would run: (cd $WT && ${AUTH_ENV[*]:+${AUTH_ENV[*]} }${CMD[*]} \"<prompt>\")"
   printf -- '--- Prompt ---\n%s\n' "$PROMPT"
   exit 0
 fi
@@ -180,7 +224,7 @@ if [[ "$CONTROL_MODE" == "strict" ]]; then
   # Capture full stdout to the run log while still showing it live (tee),
   # so the CONTROL fence can be extracted from the log afterward regardless
   # of what the terminal happened to scroll past.
-  ( cd "$WT" && "${CMD[@]}" "$PROMPT" ) 2>&1 | tee "$LOG_PATH" || true
+  ( cd "$WT" && "${AUTH_ENV[@]}" "${CMD[@]}" "$PROMPT" ) 2>&1 | tee "$LOG_PATH" || true
 
   echo "[dispatch] Session ended. Extracting devteam-control block..."
   EXTRACT_OUT="$(python3 scripts/control.py extract \
@@ -194,7 +238,7 @@ if [[ "$CONTROL_MODE" == "strict" ]]; then
   echo "[dispatch] control.mode=strict: PLAN.md is applied by the supervisor's next tick, not here. Run /devteam-status once it has ticked."
   exit 0
 else
-  ( cd "$WT" && "${CMD[@]}" "$PROMPT" ) || true
+  ( cd "$WT" && "${AUTH_ENV[@]}" "${CMD[@]}" "$PROMPT" ) || true
 
   echo "[dispatch] Session ended. Re-validating PLAN.md..."
   python3 scripts/validate_plan.py PLAN.md || {

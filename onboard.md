@@ -30,6 +30,7 @@ Copy from the pack into the project root, skipping any file that already exists 
 - `.codex/config.toml` — if the project already has one, merge add-only (bring in missing keys: model, model_reasoning_effort, sandbox_mode, approval_policy, profiles, shell_environment_policy); on any conflicting key keep the existing value and flag it
 - `PLAN.md`, `REVIEW.md` — only if absent
 - `autopilot.json` — only if absent (copy the pack's template). The template ships `control.mode: "legacy"` — builders still write PLAN.md themselves, which is the safe default for a project onboarding for the first time. **Ask the human whether they want `control.mode: "strict"` instead** (the CONTROL-block single-writer blackboard — builders never touch PLAN.md; the dispatcher claims tasks and the supervisor applies builder-reported state via a fenced `devteam-control` block) before flipping it; see `docs/CONTROL.md`. Do not flip it unasked — it changes what `dispatch.sh`/`.ps1` do and what briefings/GROK_BUILD_BRIEFING.md + CODEX_BRIEFING.md tell the builder to do.
+- **Builder roster** (v4.7): the pack template's `autopilot.json` ships the default roster (GB/grok, CX/codex, S5/claude — plus S5B defined-but-inactive). Ask the human: "Use the default roster, or configure differently for this project (add/remove units, change models, add a second same-CLI unit with its own auth via CLAUDE_CONFIG_DIR)?" Walk through `docs/BUILDER_REGISTRY.md`'s schema for any changes. Do not silently change the roster from the template default — it changes what dispatch launches on every autopilot tick, same "ask, don't auto-flip" caution as control.mode above. Note for the firewall smoke test later: unit identity is always `DEVTEAM_UNIT`; a config_dir unit's auth var is never needed for hook tests (hooks don't invoke a CLI).
 - `INSTINCTS.md` — only if absent; create empty via `python3 -c "import sys; sys.path.insert(0,'scripts'); import instincts; instincts.save_atomic('.', [])"` (Wave C learning loop's instinct store, created empty per project — never copied from the pack)
 
 Usage-window meters (`scripts/usage_probe.py`) work out of the box (fail-open — renders `—` until real data exists) but the exact fields it parses out of `claude`/`codex`'s stream output have only been verified against the reference implementation's source, not a live installed CLI (see `docs/USAGE.md`'s verification commands). Mention this in the final report as a "not yet live-verified" item rather than silently asserting it works.
@@ -96,8 +97,8 @@ Run and report exact output + exit codes:
 macOS/Linux:
 ```bash
 python3 scripts/validate_plan.py PLAN.md
-python3 -m pytest tests/ -q          # expect 507 passed (validator 18 + supervisor 18 + board 10 + tg_commands 86 + tg_listener 18 + supervisor_telegram 21 + notify 6 + scheduling 14 + budget 23 + maintenance 49 + supervisor_maintenance 19 + instincts 30 + distiller 15 + retro 10 + supervisor_learning 24 + control 52 + supervisor_control 17 + usage 43 + dispatch_worktree 8 + sync_from_pack 26)
-node hooks/run-tests.js              # expect 28 passed
+python3 -m pytest tests/ -q          # expect ALL passed — the count varies by pack version and roster; a nonzero exit code is the failure signal, not a specific number
+node hooks/run-tests.js              # expect ALL passed (same principle)
 bash scripts/harness-audit.sh --no-shield
 python3 scripts/supervisor.py --once --dry-run
 ```
@@ -155,7 +156,7 @@ Sync baseline written (.devteam/sync_state.json):  yes/no
 
 Operating guide:
   /devteam-decompose            → turn specs/ into the task plan   (model: claude-sonnet-5)
-  /devteam-dispatch             → worktrees + launch GB/CX          (claude-sonnet-4-6)
+  /devteam-dispatch             → worktrees + launch [the configured active roster — read builders.active, don't paste this literally]          (claude-sonnet-4-6)
   /devteam-status               → health scan                       (claude-sonnet-4-6)
   /devteam-review               → review, verdict, merge            (claude-sonnet-5)
   /devteam-autopilot            → one autonomous wave, digest at end

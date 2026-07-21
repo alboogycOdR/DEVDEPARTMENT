@@ -27,6 +27,19 @@ function main() {
   if (!target) return 0; // nothing to check
 
   const u = lib.unit();
+  if (u === null) {
+    // v4.7 fail-closed: DEVTEAM_UNIT is set but not a known unit (typo, or
+    // a builder added to scripts before being defined in autopilot.json's
+    // registry). The old behavior silently granted unrestricted ORCH
+    // permissions here. Deny through the normal verdict path — NOT a throw,
+    // which the outer catch would convert to fail-open.
+    process.stderr.write(
+      `[territory-firewall] BLOCKED: DEVTEAM_UNIT='${process.env.DEVTEAM_UNIT}' is not a known ` +
+      `unit (${lib.knownUnits().join('/')}) — refusing to treat an unrecognized unit as ` +
+      `unrestricted ORCH. Fix DEVTEAM_UNIT or define the unit in autopilot.json's builders registry.`
+    );
+    return 2;
+  }
   if (u === 'ORCH') return 0;
 
   const rel = lib.relPath(target);

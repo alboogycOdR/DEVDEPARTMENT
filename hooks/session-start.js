@@ -25,7 +25,7 @@ function lastProgressNote(task) {
 
 function main() {
   const root = lib.repoRoot();
-  const u = lib.unit();
+  const u = lib.unit() || 'UNKNOWN'; // null (unrecognized unit) is fine here — these hooks only label output
   const lines = [`[devteam session-start] Unit: ${u}. Re-read AGENTS.md and PLAN.md fresh from disk before acting.`];
 
   if (fs.existsSync(path.join(root, 'STOP'))) {

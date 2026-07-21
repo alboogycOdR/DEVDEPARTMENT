@@ -275,6 +275,57 @@ test('firewall fails open on malformed stdin', () => {
   assert.strictEqual(r.code, 0);
 });
 
+
+// ------------------------------------- builder registry / fail-closed ------
+test('firewall FAIL-CLOSED: unrecognized DEVTEAM_UNIT is denied (exit 2), not treated as ORCH', () => {
+  const repo = makeTempRepo();
+  const r = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'lib/anything.dart'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'ZZ' });
+  assert.strictEqual(r.code, 2);
+  assert.ok(r.stderr.includes('not a known unit'), 'names the failure');
+  assert.ok(!r.stderr.includes('non-fatal hook error'),
+    'must deny via the verdict path, not via an exception the outer catch converts to fail-open');
+});
+
+test('firewall recognizes a registry-defined 4th unit (S5B) with its own territory', () => {
+  const repo = makeTempRepo({ plan: PLAN.replace(/GB/g, 'S5B') });
+  fs.writeFileSync(path.join(repo, 'autopilot.json'), JSON.stringify({
+    builders: { active: ['S5B'], defined: { S5B: {
+      cli: 'claude', worktree_suffix: 's5b', branch_suffix: 's5b',
+      briefing: 'briefings/S5_BUILD_BRIEFING.md' } } },
+  }), 'utf-8');
+  const inside = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'lib/features/auth/a.dart'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'S5B' });
+  assert.strictEqual(inside.code, 0, 'S5B allowed inside its territory: ' + inside.stderr);
+  const outside = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'lib/core/util.dart'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'S5B' });
+  assert.strictEqual(outside.code, 2, 'S5B blocked outside its territory');
+});
+
+test('firewall with registry object: unit in legacy default but NOT defined here is denied', () => {
+  const repo = makeTempRepo();
+  fs.writeFileSync(path.join(repo, 'autopilot.json'), JSON.stringify({
+    builders: { active: ['CX'], defined: { CX: {
+      cli: 'codex', worktree_suffix: 'codex', branch_suffix: 'cx',
+      briefing: 'briefings/CODEX_BRIEFING.md' } } },
+  }), 'utf-8');
+  const r = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'lib/x.dart'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(r.code, 2, 'GB is not in THIS project\'s registry -> denied');
+});
+
+test('unset DEVTEAM_UNIT still means ORCH (interactive sessions unaffected)', () => {
+  const repo = makeTempRepo();
+  const r = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'anything.md'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo });
+  assert.strictEqual(r.code, 0);
+});
+
 // ---------------------------------------------------- secret-scan E2E ------
 test('secret-scan blocks API key in source write for any unit incl. ORCH', () => {
   const repo = makeTempRepo();

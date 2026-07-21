@@ -15,7 +15,7 @@
     powershell -ExecutionPolicy Bypass -File scripts\dispatch.ps1 -Builder codex -DryRun
 #>
 param(
-    [Parameter(Mandatory = $true)][ValidateSet("grok", "codex", "claude")][string]$Builder,
+    [Parameter(Mandatory = $true)][string]$Builder,  # unit ID (GB/CX/S5/S5B/...) or legacy cli name (grok/codex/claude)
     [switch]$DryRun
 )
 
@@ -39,59 +39,66 @@ $Py = Get-PythonCmd
 # compute the exact same worktree path and silently collide.
 $ProjectName = Split-Path $RepoRoot -Leaf
 
-switch ($Builder) {
+# v4.7: builder identity from the registry (autopilot.json's builders key,
+# dual-shape — scripts/builder_registry.py). $Builder may be a unit ID or a
+# legacy cli name (grok/codex/claude -> first ACTIVE unit on that cli).
+# FAIL-CLOSED on anything unresolvable: no safe default exists for a wrong
+# worktree/CLI guess.
+$RegOut = & $Py "scripts\builder_registry.py" resolve $Builder --repo $RepoRoot 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "[dispatch] Cannot resolve builder '$Builder' from the registry - refusing to dispatch. ($RegOut)"
+    exit 1
+}
+$Reg = @{}
+foreach ($line in $RegOut) {
+    $i = "$line".IndexOf("=")
+    if ($i -gt 0) { $Reg["$line".Substring(0, $i)] = "$line".Substring($i + 1) }
+}
+$Id = $Reg["UNIT"]; $Cli = $Reg["CLI"]; $Model = $Reg["MODEL"]
+$Suffix = $Reg["BRANCH_SUFFIX"]; $Briefing = $Reg["BRIEFING"]
+$AutoLoadsContext = ($Reg["AUTO_LOADS_CONTEXT"] -eq "true")
+$AuthMode = $Reg["AUTH_MODE"]; $AuthValue = $Reg["AUTH_VALUE"]
+if (-not $Id -or -not $Cli -or -not $Reg["WORKTREE_SUFFIX"] -or -not $Suffix -or -not $Briefing) {
+    Write-Error "[dispatch] Registry resolution for '$Builder' returned an incomplete entry - refusing to dispatch."
+    exit 1
+}
+$Wt = Join-Path $ParentDir ("wt-" + $Reg["WORKTREE_SUFFIX"] + "-" + $ProjectName)
+
+# CLI-invocation table — keyed by CLI FAMILY, not unit (S5/S5B share the
+# claude row). These quirks are properties of the CLI binaries, not project
+# config, so they stay here:
+switch ($Cli) {
     "grok" {
-        $Id = "GB"; $Suffix = "gb"
-        $Wt = Join-Path $ParentDir "wt-grok-$ProjectName"
+        # Bare `grok <prompt>` starts the INTERACTIVE TUI with a trust-dialog
+        # that hangs headless dispatches (confirmed live, multi-hour hang);
+        # -p switches to single-turn non-interactive mode. -p must be LAST:
+        # $Prompt is appended right after this array at the call site.
         $Cmd = "grok"
-        # Bare `grok <prompt>` starts the INTERACTIVE TUI, which shows a "Do you
-        # trust this directory?" dialog on every freshly (re)created worktree --
-        # confirmed live: a headless dispatch just hung on this for hours,
-        # because --always-approve/--permission-mode bypassPermissions cover
-        # tool-call approval but not this separate trust gate. `-p`/`--single`
-        # switches to single-turn non-interactive mode ("prints the response
-        # and exits"), which does not show it -- confirmed with a live
-        # scratch-directory test (completed in ~15s vs. the multi-hour hang).
-        # -p must be the LAST flag here: its value is the next argv entry, and
-        # $Prompt is appended immediately after this array at the call site.
         $CmdArgs = @("--always-approve", "--permission-mode", "bypassPermissions", "-p")
-        $Briefing = "briefings/GROK_BUILD_BRIEFING.md"
     }
     "codex" {
-        $Id = "CX"; $Suffix = "cx"
-        $Wt = Join-Path $ParentDir "wt-codex-$ProjectName"
-        # --reasoning-effort is not a valid `codex exec` CLI flag (confirmed against
-        # codex-cli 0.144.5 -- it errors "unexpected argument"); model_reasoning_effort
-        # is already authoritative via .codex/config.toml, per that file's own comment.
-        #
-        # Routed through cmd /c rather than invoking codex(.ps1) directly: npm's
-        # generated .ps1 shim (AppData\Roaming\npm\codex.ps1) checks
-        # $MyInvocation.ExpectingInput and pipes $input into the underlying node
-        # process when true. That check spuriously fires when this splatted-array
-        # invocation pattern (`& $Cmd @($CmdArgs + @($Prompt))`) is used from inside
-        # a script -- reproduced live: codex then blocks on stdin and fails with
-        # "Error: stdin is not a terminal" in any non-interactive/background
-        # invocation, even though the exact same args work fine called literally.
-        # cmd /c invokes codex.cmd instead, which has no such pipeline semantics.
+        # Routed through cmd /c: npm's codex.ps1 shim spuriously pipes $input
+        # (ExpectingInput) under splatted-array invocation from a script,
+        # blocking on stdin ("stdin is not a terminal") -- reproduced live.
+        # cmd /c invokes codex.cmd, which has no such pipeline semantics.
+        # --reasoning-effort is NOT a valid codex exec flag (codex-cli 0.144.5);
+        # model_reasoning_effort is authoritative via .codex/config.toml.
         $Cmd = "cmd"
-        $CmdArgs = @("/c", "codex", "exec", "--model", "gpt-5.6-sol", "-s", "danger-full-access")
-        $Briefing = "briefings/CODEX_BRIEFING.md"
+        $CmdArgs = @("/c", "codex", "exec")
+        if ($Model) { $CmdArgs += @("--model", $Model) }
+        $CmdArgs += @("-s", "danger-full-access")
     }
     "claude" {
-        # S5: Claude Code (Sonnet 5) as a third builder, alongside GB (grok) and
-        # CX (codex) -- same underlying CLI as ORCH itself, but launched headless
-        # with an explicit builder-role prompt (S5_BUILD_BRIEFING.md) that
-        # overrides CLAUDE.md's ORCH identity for this session. claude.exe is a
-        # native binary (confirmed via `Get-Command claude`), not an npm .ps1
-        # shim like codex's -- so it does not need the cmd /c workaround above;
-        # the prompt is a trailing positional argument, same shape as the
-        # existing review_cmd/triage_prompt calls elsewhere in this pack
-        # (`claude -p "..." --model claude-sonnet-5 --dangerously-skip-permissions`).
-        $Id = "S5"; $Suffix = "s5"
-        $Wt = Join-Path $ParentDir "wt-s5-$ProjectName"
+        # claude.exe is a native binary (not an npm .ps1 shim) -- no cmd /c
+        # workaround needed; prompt is a trailing positional argument.
         $Cmd = "claude"
-        $CmdArgs = @("-p", "--model", "claude-sonnet-5", "--dangerously-skip-permissions")
-        $Briefing = "briefings/S5_BUILD_BRIEFING.md"
+        $CmdArgs = @("-p")
+        if ($Model) { $CmdArgs += @("--model", $Model) }
+        $CmdArgs += @("--dangerously-skip-permissions")
+    }
+    default {
+        Write-Error "[dispatch] Unknown CLI family '$Cli' for unit $Id - refusing to dispatch."
+        exit 1
     }
 }
 
@@ -105,8 +112,7 @@ if ($LASTEXITCODE -ne 0) {
 # Warn (not block) about an old-style unnamespaced worktree left over from
 # before this fix -- it is NOT reused, just flagged so it doesn't sit there
 # silently confusing a future look at the folder.
-$LegacyName = switch ($Builder) { "grok" { "wt-grok" } "codex" { "wt-codex" } "claude" { "wt-s5" } }
-$LegacyWt = Join-Path $ParentDir $LegacyName
+$LegacyWt = Join-Path $ParentDir ("wt-" + $Reg["WORKTREE_SUFFIX"])
 if ((Test-Path $LegacyWt) -and ($LegacyWt -ne $Wt)) {
     Write-Warning "[dispatch] Found an old-style unnamespaced worktree at $LegacyWt (pre-dates per-project namespacing)."
     Write-Warning "[dispatch] It is NOT being used by this dispatch. If it belongs to this project, remove it with:"
@@ -183,8 +189,18 @@ $Fence = '```'
 # identity. GB/CX don't have this problem (grok/codex don't auto-load
 # CLAUDE.md), so this prefix is S5-only.
 $IdentityOverride = ""
-if ($Id -eq "S5") {
-    $IdentityOverride = "IMPORTANT IDENTITY OVERRIDE: your project context auto-loaded CLAUDE.md, which contains a `"## Multi-Agent Orchestration`" section describing an ORCH role and saying `"You are ORCH`". That does NOT apply to this session. You are S5 -- a builder unit, exactly parallel to GB and CX, just implemented via Claude Code instead of Grok/Codex. Ignore CLAUDE.md's ORCH role assignment entirely for this session: you have none of ORCH's exclusive powers here -- no merging task branches, no review verdicts, no editing PLAN.md frontmatter, no editing any task block but your own claimed one. Those remain the separate, interactive ORCH session's job. Follow the builder procedure below exactly as GB/CX would.`n`n"
+$Peers = & $Py -c "
+import sys; sys.path.insert(0, 'scripts')
+import builder_registry as br
+try:
+    ids = [u for u in br.active_units(r'$RepoRoot') if u != '$Id']
+    print(' and '.join([', '.join(ids[:-1]), ids[-1]]) if len(ids) > 1 else (ids[0] if ids else 'the other builders'))
+except Exception:
+    print('the other builders')
+" 2>$null
+if (-not $Peers) { $Peers = "the other builders" }
+if ($AutoLoadsContext) {
+    $IdentityOverride = "IMPORTANT IDENTITY OVERRIDE: your project context auto-loaded CLAUDE.md, which contains a `"## Multi-Agent Orchestration`" section describing an ORCH role and saying `"You are ORCH`". That does NOT apply to this session. You are $Id -- a builder unit, exactly parallel to $Peers, implemented via Claude Code. Ignore CLAUDE.md's ORCH role assignment entirely for this session: you have none of ORCH's exclusive powers here -- no merging task branches, no review verdicts, no editing PLAN.md frontmatter, no editing any task block but your own claimed one. Those remain the separate, interactive ORCH session's job. Follow the builder procedure below exactly as GB/CX would.`n`n"
 }
 
 if ($ControlMode -eq "strict") {
@@ -215,8 +231,21 @@ if ($InstinctsSection.Trim().Length -gt 0) {
     $Prompt = $Prompt + "`r`n`r`n" + $InstinctsSection.Trim() + "`r`n"
 }
 
+# v4.7: per-unit auth, resolved BEFORE the dry-run branch so previews are
+# accurate about it. config_dir mode sets CLAUDE_CONFIG_DIR for the launch
+# only -- saved and restored around each builder invocation, never left set
+# for the rest of this script's life (PS 5.1 has no env(1)-style scoping,
+# so save/restore in finally is the equivalent).
+$AuthDir = $null
+if ($AuthMode -eq "config_dir" -and $AuthValue) {
+    $AuthDir = $AuthValue -replace '^~', $env:USERPROFILE
+    Write-Host "[dispatch] Unit $Id authenticates via CLAUDE_CONFIG_DIR=$AuthDir (scoped to this launch)." -ForegroundColor Cyan
+}
+$AuthNote = ""
+if ($AuthDir) { $AuthNote = "CLAUDE_CONFIG_DIR=$AuthDir " }
+
 if ($DryRun) {
-    Write-Host "[dispatch] DRY RUN - would run: (cd $Wt ; $Cmd $($CmdArgs -join ' ') `"<prompt>`")" -ForegroundColor Yellow
+    Write-Host "[dispatch] DRY RUN - would run: (cd $Wt ; $AuthNote$Cmd $($CmdArgs -join ' ') `"<prompt>`")" -ForegroundColor Yellow
     Write-Host "--- Prompt ---"
     Write-Host $Prompt
     exit 0
@@ -240,11 +269,15 @@ if ($ControlMode -eq "strict") {
     $LogPath = Join-Path $DevteamDir "$TaskId-$RunTs.log"
 
     Push-Location $Wt
+    $PrevConfigDir = $env:CLAUDE_CONFIG_DIR
     try {
+        if ($AuthDir) { $env:CLAUDE_CONFIG_DIR = $AuthDir }
         & $Cmd @($CmdArgs + @($Prompt)) 2>&1 | Tee-Object -FilePath $LogPath
     } catch {
         Write-Warning "[dispatch] Builder process error: $($_.Exception.Message)"
     } finally {
+        if ($null -eq $PrevConfigDir) { Remove-Item Env:\CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue }
+        else { $env:CLAUDE_CONFIG_DIR = $PrevConfigDir }
         Pop-Location
     }
 
@@ -258,11 +291,15 @@ if ($ControlMode -eq "strict") {
     exit 0
 } else {
     Push-Location $Wt
+    $PrevConfigDir = $env:CLAUDE_CONFIG_DIR
     try {
+        if ($AuthDir) { $env:CLAUDE_CONFIG_DIR = $AuthDir }
         & $Cmd @($CmdArgs + @($Prompt))
     } catch {
         Write-Warning "[dispatch] Builder process error: $($_.Exception.Message)"
     } finally {
+        if ($null -eq $PrevConfigDir) { Remove-Item Env:\CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue }
+        else { $env:CLAUDE_CONFIG_DIR = $PrevConfigDir }
         Pop-Location
     }
 

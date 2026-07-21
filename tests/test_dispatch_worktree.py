@@ -35,7 +35,7 @@ def make_project(parent: Path, name: str, repo_root: Path) -> Path:
     (proj / "scripts").mkdir()
     (proj / "briefings").mkdir()
     (proj / "autopilot.json").write_text('{"control": {"mode": "legacy"}}', encoding="utf-8", newline="\n")
-    for fname in ("dispatch.sh", "validate_plan.py", "instincts.py"):
+    for fname in ("dispatch.sh", "validate_plan.py", "instincts.py", "builder_registry.py"):
         src = repo_root / "scripts" / fname
         if src.exists():
             # Byte-exact copy, NOT read_text()/write_text(). write_text()'s
@@ -151,3 +151,81 @@ class TestDryRunMakesNoUnexpectedWrites:
         assert not (tmp_path / "wt-grok-projectG").exists()
         run_dispatch(proj, dry_run=True)
         assert (tmp_path / "wt-grok-projectG").is_dir()
+
+
+S5B_REGISTRY = {
+    "builders": {
+        "active": ["GB", "CX", "S5", "S5B"],
+        "defined": {
+            "GB": {"cli": "grok", "worktree_suffix": "grok", "branch_suffix": "gb",
+                    "briefing": "briefings/GROK_BUILD_BRIEFING.md"},
+            "CX": {"cli": "codex", "model": "gpt-5.6-sol", "worktree_suffix": "codex",
+                    "branch_suffix": "cx", "briefing": "briefings/CODEX_BRIEFING.md",
+                    "usage_provider": "codex"},
+            "S5": {"cli": "claude", "model": "claude-sonnet-5", "worktree_suffix": "s5",
+                    "branch_suffix": "s5", "briefing": "briefings/S5_BUILD_BRIEFING.md",
+                    "auto_loads_ambient_context": True, "usage_provider": "claude"},
+            "S5B": {"cli": "claude", "model": "claude-sonnet-5",
+                     "auth": {"mode": "config_dir", "value": "~/.claude-s5b"},
+                     "worktree_suffix": "s5b", "branch_suffix": "s5b",
+                     "briefing": "briefings/S5_BUILD_BRIEFING.md",
+                     "auto_loads_ambient_context": True, "usage_provider": "claude:s5b"},
+        },
+    },
+    "control": {"mode": "legacy"},
+}
+
+
+class TestRegistryDrivenDispatch:
+    """v4.7: the same-cli-different-unit scenario the registry redesign
+    exists to support — S5 and S5B, both cli=claude, must resolve to
+    distinct worktrees and distinct auth without any script edits."""
+
+    def _registry_project(self, tmp_path, name):
+        import json
+        proj = make_project(tmp_path, name, REPO_ROOT)
+        (proj / "autopilot.json").write_text(json.dumps(S5B_REGISTRY),
+                                             encoding="utf-8", newline="\n")
+        return proj
+
+    def test_argv_unit_id_s5b_gets_own_worktree(self, tmp_path):
+        proj = self._registry_project(tmp_path, "projectR")
+        result = run_dispatch(proj, builder="S5B")
+        assert "wt-s5b-projectR" in result.stdout, result.stdout + result.stderr
+        assert "wt-s5-projectR" not in result.stdout
+
+    def test_argv_unit_id_s5_distinct_from_s5b(self, tmp_path):
+        proj = self._registry_project(tmp_path, "projectR")
+        r_s5 = run_dispatch(proj, builder="S5")
+        r_s5b = run_dispatch(proj, builder="S5B")
+        assert "wt-s5-projectR" in r_s5.stdout
+        assert "wt-s5b-projectR" in r_s5b.stdout
+
+    def test_legacy_cli_argv_shim_still_resolves_to_s5(self, tmp_path):
+        """`dispatch.sh claude` keeps meaning S5 (first active claude unit) —
+        every pre-v4.7 caller keeps working."""
+        proj = self._registry_project(tmp_path, "projectR")
+        result = run_dispatch(proj, builder="claude")
+        assert "wt-s5-projectR" in result.stdout, result.stdout + result.stderr
+
+    def test_s5b_launch_line_scopes_claude_config_dir(self, tmp_path):
+        proj = self._registry_project(tmp_path, "projectR")
+        result = run_dispatch(proj, builder="S5B")
+        assert "CLAUDE_CONFIG_DIR=" in result.stdout
+        assert "scoped to this launch" in result.stdout
+        # And S5 (auth mode default) must NOT get the env override:
+        r_s5 = run_dispatch(proj, builder="S5")
+        assert "CLAUDE_CONFIG_DIR=" not in r_s5.stdout
+
+    def test_unknown_unit_fails_closed(self, tmp_path):
+        proj = self._registry_project(tmp_path, "projectR")
+        result = run_dispatch(proj, builder="ZZ")
+        assert result.returncode == 1
+        assert "refusing to dispatch" in result.stderr
+
+    def test_flat_array_project_still_dispatches_gb(self, tmp_path):
+        """A pre-v4.7 project (flat builders array in the fixture's default
+        autopilot.json) keeps working unchanged — the dual-shape guarantee."""
+        proj = make_project(tmp_path, "projectL", REPO_ROOT)
+        result = run_dispatch(proj)  # grok, legacy argv, flat-array config
+        assert "wt-grok-projectL" in result.stdout, result.stdout + result.stderr

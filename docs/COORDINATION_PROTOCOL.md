@@ -2,11 +2,13 @@
 
 **Pack version:** tracks the DEVDEPARTMENT pack release (see README.md version history). A project's copy of this file is kept current via `scripts/sync_from_pack.py` (docs/SYNC.md) — if this file in YOUR project lacks the sections referenced by newer briefings/scripts, run a sync.
 
-This document is the constitution of the multi-agent dev team. **AGENTS.md summarises it; this file is authoritative.** All four units (ORCH = Claude Code, GB = Grok Build, CX = Codex AI, S5 = Sonnet 5 — Claude Code again, dispatched headless as a third builder) must comply. The orchestrator enforces compliance via `scripts/validate_plan.py` and git history review.
+This document is the constitution of the multi-agent dev team. **AGENTS.md summarises it; this file is authoritative.** All configured units (ORCH = Claude Code, GB = Grok Build, CX = Codex AI, S5 = Sonnet 5 — Claude Code again, dispatched headless as a third builder) must comply. The orchestrator enforces compliance via `scripts/validate_plan.py` and git history review.
 
 ---
 
 ## 1. Identities
+
+> The authoritative roster for THIS project is `autopilot.json`'s `builders` registry (see `docs/BUILDER_REGISTRY.md`); ORCH and SV are always present. The rows below show the units as configured at the last protocol sync — illustrative, not an exhaustive enum.
 
 | ID | Tool | Writes to PLAN.md? | Writes to specs/? | Writes to src/? | Writes to REVIEW.md? |
 |---|---|---|---|---|---|

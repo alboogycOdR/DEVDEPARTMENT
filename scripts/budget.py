@@ -81,7 +81,25 @@ def record_dispatch(dispatch_log: list[str], now: datetime, max_keep: int = 500)
 # -- gating S5 dispatches against "claude" usage is intentional, not a bug:
 # a heavy S5 dispatch schedule really does compete with ORCH's own session
 # for the same account-level quota.
-UNIT_TO_PROVIDER = {"CX": "codex", "S5": "claude"}
+UNIT_TO_PROVIDER = {"CX": "codex", "S5": "claude"}  # legacy fallback only
+
+
+def _provider_for(unit: str) -> "str | None":
+    """v4.7: the unit's usage bucket comes from the registry's
+    usage_provider field. None -> never usage-gated. Compound providers
+    ("claude:s5b" — a separate login's independent window) are only gated
+    once usage_probe learns to probe them (increment 9); until then a
+    compound provider with no cache entry simply never trips, per the
+    no-data-means-no-opinion rule. Fail-safe to the legacy map."""
+    try:
+        import builder_registry as _br
+        reg = _br.load_registry(".")
+        entry = reg["defined"].get(unit)
+        if entry is not None:
+            return entry.get("usage_provider")
+    except Exception:
+        pass
+    return UNIT_TO_PROVIDER.get(unit)
 
 
 def can_dispatch_usage(usage: dict, unit: str, priority: str, cfg: dict) -> tuple[bool, str]:
@@ -93,7 +111,7 @@ def can_dispatch_usage(usage: dict, unit: str, priority: str, cfg: dict) -> tupl
     data means no opinion, not "assume the worst").
     """
     cfg = {**DEFAULT_USAGE_BUDGET_CFG, **(cfg or {})}
-    provider = UNIT_TO_PROVIDER.get(unit)
+    provider = _provider_for(unit)
     if provider is None:
         return True, ""
     entry = (usage or {}).get(provider) or {}

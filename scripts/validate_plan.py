@@ -31,6 +31,11 @@ from pathlib import Path
 
 VALID_STATUSES = {"pending", "claimed", "in_progress", "needs_review", "done", "blocked"}
 ACTIVE_STATUSES = {"claimed", "in_progress", "needs_review"}
+# Registry-driven (v4.7): the module-level values below are the LEGACY
+# defaults, kept so this file works standalone (hooks/run-tests.js, a bare
+# `python validate_plan.py PLAN.md` in a project with no registry yet).
+# main() loads the real roster from autopilot.json via builder_registry and
+# passes it into validate() — see _apply_registry().
 VALID_UNITS = {"ORCH", "GB", "CX", "S5", "SV"}
 VALID_ASSIGNEES = {"GB", "CX", "S5", "TBD"}
 VALID_PRIORITIES = {"critical", "high", "medium", "low"}
@@ -44,6 +49,23 @@ REQUIRED_FIELDS = [
     "Updated_By", "Updated_At",
 ]
 BRANCH_SUFFIX = {"GB": "-gb", "CX": "-cx", "S5": "-s5"}
+
+
+def _apply_registry(repo: str = "."):
+    """Derive VALID_UNITS / VALID_ASSIGNEES / BRANCH_SUFFIX from the
+    builder registry. Fail-open to the legacy module defaults on ANY error
+    (including a malformed registry): the validator must keep validating —
+    a broken autopilot.json is dispatch's problem to fail closed on, not a
+    reason PLAN.md can't be linted. Returns (units, assignees, suffixes)."""
+    try:
+        import builder_registry as _br
+        reg = _br.load_registry(repo)
+        units = set(_br.STRUCTURAL_UNITS) | set(reg["defined"].keys())
+        assignees = set(reg["defined"].keys()) | {"TBD"}
+        suffixes = {u: "-" + e["branch_suffix"] for u, e in reg["defined"].items()}
+        return units, assignees, suffixes
+    except Exception:
+        return set(VALID_UNITS), set(VALID_ASSIGNEES), dict(BRANCH_SUFFIX)
 TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 EMPTY_VALUES = {"", "—", "-", "--", "n/a", "none"}
 
@@ -169,7 +191,15 @@ def parse_owned_paths(raw: str) -> list[str]:
     return [p.strip() for p in re.split(r"[,\n]", raw) if p.strip() and p.strip() not in EMPTY_VALUES]
 
 
-def validate(text: str, control_mode: str = "legacy") -> Report:
+def validate(text: str, control_mode: str = "legacy",
+             registry_views: tuple | None = None) -> Report:
+    # registry_views = (valid_units, valid_assignees, branch_suffixes) from
+    # _apply_registry(); None (the safe default, e.g. standalone/test calls)
+    # means the legacy module constants — same precedent as control_mode.
+    valid_units, valid_assignees, branch_suffix = (
+        registry_views if registry_views is not None
+        else (set(VALID_UNITS), set(VALID_ASSIGNEES), dict(BRANCH_SUFFIX)))
+    builder_units = valid_units - {"ORCH", "SV"}
     rep = Report()
     parse_frontmatter(text, rep)
     tasks = parse_tasks(text, rep)
@@ -195,22 +225,22 @@ def validate(text: str, control_mode: str = "legacy") -> Report:
             rep.error(f"{ctx}: illegal Status '{status}' (allowed: {sorted(VALID_STATUSES)})")
 
         assignee = t.get("Assigned_To")
-        if assignee and assignee not in VALID_ASSIGNEES:
-            rep.error(f"{ctx}: illegal Assigned_To '{assignee}' (allowed: {sorted(VALID_ASSIGNEES)})")
+        if assignee and assignee not in valid_assignees:
+            rep.error(f"{ctx}: illegal Assigned_To '{assignee}' (allowed: {sorted(valid_assignees)})")
 
         prio = t.get("Priority")
         if prio and prio not in VALID_PRIORITIES:
             rep.error(f"{ctx}: illegal Priority '{prio}'")
 
         upd_by = t.get("Updated_By")
-        if upd_by and upd_by not in VALID_UNITS:
-            rep.error(f"{ctx}: Updated_By '{upd_by}' is not a known unit (ORCH/GB/CX/SV)")
+        if upd_by and upd_by not in valid_units:
+            rep.error(f"{ctx}: Updated_By '{upd_by}' is not a known unit ({'/'.join(sorted(valid_units))})")
         # Wave I (control.mode=strict): the supervisor is the sole PLAN.md
         # writer, so a builder-state transition (needs_review/blocked) whose
         # Updated_By is GB/CX directly (not SV) suggests a bypassed CONTROL
         # block — worth a warning, not a hard failure (this check only ever
         # warns; it never blocks a tick the way an error does).
-        if control_mode == "strict" and status in ("needs_review", "blocked") and upd_by in ("GB", "CX"):
+        if control_mode == "strict" and status in ("needs_review", "blocked") and upd_by in builder_units:
             rep.warn(f"{ctx}: control.mode=strict but Updated_By is '{upd_by}', not 'SV' — "
                     f"this task's PLAN.md state may have been written directly by a builder "
                     f"instead of via a CONTROL block")
@@ -239,8 +269,8 @@ def validate(text: str, control_mode: str = "legacy") -> Report:
             if assignee == "TBD":
                 rep.error(f"{ctx}: active task cannot be Assigned_To TBD")
             branch = t.get("Branch")
-            if branch and assignee in BRANCH_SUFFIX:
-                expected = f"task/{t.task_id}{BRANCH_SUFFIX[assignee]}"
+            if branch and assignee in branch_suffix:
+                expected = f"task/{t.task_id}{branch_suffix[assignee]}"
                 if branch != expected:
                     rep.error(f"{ctx}: Branch '{branch}' should be '{expected}' for assignee {assignee}")
 
@@ -280,7 +310,19 @@ def main(argv: list[str]) -> int:
     if not path.exists():
         print(f"ERROR: {path} not found", file=sys.stderr)
         return 2
-    rep = validate(path.read_text(encoding="utf-8"))
+    # Load the project's real roster (and control mode) from autopilot.json
+    # next to the plan; fail-open to legacy defaults per _apply_registry().
+    repo_dir = str(path.resolve().parent)
+    control_mode = "legacy"
+    try:
+        import json as _json
+        _cfg = _json.loads((Path(repo_dir) / "autopilot.json").read_text(encoding="utf-8"))
+        if (_cfg.get("control") or {}).get("mode") == "strict":
+            control_mode = "strict"
+    except Exception:
+        pass
+    rep = validate(path.read_text(encoding="utf-8"), control_mode=control_mode,
+                   registry_views=_apply_registry(repo_dir))
     for w in rep.warnings:
         print(f"WARN  {w}", file=sys.stderr)
     for e in rep.errors:

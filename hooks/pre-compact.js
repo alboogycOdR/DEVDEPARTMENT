@@ -21,7 +21,7 @@ const lib = require('./lib.js');
 
 function main() {
   const root = lib.repoRoot();
-  const u = lib.unit();
+  const u = lib.unit() || 'UNKNOWN'; // null (unrecognized unit) is fine here — these hooks only label output
   const dir = path.join(root, '.devteam');
   fs.mkdirSync(dir, { recursive: true });
 

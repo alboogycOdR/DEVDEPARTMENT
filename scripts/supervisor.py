@@ -48,20 +48,25 @@ UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 import os as _os
 
-# Platform-aware dispatch defaults: Windows uses the PS 5.1 mirror scripts,
-# macOS/Linux use bash. Overridable per-project in autopilot.json as always.
-if _os.name == "nt":
-    _DISPATCH_DEFAULTS = {
-        "GB": "powershell -ExecutionPolicy Bypass -File scripts\\dispatch.ps1 -Builder grok",
-        "CX": "powershell -ExecutionPolicy Bypass -File scripts\\dispatch.ps1 -Builder codex",
-        "S5": "powershell -ExecutionPolicy Bypass -File scripts\\dispatch.ps1 -Builder claude",
-    }
-else:
-    _DISPATCH_DEFAULTS = {
-        "GB": "bash scripts/dispatch.sh grok",
-        "CX": "bash scripts/dispatch.sh codex",
-        "S5": "bash scripts/dispatch.sh claude",
-    }
+# Platform-aware dispatch defaults, generated from the builder registry
+# (v4.7): argv is now the unit ID — dispatch.sh/.ps1 keep a legacy cli-name
+# shim, but generation uses IDs so same-cli units (S5/S5B) stay distinct.
+# Overridable per-project in autopilot.json as always; the hand-written
+# 3-unit fallback applies only if the registry is unavailable entirely.
+def _dispatch_defaults() -> dict:
+    if _os.name == "nt":
+        tmpl = "powershell -ExecutionPolicy Bypass -File scripts\\dispatch.ps1 -Builder {unit}"
+    else:
+        tmpl = "bash scripts/dispatch.sh {unit}"
+    try:
+        import builder_registry as _br
+        units = list(_br.load_registry(".")["defined"].keys())
+    except Exception:
+        units = ["GB", "CX", "S5"]
+    return {u: tmpl.format(unit=u) for u in units}
+
+
+_DISPATCH_DEFAULTS = _dispatch_defaults()
 
 DEFAULT_CONFIG = {
     "interval_seconds": 300,
@@ -180,6 +185,25 @@ def _deps_done(task: Task, by_id: dict[str, Task]) -> bool:
     return True
 
 
+def _active_builders(cfg: dict) -> list:
+    """The dispatchable roster, accepting both builders shapes (v4.7):
+    legacy flat array used as-is; registry object's `active` list wins.
+    Falls back gracefully — decide() must keep working with hand-rolled
+    test configs."""
+    b = cfg.get("builders")
+    if isinstance(b, dict):
+        active = b.get("active")
+        if isinstance(active, list) and active:
+            return list(active)
+        defined = b.get("defined")
+        if isinstance(defined, dict) and defined:
+            return list(defined.keys())
+        return []
+    if isinstance(b, list):
+        return list(b)
+    return []
+
+
 def decide(plan_text: str, state: RuntimeState, cfg: dict,
            now: datetime | None = None, stop_file_exists: bool = False,
            dossier_heartbeats: dict[str, datetime] | None = None,
@@ -281,7 +305,7 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
     active_by_unit = {t.get("Assigned_To") for t in real
                       if t.get("Status") in ("claimed", "in_progress")}
     handled = {a.task_id for a in actions if a.task_id}
-    for unit in cfg["builders"]:
+    for unit in _active_builders(cfg):
         if unit in active_by_unit:
             continue
         eligible = [t for t in real

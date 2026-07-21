@@ -9,11 +9,65 @@
     "telegram"
   ],
   "review_cmd": "claude -p \"/devteam-review\" --model claude-opus-4-8 --dangerously-skip-permissions",
-  "builders": [
-    "GB",
-    "CX",
-    "S5"
-  ],
+  "builders": {
+    "active": [
+      "GB",
+      "CX",
+      "S5"
+    ],
+    "defined": {
+      "GB": {
+        "cli": "grok",
+        "model": null,
+        "auth": {
+          "mode": "default"
+        },
+        "worktree_suffix": "grok",
+        "branch_suffix": "gb",
+        "briefing": "briefings/GROK_BUILD_BRIEFING.md",
+        "auto_loads_ambient_context": false,
+        "usage_provider": null
+      },
+      "CX": {
+        "cli": "codex",
+        "model": "gpt-5.6-sol",
+        "auth": {
+          "mode": "default"
+        },
+        "worktree_suffix": "codex",
+        "branch_suffix": "cx",
+        "briefing": "briefings/CODEX_BRIEFING.md",
+        "auto_loads_ambient_context": false,
+        "usage_provider": "codex"
+      },
+      "S5": {
+        "cli": "claude",
+        "model": "claude-sonnet-5",
+        "auth": {
+          "mode": "default"
+        },
+        "worktree_suffix": "s5",
+        "branch_suffix": "s5",
+        "briefing": "briefings/S5_BUILD_BRIEFING.md",
+        "auto_loads_ambient_context": true,
+        "usage_provider": "claude"
+      },
+      "S5B": {
+        "cli": "claude",
+        "model": "claude-sonnet-5",
+        "auth": {
+          "mode": "config_dir",
+          "value": "~/.claude-s5b"
+        },
+        "worktree_suffix": "s5b",
+        "branch_suffix": "s5b",
+        "briefing": "briefings/S5_BUILD_BRIEFING.md",
+        "auto_loads_ambient_context": true,
+        "usage_provider": null,
+        "_comment": "Defined but NOT active: activate by adding 'S5B' to builders.active AFTER the live CLAUDE_CONFIG_DIR verification in docs/BUILDER_REGISTRY.md. usage_provider stays null until the per-account probe (increment 9) exists."
+      }
+    }
+  },
   "autonomy_level": 2,
   "board": {
     "enabled": true,

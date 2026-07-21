@@ -19,10 +19,43 @@ function repoRoot() {
   return process.env.CLAUDE_PROJECT_DIR || process.cwd();
 }
 
-/** Current unit identity: ORCH (default), GB, CX, or S5 via DEVTEAM_UNIT env. */
+/** Known unit IDs: ORCH + every unit DEFINED in autopilot.json's builders
+ * registry (both shapes: legacy flat array -> that list; registry object ->
+ * Object.keys(defined)). Fail-safe to the legacy roster on any read/parse
+ * error — same per-call readFileSync pattern as controlMode() below. */
+function knownUnits() {
+  const legacy = ['ORCH', 'GB', 'CX', 'S5'];
+  try {
+    const raw = fs.readFileSync(path.join(repoRoot(), 'autopilot.json'), 'utf-8');
+    const b = (JSON.parse(raw) || {}).builders;
+    if (Array.isArray(b)) return ['ORCH', ...b.map((x) => String(x).toUpperCase())];
+    if (b && typeof b === 'object' && b.defined && typeof b.defined === 'object') {
+      return ['ORCH', ...Object.keys(b.defined).map((x) => x.toUpperCase())];
+    }
+    return legacy;
+  } catch (_e) {
+    return legacy;
+  }
+}
+
+/** Current unit identity via DEVTEAM_UNIT env (default ORCH).
+ *
+ * v4.7 SECURITY FIX — this used to silently coerce any UNRECOGNIZED unit to
+ * 'ORCH', i.e. a typo'd or not-yet-registered DEVTEAM_UNIT got UNRESTRICTED
+ * permissions: the exact opposite of what a permission layer should fail
+ * toward. Now: an unset DEVTEAM_UNIT still means ORCH (interactive
+ * sessions), but a SET-yet-unknown one returns null, and the firewall
+ * treats null as deny (exit 2 through its normal verdict path).
+ *
+ * Deliberately NOT a thrown exception: the firewall's outer try/catch
+ * converts any exception into fail-open ("non-fatal hook error (allowing)")
+ * by design, so a throw here would silently re-create the fail-open bug
+ * this fix removes. The deny must flow through the normal return-2 path. */
 function unit() {
-  const u = (process.env.DEVTEAM_UNIT || 'ORCH').toUpperCase();
-  return ['ORCH', 'GB', 'CX', 'S5'].includes(u) ? u : 'ORCH';
+  const raw = process.env.DEVTEAM_UNIT;
+  if (!raw) return 'ORCH';
+  const u = String(raw).toUpperCase();
+  return knownUnits().includes(u) ? u : null;
 }
 
 /** Read hook input JSON from stdin (Claude Code hook contract). */
@@ -200,5 +233,5 @@ function filePathOf(toolInput) {
 module.exports = {
   repoRoot, unit, readStdinJson, relPath, parsePlan, ownedPathsOf, activeTasksFor,
   globPrefix, pathInGlob, pathInAnyGlob, PROTECTED_FOR_BUILDERS, findSecrets,
-  writtenContentOf, filePathOf, EMPTY, ACTIVE, controlMode, activeTaskIdFor,
+  writtenContentOf, filePathOf, EMPTY, ACTIVE, controlMode, activeTaskIdFor, knownUnits,
 };
