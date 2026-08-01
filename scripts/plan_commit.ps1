@@ -3,13 +3,13 @@
     Record a PLAN.md coordination change. The ONLY supported way for a builder
     to claim, transition status, add a Progress_Note, or hand off needs_review.
 .DESCRIPTION
-    Windows mirror of scripts/plan_commit.sh. Targets Windows PowerShell 5.1 —
+    Windows mirror of scripts/plan_commit.sh. Targets Windows PowerShell 5.1 --
     do NOT add "#requires -Version 7".
 
     WHY THIS EXISTS
     The previous instruction was, from the builder's worktree:
         git add PLAN.md && git commit -m "..." && git push . HEAD:<base>
-    That is correct exactly once — on claim, before any code is committed — and
+    That is correct exactly once -- on claim, before any code is committed -- and
     silently wrong every time after. By `needs_review` the builder's HEAD sits
     on top of its own code commits, so `push . HEAD:<base>` pushes the whole
     chain and lands unreviewed code on the integration branch, bypassing the
@@ -40,7 +40,7 @@ if (-not (Test-Path $Plan)) {
     exit 1
 }
 
-# Integration branch from autopilot.json (pack default: main). Fail-safe —
+# Integration branch from autopilot.json (pack default: main). Fail-safe --
 # never an invented branch. Mirrors dispatch.ps1's resolution exactly.
 $BaseBranch = "main"
 $CfgPath = Join-Path $RepoRoot "autopilot.json"
@@ -55,13 +55,13 @@ if (Test-Path $CfgPath) {
 # moved it, committing here would put coordination state on a ref nobody reads.
 $Current = (git -C $RepoRoot rev-parse --abbrev-ref HEAD 2>$null)
 if ($Current -ne $BaseBranch) {
-    Write-Error "[plan_commit] main checkout ($RepoRoot) is on '$Current', expected '$BaseBranch'. Refusing to commit — coordination state must land on the integration branch. Tell ORCH; do not work around this."
+    Write-Error "[plan_commit] main checkout ($RepoRoot) is on '$Current', expected '$BaseBranch'. Refusing to commit -- coordination state must land on the integration branch. Tell ORCH; do not work around this."
     exit 1
 }
 
 git -C $RepoRoot diff --quiet -- PLAN.md
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "[plan_commit] PLAN.md has no uncommitted changes — nothing to record."
+    Write-Host "[plan_commit] PLAN.md has no uncommitted changes -- nothing to record."
     exit 0
 }
 
