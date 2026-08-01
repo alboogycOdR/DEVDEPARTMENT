@@ -48,6 +48,8 @@
     "scripts/instincts.py",
     "scripts/maintenance.py",
     "scripts/notify.py",
+    "scripts/plan_commit.ps1",
+    "scripts/plan_commit.sh",
     "scripts/retro.py",
     "scripts/scheduling.py",
     "scripts/supervisor.py",

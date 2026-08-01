@@ -97,11 +97,22 @@ Builders commit **code** to their task branch only, referencing the task ID in e
 >
 > The rule, stated once, unambiguously:
 > - **Code** → your task branch, in your worktree. Never on `main`. ORCH merges after review.
-> - **PLAN.md coordination commits** (claim, status transitions, Progress_Notes, `needs_review`) → **`main`, immediately**, via `git add PLAN.md && git commit && git push . HEAD:main`. Leaving these on your task branch is the violation: a claim nobody else can see is not a claim, and the blackboard stops being a blackboard.
+> - **PLAN.md coordination commits** (claim, status transitions, Progress_Notes, `needs_review`) → **`main`, immediately**, via `scripts/plan_commit.sh "chore(plan): <what> [UNIT]"` (or `plan_commit.ps1`). Leaving these on your task branch is the violation: a claim nobody else can see is not a claim, and the blackboard stops being a blackboard.
 >
 > Note the asymmetry is deliberate and not a wart: `main` is the *coordination* surface (must be current for everyone) and simultaneously the *integration* surface (must be gated by review). PLAN.md is coordination, code is integration, so they go to different places by different routes. Anyone auditing a builder's behaviour against "never commit to `main`" without that distinction will flag correct behaviour as a violation — which has happened.
 >
-> `control.mode: "strict"` (Wave I) removes this class of ambiguity entirely: builders never write PLAN.md at all, and the supervisor is the sole writer. If this failure mode recurs, that is the structural fix, not more prompt wording.
+**Layer 3a — why `plan_commit` exists, and why the old instruction was withdrawn (2026-08-01).**
+> Until this date the documented procedure was `git add PLAN.md && git commit && git push . HEAD:main`, run from the builder's worktree. **That instruction was wrong, and wrong in the most expensive possible way: it succeeds visibly and fails invisibly.**
+>
+> `git commit` in the worktree lands the PLAN.md commit on the builder's *task branch*, on top of whatever code it has already committed. `git push . HEAD:main` then pushes that entire chain. On the **claim** — the builder's first action, before any code exists — the chain is exactly one PLAN.md commit, so it behaves perfectly. By **`needs_review`**, the chain is every code commit of the session, and the push lands all of it on the integration branch, unreviewed, bypassing the merge gate that the whole three-layer isolation model exists to enforce.
+>
+> Nothing looks wrong when it happens: the PLAN.md content is correct, the push succeeds, the task branch still exists, and `validate_plan.py` stays green. It was observed **three times across two different builder CLIs** in one project before the cause was identified. One builder independently invented a `git commit-tree` workaround, which is evidence that the instruction — not the builder — was the defect.
+>
+> The fix is mechanical rather than prose: `scripts/plan_commit.sh` / `.ps1` commit PLAN.md **in the main checkout** (which has the integration branch checked out) with an explicit pathspec — `git -C <root> commit -m <msg> -- PLAN.md`. The pathspec form bypasses the index entirely, so it commits only PLAN.md's working-tree content and **cannot carry code regardless of what is staged or committed anywhere**. There is no push, no `HEAD`, and no rebase-on-reject dance. Carrying code becomes impossible by construction instead of forbidden by instruction. The scripts resolve the integration branch from `autopilot.json`'s `git.base_branch` (fail-safe default `main`), so they work unmodified on projects that deviate from the pack default.
+>
+> Do not reintroduce the old command, and treat any builder that hand-rolls `commit-tree`, a manual rebase, or a raw `push . HEAD:` as working from a stale briefing.
+>
+> `control.mode: "strict"` (Wave I) removes this class of ambiguity entirely: builders never write PLAN.md at all, and the supervisor is the sole writer. `plan_commit` is the fix for `legacy` mode, where builders still own their own coordination state.
 
 PLAN.md lives on `main`. Builders update it via a **pull → edit own block → commit → push/merge immediately** micro-transaction (or, in the simplest single-machine setup, edit the main-checkout PLAN.md directly since blocks are disjoint — blocks never overlap, so line-level merges are trivially clean). If a merge conflict on PLAN.md ever occurs, the builder resolves only within its own block and never deletes another unit's lines. Frontmatter (`plan_version`, `overall_status`, `orchestrator_notes`) is ORCH-only.
 
