@@ -79,6 +79,17 @@ if git -C "$REPO_ROOT" diff --quiet -- PLAN.md; then
   exit 0
 fi
 
+# Stray-block guard: PLAN.md is committed whole, so an edit outside your own
+# task block silently overwrites another unit's state. plan_guard.py refuses
+# that; it fails OPEN on anything it cannot parse, so it can never strand a
+# builder that has legitimate coordination state to record.
+PY_BIN="$(command -v python3 || command -v python || true)"
+if [ -n "$PY_BIN" ] && [ -f "$REPO_ROOT/scripts/plan_guard.py" ]; then
+  if ! "$PY_BIN" "$REPO_ROOT/scripts/plan_guard.py" --message "$MSG" --repo "$REPO_ROOT"; then
+    exit 1
+  fi
+fi
+
 # Retry around index.lock: two builders can legitimately commit coordination
 # state seconds apart, and that collision is transient, not an error.
 for attempt in 1 2 3 4 5; do

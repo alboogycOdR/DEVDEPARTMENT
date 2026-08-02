@@ -302,6 +302,55 @@ def validate(text: str, control_mode: str = "legacy",
                     f"two builders must never share territory"
                 )
 
+    # Latent territorial collisions between tasks that are not active YET.
+    #
+    # The check above fires only once two tasks are already claimed — by which
+    # point two builders are in the same files and the damage is done. On this
+    # project that gap let four separate collisions through (TASK-006/019 and
+    # TASK-008/019/020 on models/__init__.py among them); each was caught by a
+    # manual pre-dispatch check, which is exactly the kind of vigilance that
+    # works until the one time it doesn't.
+    #
+    # WARNING, not error, and deliberately so: overlapping territory between
+    # two PENDING tasks is perfectly legal as long as they never run together,
+    # and Depends_On sequencing is the normal way to guarantee that. Making it
+    # an error would flag correctly-sequenced plans and train people to ignore
+    # the validator. A warning says "this pair can never be dispatched
+    # concurrently" — which is a fact worth knowing at planning time, not at
+    # dispatch time.
+    def _depends_chain(task_id: str, by_id: dict, seen: set) -> set:
+        """All tasks this one transitively depends on."""
+        if task_id in seen:
+            return seen
+        seen.add(task_id)
+        t = by_id.get(task_id)
+        if t and not t.is_empty("Depends_On"):
+            for dep in re.split(r"[,\s]+", t.get("Depends_On")):
+                if re.match(r"^TASK-\d+$", dep):
+                    _depends_chain(dep, by_id, seen)
+        return seen
+
+    by_id = {t.task_id: t for t in tasks}
+    unfinished = [t for t in tasks if t.get("Status") != "done"]
+    for i in range(len(unfinished)):
+        for j in range(i + 1, len(unfinished)):
+            a, b = unfinished[i], unfinished[j]
+            if a.get("Status") in ACTIVE_STATUSES and b.get("Status") in ACTIVE_STATUSES:
+                continue  # already reported as an error above
+            pa, pb = parse_owned_paths(a.get("Owned_Paths")), parse_owned_paths(b.get("Owned_Paths"))
+            if not (pa and pb and globs_intersect(pa, pb)):
+                continue
+            # Sequenced by a dependency chain in either direction → cannot be
+            # concurrent → nothing to warn about.
+            if b.task_id in _depends_chain(a.task_id, by_id, set()) or \
+               a.task_id in _depends_chain(b.task_id, by_id, set()):
+                continue
+            rep.warn(
+                f"LATENT ISOLATION: {a.task_id} and {b.task_id} have intersecting Owned_Paths "
+                f"and neither depends on the other — they are legal now only because they are not "
+                f"both active. Sequence them with Depends_On, or never dispatch them together"
+            )
+
     return rep
 
 

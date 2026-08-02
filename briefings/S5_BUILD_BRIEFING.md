@@ -59,12 +59,21 @@ PLAN.md is special, and the script is the only way you touch it.
 1. **Sync & orient.** In your worktree (the exact path is given in your dispatch prompt's "Working directory" line — it's namespaced per-project, e.g. `../wt-s5-<project-name>`, not a bare `../wt-s5`): `git fetch && git pull` the base. Read `AGENTS.md`, then `PLAN.md`, fresh from disk. You have no valid memory of previous sessions — the files are the truth. (You will also have CLAUDE.md in context automatically — see the identity note above; it describes ORCH, not you.)
 2. **Resume or select.** First scan PLAN.md for any task with `Assigned_To: S5` and `Status: in_progress` or `claimed`. **If one exists, resume it immediately** — re-read its Owned_Paths files and the last Progress_Note to find the stopping point, then continue on the existing branch (do not re-claim or re-branch). Only if no such task exists: find the highest-priority task with `Assigned_To: S5` and `Status: pending` whose `Depends_On` tasks are all `done`. If none of those either: report "no eligible tasks" and exit. Never touch tasks assigned to `GB`, `CX`, or `TBD`.
 3. **Claim atomically.** Edit PLAN.md in the main checkout, then `scripts/plan_commit.sh "chore(plan): claim TASK-NNN [S5]"` (see "Recording PLAN.md coordination state" above — never a raw push): set `Status: claimed`, `Branch: task/TASK-NNN-s5`, `Started_At`, `Updated_By: S5`, `Updated_At`. Commit: `chore(plan): claim TASK-NNN [S5]`. Create/switch to that branch in your worktree.
-4. **Verify territory — filesystem check required.** Before writing a single line of code, run an explicit filesystem check on every entry in the task's `Owned_Paths`:
+4. **Verify territory — run the pre-flight, paste the output.** Before writing a single line of code:
    ```bash
-   ls -la <owned_path>          # confirm the directory exists (or will be created under it)
-   find <owned_path> -type f    # inventory any existing files you will be working alongside
+   python scripts/preflight_paths.py TASK-NNN
    ```
-   If any file you intend to create/modify falls outside `Owned_Paths` → set `Status: blocked`, `Blocked_Reason: OWNERSHIP_CONFLICT`, note the exact paths needed, commit, stop. **You never edit outside your territory — not one line, not "just an import".** Do not skip this check even if the path looks obvious; the filesystem is the truth.
+   It reads your task's `Owned_Paths` straight from PLAN.md and reports, for each entry, whether it is an existing
+   FILE/DIR/GLOB (with size or contents) or NEW territory you are about to create. **Paste that output verbatim into your
+   first Progress_Note.** That output *is* the c8b9872 filesystem-check evidence — a prose claim that you checked is not,
+   because it cannot be falsified, and this check has been silently skipped three times across three sessions when it
+   depended on remembering to run `ls` by hand.
+   Read it, do not just paste it. A `NEW` line where you expected an existing file, or a `GLOB -> matches nothing`, means
+   your assumption about the codebase was wrong and the approach needs rethinking before you write code, not after.
+   If any file you intend to create/modify falls outside `Owned_Paths` → set `Status: blocked`,
+   `Blocked_Reason: OWNERSHIP_CONFLICT`, note the exact paths needed, commit, stop. **You never edit outside your
+   territory — not one line, not "just an import".** Reaching is always worse than blocking: ORCH can widen a territory in
+   seconds, but an out-of-territory edit costs a full rework cycle no matter how good the code is.
 5. **Implement** against `Spec_References` only. Read the actual spec files; do not infer requirements. Ambiguity → `blocked`, `Blocked_Reason: SPEC_AMBIGUITY`, with the precise question ORCH must answer. Production standard: error handling, input validation, logging, no dead code. Set `Status: in_progress` when work starts.
 6. **Commit discipline.** Small atomic commits on your task branch, Conventional Commits, every message ending `[TASK-NNN]`. Never commit **code** to `main` — that is ORCH's alone, after review. (The one exception is PLAN.md-only coordination commits, which must reach `main` immediately — always via `scripts/plan_commit.sh`, never a raw push; see "Recording PLAN.md coordination state" above. Code: your branch. PLAN.md: `main` via the script. Never the reverse.)
 7. **Test.** Write and run tests for every acceptance criterion. Append command + result summary to `Test_Evidence` with timestamp and `[S5]`.
@@ -72,6 +81,10 @@ PLAN.md is special, and the script is the only way you touch it.
 9. **Hand off.** All criteria ticked + evidence recorded → `Status: needs_review`. **Never set `done`** — that is ORCH's verdict after independent review. Record the PLAN.md update with `scripts/plan_commit.sh` (same as claim, above): `chore(plan): TASK-NNN → needs_review [S5]`.
 10. **Never end silent.** Your last act every session is a PLAN.md state that tells ORCH exactly where things stand: `in_progress` + note, `needs_review` + evidence, or `blocked` + reason.
 11. **Context limit discipline.** If your context window is approaching its limit (~80% used), do not attempt work you cannot finish. Instead: commit all pending code changes to the task branch, write a detailed Progress_Note stating exactly what is done, which file/function is next, and the precise next step — specific enough that a cold reader can continue without asking questions. Commit the PLAN.md update (`Status: in_progress`). Stop cleanly. ORCH will re-dispatch you and Step 2 will resume the task automatically.
+
+**If `plan_commit` refuses your write.** A guard (`scripts/plan_guard.py`) rejects any PLAN.md commit that changes a task block other than the one your commit message names, or that touches the ORCH-owned frontmatter. This is not a bug and it is not something to work around — PLAN.md is committed whole, so an edit outside your own block silently overwrites another unit's state, and in the worst case reverts a live claim to `pending` and lets a second builder take a task someone is already working on. Both of those have actually happened here.
+
+Almost always it means the PLAN.md you edited was **stale**. Run `git -C <repo-root> diff -- PLAN.md` to see exactly what you would have overwritten, `git -C <repo-root> checkout -- PLAN.md` to discard it, then re-read the file fresh and re-apply only your own block's change. If you genuinely believe another block must change, stop and report it — that is ORCH's call.
 
 ## Hard prohibitions
 
