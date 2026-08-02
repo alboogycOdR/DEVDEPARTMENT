@@ -16,7 +16,14 @@
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Builder,  # unit ID (GB/CX/S5/S5B/...) or legacy cli name (grok/codex/claude)
-    [switch]$DryRun
+    [switch]$DryRun,
+    # Launch the builder in its own detached console window (DEFAULT in legacy mode).
+    # Rationale: `& $Cmd ...` runs the builder as a CHILD of whoever ran this script.
+    # When ORCH dispatches from a harness background job, the builder is therefore a
+    # grandchild of that job -- and when the harness reaps the job, the builder dies
+    # with it, mid-write, however healthy it was. Four sessions were lost that way on
+    # 2026-08-02. A detached window is outside that process tree and survives.
+    [switch]$InProcess   # opt back in to the old blocking, same-console behaviour
 )
 
 $ErrorActionPreference = "Stop"
@@ -135,6 +142,42 @@ if (Test-Path $Wt) {
         Write-Error "[dispatch] Inspect it manually, then either remove it or let git reclaim it, and re-run dispatch:"
         Write-Error "[dispatch]   git worktree list   (from $RepoRoot, to see what git actually knows about)"
         exit 1
+    }
+    # Refresh a REUSED worktree to the integration tip.
+    #
+    # Without this, dispatch only ever set the worktree's commit at creation
+    # time, so every later dispatch handed the builder a stale tree -- and,
+    # critically, a stale PLAN.md. That bit on 2026-08-02: wt-s5 sat on the
+    # TASK-027 merge, its local PLAN.md still read "TASK-027: needs_review",
+    # and S5 correctly concluded there was nothing claimable and exited. The
+    # bug was latent for the whole plan because until then every builder's
+    # decision depended on CODE (which its task branch supplied) rather than
+    # on PLAN.md state.
+    #
+    # Two hard guards. Only refresh when the worktree is DETACHED -- a
+    # worktree sitting on task/TASK-NNN-xx holds a live branch and may hold
+    # uncommitted work, and resetting it is precisely how a session's output
+    # gets destroyed. And only when it is CLEAN, so an interrupted builder's
+    # in-flight files survive to its next session (that has already saved one
+    # builder's work this project).
+    $wtBranch = (git -C $Wt rev-parse --abbrev-ref HEAD 2>$null)
+    $wtDirty  = @(git -C $Wt status --porcelain 2>$null | Where-Object { $_ -and $_ -notmatch '\.serena' })
+    if ($wtBranch -eq "HEAD" -and $wtDirty.Count -eq 0) {
+        $BaseBranch = "main"
+        try {
+            $GitCfg = Get-Content "$RepoRoot\autopilot.json" -Raw | ConvertFrom-Json
+            if ($GitCfg.git -and $GitCfg.git.base_branch) { $BaseBranch = $GitCfg.git.base_branch }
+        } catch { $BaseBranch = "main" }
+        $before = (git -C $Wt rev-parse --short HEAD 2>$null)
+        git -C $Wt checkout --detach $BaseBranch --quiet 2>$null
+        $after = (git -C $Wt rev-parse --short HEAD 2>$null)
+        if ($before -ne $after) {
+            Write-Host "[dispatch] Refreshed worktree to $BaseBranch tip ($before -> $after) - PLAN.md is current." -ForegroundColor Cyan
+        }
+    } elseif ($wtBranch -ne "HEAD") {
+        Write-Host "[dispatch] Worktree is on '$wtBranch' - NOT refreshing (resume path; its branch and any in-flight work stay put)." -ForegroundColor Yellow
+    } else {
+        Write-Host "[dispatch] Worktree is detached but DIRTY - NOT refreshing, so uncommitted work survives. Files: $($wtDirty -join '; ')" -ForegroundColor Yellow
     }
 } else {
     Write-Host "[dispatch] Creating worktree at $Wt..." -ForegroundColor Cyan
@@ -288,6 +331,56 @@ if ($ControlMode -eq "strict") {
         Write-Warning "[dispatch] NOTE: no CONTROL block found - PLAN.md state will not change until the next supervisor tick's fallback handling. Log: $LogPath"
     }
     Write-Host "[dispatch] control.mode=strict: PLAN.md is applied by the supervisor's next tick, not here. Run /devteam-status once it has ticked." -ForegroundColor Green
+    exit 0
+} elseif (-not $InProcess) {
+    # ---- Detached-window launch (default in legacy mode) --------------------
+    # Everything the builder needs goes into a generated runner script and a
+    # sibling prompt file. That is deliberate: the prompt is ~2 KB of prose
+    # containing quotes, backticks and newlines, and every attempt to pass it
+    # through a command line gets mangled by one shell layer or another -- S5
+    # once refused a dispatch as prompt injection because embedded quotes
+    # truncated its identity override mid-sentence. A file has no quoting.
+    $LaunchDir = Join-Path $RepoRoot ".devteam\launch"
+    if (-not (Test-Path $LaunchDir)) { New-Item -ItemType Directory -Path $LaunchDir -Force | Out-Null }
+    $Stamp      = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
+    $PromptPath = Join-Path $LaunchDir "$Id-$Stamp.prompt.txt"
+    $RunnerPath = Join-Path $LaunchDir "$Id-$Stamp.run.ps1"
+    $LogPath    = Join-Path $LaunchDir "$Id-$Stamp.log"
+
+    # UTF8 without BOM: PowerShell 5.1 reads a BOM'd .ps1 fine, but the CLIs
+    # choke on a BOM at the head of the prompt text.
+    $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($PromptPath, $Prompt, $Utf8NoBom)
+
+    $RunnerLines = @(
+        '# Auto-generated by scripts/dispatch.ps1 -- one builder session, one window.',
+        '# Safe to delete once the session has ended.',
+        "`$ErrorActionPreference = 'Continue'",
+        "Set-Location -LiteralPath '$Wt'",
+        "`$env:DEVTEAM_UNIT = '$Id'"
+    )
+    if ($AuthDir) { $RunnerLines += "`$env:CLAUDE_CONFIG_DIR = '$AuthDir'" }
+    $RunnerLines += @(
+        "`$Prompt = [System.IO.File]::ReadAllText('$PromptPath')",
+        "Write-Host '[$Id] starting in $Wt' -ForegroundColor Green",
+        # Same invocation shape as the in-process path below -- one flat array of
+        # args with the prompt appended -- so both paths pass arguments identically.
+        "& '$Cmd' (@('$($CmdArgs -join "','")') + @(`$Prompt)) 2>&1 | Tee-Object -FilePath '$LogPath'",
+        "Write-Host ''",
+        "Write-Host '[$Id] session ended. Run /devteam-status in the ORCH session.' -ForegroundColor Cyan",
+        "Write-Host 'This window stays open so the transcript is readable; close it when done.' -ForegroundColor DarkGray"
+    )
+    [System.IO.File]::WriteAllLines($RunnerPath, $RunnerLines, $Utf8NoBom)
+
+    Start-Process -FilePath "powershell.exe" `
+        -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-File", $RunnerPath) `
+        -WorkingDirectory $Wt | Out-Null
+
+    Write-Host "[dispatch] $Id launched in its OWN window - detached from this process tree." -ForegroundColor Green
+    Write-Host "[dispatch]   transcript: $LogPath"
+    Write-Host "[dispatch]   runner:     $RunnerPath"
+    Write-Host "[dispatch] This script does NOT wait. PLAN.md will change as the builder works;" -ForegroundColor Cyan
+    Write-Host "[dispatch] run /devteam-status to follow it. Use -InProcess to block instead." -ForegroundColor Cyan
     exit 0
 } else {
     Push-Location $Wt

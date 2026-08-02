@@ -2,6 +2,14 @@
 # dispatch.sh — launch a builder (grok|codex) headlessly against PLAN.md.
 # Usage: scripts/dispatch.sh grok [--dry-run]
 #
+# NOTE (2026-08-02): the Windows mirror scripts/dispatch.ps1 now launches each builder
+# in its OWN detached console window by default, because running the builder as a child
+# of the dispatching process meant an ORCH harness reaping its background job killed the
+# builder with it -- four sessions were lost that way, twice mid-write. This POSIX script
+# is deliberately NOT changed to match: it is invoked from a real terminal by a human or
+# by the autopilot, neither of which reaps its children mid-run, so blocking in-process is
+# correct here and keeps stdout capture simple. If that ever stops being true, the fix is
+# setsid/nohup into a per-launch log, mirroring the .ps1's .devteam/launch/ layout.
 # Wave I (I1): mode-aware. control.mode=legacy (default) behaves exactly as
 # before — builder scans PLAN.md, claims its own task, edits PLAN.md itself.
 # control.mode=strict flips to claim-at-dispatch (this script claims/resumes

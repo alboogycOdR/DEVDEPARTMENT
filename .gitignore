@@ -5,3 +5,7 @@ __pycache__/
 .devteam/
 AUTOPILOT_LOG.md
 STOP
+
+# Per-launch builder runner scripts, prompts and transcripts (dispatch.ps1 detached-window mode).
+# Transient: one set per builder session, safe to delete once the window has closed.
+.devteam/launch/

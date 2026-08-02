@@ -67,6 +67,22 @@ if ($LASTEXITCODE -eq 0) {
 
 # Retry around index.lock: two builders committing coordination state seconds
 # apart is legitimate, and the collision is transient rather than an error.
+# Stray-block guard: PLAN.md is committed whole, so an edit outside your own
+# task block silently overwrites another unit's state. plan_guard.py refuses
+# that; it fails OPEN on anything it cannot parse, so it can never strand a
+# builder that has legitimate coordination state to record.
+$GuardPath = Join-Path $RepoRoot "scripts\plan_guard.py"
+if (Test-Path $GuardPath) {
+    $PyBin = $null
+    foreach ($c in @("python", "python3", "py")) {
+        if (Get-Command $c -ErrorAction SilentlyContinue) { $PyBin = $c; break }
+    }
+    if ($PyBin) {
+        & $PyBin $GuardPath --message $Message --repo $RepoRoot
+        if ($LASTEXITCODE -ne 0) { exit 1 }
+    }
+}
+
 for ($attempt = 1; $attempt -le 5; $attempt++) {
     git -C $RepoRoot commit -q -m $Message -- PLAN.md 2>$null
     if ($LASTEXITCODE -eq 0) {
