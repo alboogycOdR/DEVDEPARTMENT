@@ -60,7 +60,8 @@ function main() {
   }
 
   // Hard-protected paths first.
-  if (lib.pathInAnyGlob(rel, lib.PROTECTED_FOR_BUILDERS)) {
+  if (lib.pathInAnyGlob(rel, lib.PROTECTED_FOR_BUILDERS) &&
+      !lib.pathInAnyException(rel, lib.PROTECTED_EXCEPTIONS)) {
     process.stderr.write(
       `[territory-firewall] BLOCKED: ${rel} is a protected path (protocol hard prohibition for ${u}). ` +
       `Do not modify it. If you believe you need this file, set your task to blocked ` +
