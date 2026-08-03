@@ -150,8 +150,45 @@ function pathInAnyGlob(filePath, globs) {
 const PROTECTED_FOR_BUILDERS = [
   'specs/**', 'AGENTS.md', 'CLAUDE.md', 'docs/**', 'REVIEW.md',
   '.claude/**', '.codex/**', 'scripts/**', 'hooks/**', 'briefings/**', 'onboard.md',
+  // NOTE: 'scripts/**' is blanket-protected because it holds ORCH's own machinery
+  // (dispatch, plan_commit, validate_plan, preflight). Some projects also keep PRODUCT
+  // scripts there, which are ordinary code a builder may legitimately be asked to fix.
+  // Rather than weaken the glob, grant those specific files per-task via
+  // PROTECTED_EXCEPTIONS below, so the default stays deny and each grant is deliberate
+  // and visible in this file's history.
   'autopilot.json', 'AUTOPILOT_LOG.md', 'deploy/**',
   'INSTINCTS.md', '.devteam/pending_amendments/**',
+];
+
+/**
+ * Exception matcher. Deliberately NOT pathInGlob: that one is prefix-based
+ * (it truncates at the first wildcard and prefix-matches), which cannot express
+ * "these files inside this directory" — exactly the shape an exception needs.
+ * pathInGlob is load-bearing for PROTECTED_FOR_BUILDERS and Owned_Paths, so it
+ * is left alone and exceptions get their own literal-glob matcher instead.
+ */
+function pathMatchesGlobExact(filePath, glob) {
+  const rx = new RegExp(
+    '^' + glob.trim().split('*').map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*') + '$'
+  );
+  return rx.test(filePath.replace(/\/+$/, ''));
+}
+
+function pathInAnyException(filePath, globs) {
+  return globs.some((g) => pathMatchesGlobExact(filePath, g));
+}
+
+const PROTECTED_EXCEPTIONS = [
+  // EMPTY BY DEFAULT. The pack ships the mechanism, not anyone's carve-outs.
+  // Add an entry only when a specific path is (a) matched by a protected glob and
+  // (b) genuinely not ORCH machinery -- e.g. product scripts that happen to live in
+  // scripts/. Grant it per-task, keep the list short, and delete the entry when the
+  // task is done. If this list grows, the protected globs are drawn wrong and should
+  // be re-cut instead of exempted around.
+  //
+  // Example (from the project this came out of, where builders had to fix product
+  // CAPS extractors that live alongside dispatch/plan_commit in scripts/):
+  //   'scripts/extract_caps_taxonomy*.py',
 ];
 
 /**
@@ -232,6 +269,6 @@ function filePathOf(toolInput) {
 
 module.exports = {
   repoRoot, unit, readStdinJson, relPath, parsePlan, ownedPathsOf, activeTasksFor,
-  globPrefix, pathInGlob, pathInAnyGlob, PROTECTED_FOR_BUILDERS, findSecrets,
+  globPrefix, pathInGlob, pathInAnyGlob, PROTECTED_FOR_BUILDERS, PROTECTED_EXCEPTIONS, pathInAnyException, findSecrets,
   writtenContentOf, filePathOf, EMPTY, ACTIVE, controlMode, activeTaskIdFor, knownUnits,
 };
