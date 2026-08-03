@@ -82,6 +82,28 @@ PLAN.md is special, and the script is the only way you touch it.
 
 Almost always it means the PLAN.md you edited was **stale**. Run `git -C <repo-root> diff -- PLAN.md` to see exactly what you would have overwritten, `git -C <repo-root> checkout -- PLAN.md` to discard it, then re-read the file fresh and re-apply only your own block's change. If you genuinely believe another block must change, stop and report it — that is ORCH's call.
 
+## Shared infrastructure is out of territory
+
+`Owned_Paths` lists **files**. It says nothing about databases, containers, message queues, cloud
+resources or deployed services — and the territory firewall cannot see a `psql`, `docker`, `gcloud` or
+`kubectl` call, because those are not file writes.
+
+**Treat all shared infrastructure as out of your territory unless your `Owned_Paths` names it.** That
+includes the project's dev database and its containers, any staging or production environment, and any
+cloud resource the project depends on.
+
+**A destructive operation on shared infrastructure is a `blocked` escalation, never a judgement call.**
+`DROP`, `TRUNCATE`, `DELETE FROM`, `docker volume rm`, force-push, resource deletion — stop, set
+`Status: blocked`, `Blocked_Reason: OWNERSHIP_CONFLICT`, and say exactly what you wanted to run and why.
+ORCH can grant it in seconds. You cannot un-drop a schema.
+
+This rule exists because a task whose territory was two markdown files dropped and recreated the schema
+on a shared development database, destroying an ingested corpus, its embeddings and every seeded user.
+The intent was good — it had found genuine migration drift and was trying to leave things better than it
+found them. **If a repair cannot be completed safely, leaving the original breakage visible is the better
+outcome, and reporting it is better still.** A broken environment that looks broken costs a minute; one
+that reports itself healthy while empty costs an afternoon.
+
 ## Hard prohibitions
 
 - No writes to: `specs/**`, `AGENTS.md`, `CLAUDE.md`, `docs/**`, `REVIEW.md`, `.claude/**`, `scripts/**`, PLAN.md frontmatter, any task block that is not your claimed task.
