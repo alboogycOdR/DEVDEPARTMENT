@@ -88,6 +88,28 @@ pack defaults, and your project may want different values.
   legacy project's first `--apply` leaves it fully tracked for all future
   syncs.
 
+## Verifying merge_special markers (learned the hard way)
+
+`CLAUDE.md`'s merge_special marker went stale once already: the manifest said
+`## Multi-Agent Orchestration`, a string that existed in NEITHER the pack's
+own `CLAUDE.md` nor therefore any project that ever synced from it. Every
+project's CLAUDE.md merge silently reported "cannot merge safely" forever,
+and nothing caught it because every test used a synthetic fixture with a
+marker chosen to match -- none exercised the real pack file against its own
+manifest. `tests/test_sync_from_pack.py::TestManifestMarkersMatchRealFiles`
+now does exactly that on every test run: asserts each configured
+`marker_section` marker actually appears in the pack's own file, and that
+every `merge_special` entry corresponds to a strategy `sync_from_pack.py`
+actually implements (a second, related bug: `AGENTS.md`'s entry described a
+merge that was never wired into `run_sync()`, so it was silently whole-file
+the entire time regardless of what the manifest claimed).
+
+**Whenever a heading in `CLAUDE.md` or `AGENTS.md` changes, or a new
+merge_special entry is added, run the pack's own test suite before shipping**
+-- `TestManifestMarkersMatchRealFiles` will fail loudly if the marker no
+longer matches, instead of failing silently on every downstream project
+forever.
+
 ## For the pack maintainer
 
 When a wave adds a new framework file, **add it to `sync-manifest.json`** in

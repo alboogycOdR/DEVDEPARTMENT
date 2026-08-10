@@ -105,13 +105,8 @@
   "merge_special": {
     "CLAUDE.md": {
       "strategy": "marker_section",
-      "marker": "## Multi-Agent Orchestration",
-      "comment": "Everything above the marker is the project's own; the marker section is replaced with the pack's current CLAUDE.md content (which in the pack IS the whole file)."
-    },
-    "AGENTS.md_when_project_has_own_content": {
-      "strategy": "marker_section",
-      "marker": "## Multi-Agent Coordination Rules",
-      "comment": "Only applies when the project's AGENTS.md has its own content above the marker (detected: file exists AND marker is not at the top). Otherwise AGENTS.md is framework_owned whole-file."
+      "marker": "# CLAUDE.md \u2014 Orchestrator Briefing (ORCH)",
+      "comment": "Everything above the marker (the project's own preamble -- name, stack, conventions) is preserved; the marker section (the pack's whole CLAUDE.md, which starts AT this line -- no pack-side preamble above it) replaces everything from the marker onward. Verified against the pack's real file, not assumed -- see docs/SYNC.md 'Verifying merge_special markers'."
     },
     "autopilot.json": {
       "strategy": "add_only_keys",

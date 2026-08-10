@@ -15,6 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import sync_from_pack as sfp  # noqa: E402
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 
 def make_pack(tmp_path: Path, files: dict[str, str],
               manifest: dict | None = None) -> Path:
@@ -297,3 +299,57 @@ class TestStateAndCli:
         data = (proj / "scripts" / "tool.sh").read_bytes()
         assert b"\r" not in data
         assert data == b"#!/usr/bin/env bash\nset -euo pipefail\n"
+
+
+# =================================================== self-check on the REAL pack ==
+class TestManifestMarkersMatchRealFiles:
+    """v4.8 regression: sync-manifest.json's CLAUDE.md marker was
+    "## Multi-Agent Orchestration" -- a string that existed in NEITHER the
+    pack's own CLAUDE.md NOR any project that synced from it, since the
+    heading had been rewritten at some point and the manifest never updated
+    to match. Every prior test in this file used a SYNTHETIC pack fixture
+    with a marker chosen to match, so nothing caught the real pack drifting
+    away from its own manifest -- exactly the class of bug MISSING_IN_PACK
+    already catches for framework_owned paths, but with no equivalent check
+    for merge_special markers. These run against THIS repo, not a fixture,
+    for that reason."""
+
+    def _manifest(self):
+        return json.loads((REPO_ROOT / sfp.MANIFEST_NAME).read_text(encoding="utf-8"))
+
+    def test_every_marker_section_marker_exists_in_the_real_pack_file(self):
+        m = self._manifest()
+        for name, spec in m.get("merge_special", {}).items():
+            if spec.get("strategy") != "marker_section":
+                continue
+            target = REPO_ROOT / name
+            assert target.exists(), f"{name}: file listed in merge_special does not exist in the pack"
+            text = target.read_text(encoding="utf-8")
+            assert spec["marker"] in text, (
+                f"{name}: configured marker {spec['marker']!r} does not appear in the pack's own "
+                f"file -- every project's merge would silently fail with 'cannot merge safely' "
+                f"forever. This is exactly the bug that shipped once already.")
+
+    def test_no_dead_merge_special_entries(self):
+        """Every merge_special key must correspond to logic sync_from_pack.py
+        actually executes (or a manual_only entry, which is intentionally a
+        report-only stub) -- not aspirational config for a strategy nobody
+        wired up. AGENTS.md_when_project_has_own_content was exactly this:
+        described a marker_section merge that was never implemented, so
+        AGENTS.md was silently whole-file the entire time regardless of what
+        the manifest claimed."""
+        m = self._manifest()
+        implemented_strategies = {"marker_section", "add_only_keys", "manual_only"}
+        for name, spec in m.get("merge_special", {}).items():
+            assert spec.get("strategy") in implemented_strategies, (
+                f"{name}: strategy {spec.get('strategy')!r} is not one sync_from_pack.py "
+                f"implements -- dead config")
+            # marker_section and add_only_keys must correspond to a REAL path
+            # sync_from_pack.py's run_sync() actually branches on by name --
+            # today that means literally "CLAUDE.md" or "autopilot.json".
+            if spec.get("strategy") in ("marker_section", "add_only_keys"):
+                assert name in ("CLAUDE.md", "autopilot.json"), (
+                    f"{name}: has a real strategy configured but run_sync() only ever calls "
+                    f"merge_marker_section/merge_add_only_keys for CLAUDE.md/autopilot.json by "
+                    f"literal name -- this entry would be silently ignored. Either wire it into "
+                    f"run_sync() or remove the entry.")
