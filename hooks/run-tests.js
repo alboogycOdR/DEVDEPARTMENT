@@ -326,6 +326,48 @@ test('unset DEVTEAM_UNIT still means ORCH (interactive sessions unaffected)', ()
   assert.strictEqual(r.code, 0);
 });
 
+
+// -------------------------------------- PROTECTED_EXCEPTIONS (per-task grants) ----
+// The mechanism ships EMPTY by design: the pack provides the lever, not anyone's
+// carve-outs. These tests pin both halves — that the default really is deny, and
+// that the matcher does what the comment claims when a project populates it.
+test('exceptions list ships EMPTY, so scripts/** stays fully protected by default', () => {
+  assert.strictEqual(lib.PROTECTED_EXCEPTIONS.length, 0,
+    'the pack must not ship project-specific carve-outs');
+  const repo = makeTempRepo();
+  const r = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'scripts/anything.py'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(r.code, 2, 'scripts/ must stay blocked with an empty exception list');
+});
+
+test('exception matcher grants a specific file without weakening the glob', () => {
+  // The documented use: product scripts living alongside ORCH machinery.
+  const grants = ['scripts/extract_caps_taxonomy*.py'];
+  assert.ok(lib.pathInAnyException('scripts/extract_caps_taxonomy.py', grants));
+  assert.ok(lib.pathInAnyException('scripts/extract_caps_taxonomy_v2.py', grants));
+  // ORCH machinery in the same directory must NOT be swept in:
+  assert.ok(!lib.pathInAnyException('scripts/dispatch.sh', grants));
+  assert.ok(!lib.pathInAnyException('scripts/plan_commit.sh', grants));
+  assert.ok(!lib.pathInAnyException('scripts/validate_plan.py', grants));
+});
+
+test('exception matcher is literal, not prefix-based like pathInGlob', () => {
+  // This is precisely why it does not reuse pathInGlob: that one truncates at
+  // the first wildcard and prefix-matches, which would grant the whole directory.
+  const grants = ['scripts/product_*.py'];
+  assert.ok(lib.pathInAnyException('scripts/product_a.py', grants));
+  assert.ok(!lib.pathInAnyException('scripts/product_a.py.bak', grants), 'must anchor at the end');
+  assert.ok(!lib.pathInAnyException('scripts/nested/product_a.py', grants),
+    '* must not cross a directory separator');
+  assert.ok(!lib.pathInAnyException('scripts/', grants));
+});
+
+test('exception matcher does not treat regex metacharacters as patterns', () => {
+  assert.ok(!lib.pathInAnyException('scriptsXanything.py', ['scripts.anything.py']),
+    'a dot in the glob must match a literal dot only');
+});
+
 // ---------------------------------------------------- secret-scan E2E ------
 test('secret-scan blocks API key in source write for any unit incl. ORCH', () => {
   const repo = makeTempRepo();
