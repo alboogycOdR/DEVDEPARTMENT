@@ -13,6 +13,7 @@ git would test nothing that matters.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -95,10 +96,13 @@ def repo(tmp_path: Path) -> Path:
     return r
 
 
-def run_guard(repo: Path, message: str):
+def run_guard(repo: Path, message: str, env: dict | None = None):
+    full_env = dict(os.environ)
+    if env:
+        full_env.update(env)
     return subprocess.run(
         [sys.executable, str(GUARD), "--message", message, "--repo", str(repo)],
-        capture_output=True, text=True, timeout=30)
+        capture_output=True, text=True, timeout=30, env=full_env)
 
 
 class TestAllows:
@@ -185,12 +189,36 @@ class TestFailsOpen:
         assert r.returncode == 0
 
     def test_not_a_git_repo_allows(self, tmp_path):
+        """Deterministic regression note (v4.8): `git diff` searches UPWARD
+        for a repository by default, so "not a git repo" is only reliably
+        reproducible by capping that search explicitly -- on a machine where
+        some ancestor of tmp_path happens to itself be inside a git working
+        tree (a dotfiles repo, a synced folder, an IDE workspace root -- all
+        observed on real developer machines), plain-old plan_guard.py would
+        find THAT unrelated repo, diff nothing against it, and return 0 via
+        the "no touched lines" path rather than the exception/"allowing"
+        path -- equally safe (never blocks), but a different code path, so
+        asserting the specific stderr text was environment-dependent and
+        flaky. GIT_CEILING_DIRECTORIES pins the boundary so this test means
+        the same thing everywhere: git must not search above tmp_path."""
+        d = tmp_path / "nogit"
+        d.mkdir()
+        (d / "PLAN.md").write_text(render(), encoding="utf-8", newline="\n")
+        r = run_guard(d, "chore(plan): claim TASK-011 [GB]",
+                      env={"GIT_CEILING_DIRECTORIES": str(tmp_path)})
+        assert r.returncode == 0
+        assert "allowing" in r.stderr.lower(), r.stderr
+
+    def test_not_a_git_repo_allows_regardless_of_which_code_path(self, tmp_path):
+        """The actual safety contract, without pinning HOW it's satisfied:
+        whatever ancestor-repo situation the real machine has, plan_guard
+        must return 0 (never block a coordination commit) when it cannot
+        properly identify the intended repo."""
         d = tmp_path / "nogit"
         d.mkdir()
         (d / "PLAN.md").write_text(render(), encoding="utf-8", newline="\n")
         r = run_guard(d, "chore(plan): claim TASK-011 [GB]")
-        assert r.returncode == 0
-        assert "allowing" in r.stderr.lower()
+        assert r.returncode == 0, r.stderr
 
     def test_unparseable_plan_still_allows_when_no_blocks_found(self, repo):
         (repo / "PLAN.md").write_text("not a plan at all\n", encoding="utf-8", newline="\n")

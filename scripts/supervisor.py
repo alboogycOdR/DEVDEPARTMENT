@@ -48,25 +48,42 @@ UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 import os as _os
 
-# Platform-aware dispatch defaults, generated from the builder registry
-# (v4.7): argv is now the unit ID — dispatch.sh/.ps1 keep a legacy cli-name
-# shim, but generation uses IDs so same-cli units (S5/S5B) stay distinct.
-# Overridable per-project in autopilot.json as always; the hand-written
-# 3-unit fallback applies only if the registry is unavailable entirely.
-def _dispatch_defaults() -> dict:
+# Dispatch command template. v4.8 FIX: this used to be a fixed dict
+# (_DISPATCH_DEFAULTS) built ONCE at module-import time by reading the
+# builder registry from "." -- the process's cwd at the moment `import
+# supervisor` happened to run, which has NO relationship to the actual repo
+# any given execute() call operates on. Found live: a project's own real
+# autopilot.json (read from the test runner's cwd, not the fixture repo
+# under test) produced a dispatch_cmd map missing an active unit, and
+# DISPATCH raised KeyError instead of launching. The string TEMPLATE never
+# actually needed a registry read at all -- it is the same shape for every
+# unit ID on a given OS, and dispatch.sh/.ps1 do their own registry
+# resolution internally (v4.7) once launched. So: compute it fresh, per
+# call, scoped to the ACTUAL repo -- no import-time cwd dependency, no
+# frozen snapshot that can go stale or belong to the wrong project.
+def _dispatch_cmd_template() -> str:
     if _os.name == "nt":
-        tmpl = "powershell -ExecutionPolicy Bypass -File scripts\\dispatch.ps1 -Builder {unit}"
-    else:
-        tmpl = "bash scripts/dispatch.sh {unit}"
-    try:
-        import builder_registry as _br
-        units = list(_br.load_registry(".")["defined"].keys())
-    except Exception:
-        units = ["GB", "CX", "S5"]
-    return {u: tmpl.format(unit=u) for u in units}
+        return "powershell -ExecutionPolicy Bypass -File scripts\\dispatch.ps1 -Builder {unit}"
+    return "bash scripts/dispatch.sh {unit}"
 
 
-_DISPATCH_DEFAULTS = _dispatch_defaults()
+def dispatch_cmd_for(unit: str, cfg: dict) -> str:
+    """The command to launch `unit`. Prefers an explicit per-unit override in
+    cfg["dispatch_cmd"] (a project may legitimately want one); otherwise
+    computes the template fresh. No registry read, no cwd dependency --
+    dispatch.sh/.ps1 resolve the unit themselves once launched (v4.7)."""
+    explicit = (cfg.get("dispatch_cmd") or {}).get(unit)
+    if explicit:
+        return explicit
+    return _dispatch_cmd_template().format(unit=unit)
+
+
+# Kept for backward compatibility with anything reading DEFAULT_CONFIG
+# directly (docs, external tooling) -- the LEGACY 3-unit set only, computed
+# with zero registry/cwd dependency. Never authoritative: dispatch_cmd_for()
+# above is what execute() actually calls, and it works for any unit ID,
+# registered or not, on the fly.
+_DISPATCH_DEFAULTS = {u: _dispatch_cmd_template().format(unit=u) for u in ("GB", "CX", "S5")}
 
 DEFAULT_CONFIG = {
     "interval_seconds": 300,
@@ -489,7 +506,7 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
                     if t.task_id == a.task_id and t.get("Status") == "in_progress":
                         state.rework_counts[a.task_id] = state.rework_counts.get(a.task_id, 0) + 1
         elif a.kind == "DISPATCH" and a.unit:
-            proc = launch_shell_bg(cfg["dispatch_cmd"][a.unit], repo)
+            proc = launch_shell_bg(dispatch_cmd_for(a.unit, cfg), repo)
             inflight[a.unit] = (proc, a.task_id or "")
             state.busy_units[a.unit] = a.task_id or ""
             state.dispatch_log = budget.record_dispatch(state.dispatch_log, now)
@@ -510,7 +527,7 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
             # task, re-reads the last Progress_Note, and continues on the
             # existing branch. Resetting here would create the ghost-task
             # failure mode the protocol explicitly warns about.
-            proc = launch_shell_bg(cfg["dispatch_cmd"][a.unit], repo)
+            proc = launch_shell_bg(dispatch_cmd_for(a.unit, cfg), repo)
             inflight[a.unit] = (proc, a.task_id or "")
     return not halt
 

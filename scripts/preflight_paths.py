@@ -111,11 +111,11 @@ def main() -> int:
 
     plan = root / "PLAN.md"
     if not plan.is_file():
-        raise SystemExit(f"[preflight] no PLAN.md at {root} — pass --repo")
+        raise SystemExit(f"[preflight] no PLAN.md at {root.as_posix()} — pass --repo")
 
     entries = owned_paths_for(plan.read_text(encoding="utf-8"), task_id)
 
-    print(f"[preflight] {task_id} Owned_Paths inspected in {root}")
+    print(f"[preflight] {task_id} Owned_Paths inspected in {root.as_posix()}")
     print(f"[preflight] {len(entries)} entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.")
     for entry in entries:
         for line in describe(root, entry):

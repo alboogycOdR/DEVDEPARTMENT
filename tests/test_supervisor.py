@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from supervisor import decide, RuntimeState, DEFAULT_CONFIG  # noqa: E402
+import supervisor as sup  # noqa: E402
 from team_stats import compute  # noqa: E402
 
 NOW = datetime(2026, 7, 12, 20, 0, 0, tzinfo=timezone.utc)
@@ -203,3 +204,84 @@ def test_triage_unblock_uses_judgment_model(monkeypatch):
             DEFAULT_CONFIG, RuntimeState(), pathlib.Path("/tmp"), dry_run=False)
     assert calls and "claude-opus-4-8" in calls[0]
     assert "claude-sonnet-5" not in calls[0]
+
+
+class TestDispatchCmdCwdIndependence:
+    """v4.8 regression test for a real bug found live: dispatch_cmd used to
+    be frozen at `import supervisor` time by reading the builder registry
+    from the process's cwd -- completely disconnected from the actual repo
+    any given execute() call operates on. On a real machine, running pytest
+    (or anything else that imports supervisor) from a DIFFERENT project than
+    the one under test/operation produced a dispatch_cmd map missing an
+    active unit, and DISPATCH raised KeyError instead of launching.
+    """
+
+    def test_dispatch_cmd_for_works_for_any_unit_with_no_cfg_override(self):
+        cmd = sup.dispatch_cmd_for("CX", {})
+        assert "CX" in cmd
+        assert "dispatch." in cmd  # dispatch.sh or dispatch.ps1
+
+    def test_dispatch_cmd_for_works_for_a_unit_not_in_the_legacy_three(self):
+        """The actual failure mode: a unit whose ID was never baked into any
+        fixed dict still gets a correct command computed on the fly."""
+        cmd = sup.dispatch_cmd_for("S5B", {})
+        assert "S5B" in cmd
+
+    def test_explicit_cfg_override_is_honored(self):
+        cfg = {"dispatch_cmd": {"CX": "custom-launcher CX"}}
+        assert sup.dispatch_cmd_for("CX", cfg) == "custom-launcher CX"
+
+    def test_missing_unit_in_cfg_falls_through_to_computed_template(self):
+        """The exact bug: cfg["dispatch_cmd"] present but missing an entry
+        for the unit being dispatched must NOT raise KeyError."""
+        cfg = {"dispatch_cmd": {"GB": "only GB is overridden"}}
+        cmd = sup.dispatch_cmd_for("CX", cfg)
+        assert "CX" in cmd
+        assert cmd != "only GB is overridden"
+
+    def test_result_is_independent_of_process_cwd(self, tmp_path, monkeypatch):
+        """The literal regression: chdir to a directory that is NOT the repo
+        being operated on (simulating a real-world 'pytest run from a
+        different project' or 'supervisor imported from an unrelated cwd'
+        scenario) and confirm dispatch_cmd_for still produces a correct
+        command for a unit that would have been ABSENT from the old
+        import-time-frozen dict if that unrelated directory's own registry
+        happened not to define it."""
+        unrelated = tmp_path / "some_other_project"
+        unrelated.mkdir()
+        (unrelated / "autopilot.json").write_text(
+            '{"builders": {"active": ["GB"], "defined": {"GB": '
+            '{"cli": "grok", "worktree_suffix": "grok", "branch_suffix": "gb", '
+            '"briefing": "briefings/GROK_BUILD_BRIEFING.md"}}}}',
+            encoding="utf-8")
+        monkeypatch.chdir(unrelated)
+        # "CX" is not defined in THIS unrelated cwd's registry at all --
+        # the old design would have silently produced a dict without it.
+        cmd = sup.dispatch_cmd_for("CX", {})
+        assert "CX" in cmd
+
+    def test_dispatch_action_does_not_raise_for_a_unit_absent_from_cfg(self, tmp_path, monkeypatch):
+        """End-to-end through execute(): a DISPATCH action for a unit with no
+        cfg["dispatch_cmd"] entry must launch, not KeyError."""
+        launched = []
+
+        class _Proc:
+            def poll(self):
+                return None
+
+        def fake_popen(cmd, shell=True, cwd=None):
+            launched.append(cmd)
+            return _Proc()
+
+        monkeypatch.setattr(sup.subprocess, "Popen", fake_popen)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        cfg = {**DEFAULT_CONFIG, "dispatch_cmd": {"GB": "only GB here"}}  # CX deliberately absent
+        inflight: dict = {}
+        sup.execute(
+            [sup.Action("DISPATCH", "CX idle; dispatching", unit="CX", task_id="TASK-002")],
+            cfg, sup.RuntimeState(), repo, dry_run=False,
+            now=datetime(2026, 8, 5, tzinfo=timezone.utc), inflight=inflight,
+        )
+        assert len(launched) == 1
+        assert "CX" in launched[0]

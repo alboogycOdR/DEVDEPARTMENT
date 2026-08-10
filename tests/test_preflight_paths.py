@@ -109,11 +109,15 @@ class TestClassification:
 
     def test_output_paths_use_forward_slashes(self, proj):
         """The evidence is pasted into PLAN.md; a backslash path has already
-        survived a round trip as a literal tab (TASK-024)."""
+        survived a round trip as a literal tab (TASK-024). This test only
+        proves anything on Windows (or with a Windows-shaped tmp_path) --
+        v4.8 fix found live: the HEADER line ("Owned_Paths inspected in
+        {root}") interpolated a raw Path object without .as_posix(), leaking
+        backslashes on Windows even though every per-entry describe() line
+        was already correctly normalized. Assert on both, explicitly."""
         (proj / "PLAN.md").write_text(plan_with("lib/nope/deeper/x.dart"), encoding="utf-8")
         r = run(proj)
-        assert "\\" not in r.stdout
-
+        assert "\\" not in r.stdout, r.stdout
 
 class TestContract:
     def test_prints_the_paste_instruction(self, proj):
