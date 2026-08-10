@@ -2,6 +2,7 @@
   "manifest_version": 1,
   "comment": "Declares pack-vs-project file ownership for scripts/sync_from_pack.py. framework_owned: the pack is the source of truth; sync updates these (with local-modification conflict detection via .devteam/sync_state.json). project_owned: the project's own state; sync NEVER touches these. merge_special: files that are part-pack part-project, handled by dedicated merge logic, never whole-file overwritten.",
   "framework_owned": [
+    ".claude/agents/devteam-builder.md",
     ".claude/commands/devteam-autopilot.md",
     ".claude/commands/devteam-decompose.md",
     ".claude/commands/devteam-dispatch.md",
@@ -15,6 +16,7 @@
     "briefings/S5_BUILD_BRIEFING.md",
     "deploy/ecosystem.config.js",
     "docs/AUTOPILOT.md",
+    "docs/BACKLOG.md",
     "docs/BOARD.md",
     "docs/BUILDER_REGISTRY.md",
     "docs/CONTROL.md",

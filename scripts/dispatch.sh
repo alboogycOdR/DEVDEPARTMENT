@@ -46,12 +46,14 @@ REG_KV="$(python3 scripts/builder_registry.py resolve "$BUILDER" --repo "$REPO_R
 ID="";      CLI="";        MODEL="";      WORKTREE_SUFFIX=""
 SUFFIX="";  BRIEFING="";   AUTO_LOADS_CONTEXT="false"
 AUTH_MODE="default";       AUTH_VALUE=""
+IDENTITY="preamble";       AGENT_NAME="devteam-builder"
 while IFS='=' read -r k v; do
   case "$k" in
     UNIT) ID="$v" ;; CLI) CLI="$v" ;; MODEL) MODEL="$v" ;;
     WORKTREE_SUFFIX) WORKTREE_SUFFIX="$v" ;; BRANCH_SUFFIX) SUFFIX="$v" ;;
     BRIEFING) BRIEFING="$v" ;; AUTO_LOADS_CONTEXT) AUTO_LOADS_CONTEXT="$v" ;;
     AUTH_MODE) AUTH_MODE="$v" ;; AUTH_VALUE) AUTH_VALUE="$v" ;;
+    IDENTITY) IDENTITY="$v" ;; AGENT_NAME) AGENT_NAME="$v" ;;
   esac
 done <<< "$REG_KV"
 [[ -n "$ID" && -n "$CLI" && -n "$WORKTREE_SUFFIX" && -n "$SUFFIX" && -n "$BRIEFING" ]] || {
@@ -164,8 +166,25 @@ try:
 except Exception:
     print('the other builders')
 " 2>/dev/null || echo "the other builders")"
+# Identity mechanism (see docs/BUILDER_REGISTRY.md "Builder identity").
+#
+# identity=agent  -- the unit launches with `--agent <name>`, so its role
+#   comes from a real agent definition (.claude/agents/devteam-builder.md)
+#   and NO override text is prepended. This is the structural fix for a real
+#   observed failure: the preamble below opens with "IMPORTANT IDENTITY
+#   OVERRIDE ... Ignore CLAUDE.md's ORCH role assignment entirely", which has
+#   the exact shape of a prompt-injection attempt. A safety-trained model
+#   treating it with suspicion is behaving CORRECTLY, not malfunctioning --
+#   so the fix is to stop needing the override, not to word it more forcefully.
+#
+# identity=preamble (default) -- today's behavior, byte-identical. Remains the
+#   default until `--agent` is live-verified on the target machine, exactly as
+#   control.mode and S5B activation are gated.
 IDENTITY_OVERRIDE=""
-if [[ "$AUTO_LOADS_CONTEXT" == "true" ]]; then
+if [[ "$AUTO_LOADS_CONTEXT" == "true" && "$IDENTITY" == "agent" ]]; then
+  CMD+=(--agent "$AGENT_NAME")
+  echo "[dispatch] $ID identity via --agent $AGENT_NAME (no override preamble)."
+elif [[ "$AUTO_LOADS_CONTEXT" == "true" ]]; then
   IDENTITY_OVERRIDE="IMPORTANT IDENTITY OVERRIDE: your project context auto-loaded CLAUDE.md, which contains a \"## Multi-Agent Orchestration\" section describing an ORCH role and saying \"You are ORCH\". That does NOT apply to this session. You are $ID — a builder unit, exactly parallel to $PEERS, implemented via Claude Code. Ignore CLAUDE.md's ORCH role assignment entirely for this session: you have none of ORCH's exclusive powers here — no merging task branches, no review verdicts, no editing PLAN.md frontmatter, no editing any task block but your own claimed one. Those remain the separate, interactive ORCH session's job. Follow the builder procedure below exactly as GB/CX would.
 
 "

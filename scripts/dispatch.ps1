@@ -65,6 +65,8 @@ $Id = $Reg["UNIT"]; $Cli = $Reg["CLI"]; $Model = $Reg["MODEL"]
 $Suffix = $Reg["BRANCH_SUFFIX"]; $Briefing = $Reg["BRIEFING"]
 $AutoLoadsContext = ($Reg["AUTO_LOADS_CONTEXT"] -eq "true")
 $AuthMode = $Reg["AUTH_MODE"]; $AuthValue = $Reg["AUTH_VALUE"]
+$Identity = $Reg["IDENTITY"]; if (-not $Identity) { $Identity = "preamble" }
+$AgentName = $Reg["AGENT_NAME"]; if (-not $AgentName) { $AgentName = "devteam-builder" }
 if (-not $Id -or -not $Cli -or -not $Reg["WORKTREE_SUFFIX"] -or -not $Suffix -or -not $Briefing) {
     Write-Error "[dispatch] Registry resolution for '$Builder' returned an incomplete entry - refusing to dispatch."
     exit 1
@@ -232,6 +234,14 @@ $Fence = '```'
 # identity. GB/CX don't have this problem (grok/codex don't auto-load
 # CLAUDE.md), so this prefix is S5-only.
 $IdentityOverride = ""
+# Identity mechanism (see docs/BUILDER_REGISTRY.md "Builder identity").
+# identity=agent  -> role comes from .claude/agents/<name>.md via --agent, and
+#   NO override preamble is prepended. Structural fix: the preamble opens with
+#   "IMPORTANT IDENTITY OVERRIDE ... Ignore CLAUDE.md's ORCH role assignment",
+#   which has the shape of a prompt-injection attempt -- a safety-trained model
+#   treating it with suspicion is behaving correctly, so the fix is to stop
+#   needing it rather than to word it harder.
+# identity=preamble (default) -> today's behavior, byte-identical.
 $Peers = & $Py -c "
 import sys; sys.path.insert(0, 'scripts')
 import builder_registry as br
@@ -242,7 +252,10 @@ except Exception:
     print('the other builders')
 " 2>$null
 if (-not $Peers) { $Peers = "the other builders" }
-if ($AutoLoadsContext) {
+if ($AutoLoadsContext -and $Identity -eq "agent") {
+    $CmdArgs += @("--agent", $AgentName)
+    Write-Host "[dispatch] $Id identity via --agent $AgentName (no override preamble)." -ForegroundColor Cyan
+} elseif ($AutoLoadsContext) {
     $IdentityOverride = "IMPORTANT IDENTITY OVERRIDE: your project context auto-loaded CLAUDE.md, which contains a `"## Multi-Agent Orchestration`" section describing an ORCH role and saying `"You are ORCH`". That does NOT apply to this session. You are $Id -- a builder unit, exactly parallel to $Peers, implemented via Claude Code. Ignore CLAUDE.md's ORCH role assignment entirely for this session: you have none of ORCH's exclusive powers here -- no merging task branches, no review verdicts, no editing PLAN.md frontmatter, no editing any task block but your own claimed one. Those remain the separate, interactive ORCH session's job. Follow the builder procedure below exactly as GB/CX would.`n`n"
 }
 

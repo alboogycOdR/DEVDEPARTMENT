@@ -153,3 +153,36 @@ class TestCli:
         write_cfg(tmp_path, ["CX", "GB"])
         assert br._main(["active", "--repo", str(tmp_path)]) == 0
         assert capsys.readouterr().out.strip() == "CX GB"
+
+
+class TestIdentityFields:
+    """v4.8 identity mechanism — see docs/BUILDER_REGISTRY.md."""
+
+    def test_defaults_to_preamble_and_devteam_builder(self, tmp_path):
+        reg = br.load_registry(write_cfg(tmp_path, ["GB", "CX", "S5"]))
+        assert reg["defined"]["S5"]["identity"] == "preamble"
+        assert reg["defined"]["S5"]["agent_name"] == "devteam-builder"
+
+    def test_agent_identity_is_preserved(self, tmp_path):
+        e = dict(br.LEGACY_DEFINITIONS["S5"]); e["identity"] = "agent"
+        reg = br.load_registry(write_cfg(tmp_path, {"active": ["S5"], "defined": {"S5": e}}))
+        assert reg["defined"]["S5"]["identity"] == "agent"
+
+    def test_custom_agent_name_is_preserved(self, tmp_path):
+        e = dict(br.LEGACY_DEFINITIONS["S5"])
+        e["identity"] = "agent"; e["agent_name"] = "my-builder"
+        reg = br.load_registry(write_cfg(tmp_path, {"active": ["S5"], "defined": {"S5": e}}))
+        assert reg["defined"]["S5"]["agent_name"] == "my-builder"
+
+    def test_unknown_identity_falls_back_to_preamble_not_an_error(self, tmp_path):
+        """identity is not a safety boundary (the firewall is), so a typo
+        must not strand a builder — it degrades to today's behavior."""
+        e = dict(br.LEGACY_DEFINITIONS["S5"]); e["identity"] = "typo"
+        reg = br.load_registry(write_cfg(tmp_path, {"active": ["S5"], "defined": {"S5": e}}))
+        assert reg["defined"]["S5"]["identity"] == "preamble"
+
+    def test_cli_emits_identity_fields(self, tmp_path, capsys):
+        write_cfg(tmp_path, ["GB", "CX", "S5"])
+        br._main(["resolve", "S5", "--repo", str(tmp_path)])
+        out = capsys.readouterr().out
+        assert "IDENTITY=preamble" in out and "AGENT_NAME=devteam-builder" in out

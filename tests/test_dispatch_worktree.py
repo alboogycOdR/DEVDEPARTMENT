@@ -229,3 +229,48 @@ class TestRegistryDrivenDispatch:
         proj = make_project(tmp_path, "projectL", REPO_ROOT)
         result = run_dispatch(proj)  # grok, legacy argv, flat-array config
         assert "wt-grok-projectL" in result.stdout, result.stdout + result.stderr
+
+
+class TestBuilderIdentity:
+    """v4.8: identity=agent replaces the injection-shaped IDENTITY OVERRIDE
+    preamble with a real agent definition via `--agent`. Default stays
+    `preamble` (byte-identical to v4.7) until --agent is live-verified."""
+
+    def _proj(self, tmp_path, name, identity=None):
+        import json, copy
+        reg = copy.deepcopy(S5B_REGISTRY)
+        if identity:
+            reg["builders"]["defined"]["S5"]["identity"] = identity
+        proj = make_project(tmp_path, name, REPO_ROOT)
+        (proj / "autopilot.json").write_text(json.dumps(reg), encoding="utf-8", newline="\n")
+        return proj
+
+    def test_default_is_preamble_and_unchanged(self, tmp_path):
+        proj = self._proj(tmp_path, "projectI")
+        r = run_dispatch(proj, builder="S5")
+        assert "IDENTITY OVERRIDE" in r.stdout, r.stdout + r.stderr
+        assert "--agent" not in r.stdout
+
+    def test_agent_mode_uses_agent_flag_and_drops_the_preamble(self, tmp_path):
+        proj = self._proj(tmp_path, "projectI", identity="agent")
+        r = run_dispatch(proj, builder="S5")
+        assert "--agent devteam-builder" in r.stdout, r.stdout + r.stderr
+        assert "IDENTITY OVERRIDE" not in r.stdout, "the whole point: no injection-shaped preamble"
+
+    def test_unknown_identity_value_falls_back_to_preamble(self, tmp_path):
+        proj = self._proj(tmp_path, "projectI", identity="nonsense")
+        r = run_dispatch(proj, builder="S5")
+        assert "IDENTITY OVERRIDE" in r.stdout
+        assert "--agent" not in r.stdout
+
+    def test_non_claude_units_are_unaffected_by_agent_mode(self, tmp_path):
+        """GB/CX don't auto-load CLAUDE.md, so identity is moot for them and
+        --agent (a claude-only flag) must never leak onto their command."""
+        import json, copy
+        reg = copy.deepcopy(S5B_REGISTRY)
+        reg["builders"]["defined"]["GB"]["identity"] = "agent"
+        proj = make_project(tmp_path, "projectI", REPO_ROOT)
+        (proj / "autopilot.json").write_text(json.dumps(reg), encoding="utf-8", newline="\n")
+        r = run_dispatch(proj, builder="GB")
+        assert "--agent" not in r.stdout
+        assert "IDENTITY OVERRIDE" not in r.stdout

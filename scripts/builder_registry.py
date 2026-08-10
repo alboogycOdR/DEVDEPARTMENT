@@ -45,6 +45,14 @@ Entry schema (per unit):
   usage_provider            budget/usage bucket: "codex", "claude",
                             compound "claude:<tag>" for a separate login's
                             independent window, or None (never usage-gated)
+  identity                  how a claude-CLI unit is told who it is:
+                            "preamble" (default) prepends the IDENTITY
+                            OVERRIDE text to the prompt; "agent" launches
+                            with `--agent <agent_name>` so the role comes
+                            from a real agent definition instead. See
+                            docs/BUILDER_REGISTRY.md "Builder identity".
+  agent_name                agent to use when identity == "agent"
+                            (default "devteam-builder")
 """
 from __future__ import annotations
 
@@ -112,6 +120,15 @@ def _normalize_entry(unit: str, entry: dict) -> dict:
     out.setdefault("auth", {"mode": "default"})
     out.setdefault("auto_loads_ambient_context", entry.get("cli") == "claude")
     out.setdefault("usage_provider", None)
+    # Identity mechanism for claude-CLI units. Default "preamble" = today's
+    # behavior exactly; "agent" is opt-in per unit after the live
+    # verification in docs/BUILDER_REGISTRY.md, mirroring how control.mode
+    # and S5B activation are gated. An unknown value falls back to
+    # "preamble" rather than failing: identity is not a safety boundary
+    # (the firewall is), and a typo here should not strand a builder.
+    if out.get("identity") not in ("preamble", "agent"):
+        out["identity"] = "preamble"
+    out.setdefault("agent_name", "devteam-builder")
     auth = out["auth"]
     if not isinstance(auth, dict) or auth.get("mode") not in ("default", "config_dir"):
         raise RegistryError(
@@ -132,8 +149,12 @@ def load_registry(repo: str | Path = ".") -> dict:
     a broken entry: a project that wrote a registry and got an entry wrong
     should hear about it loudly, not have that entry silently vanish.
     """
+    # Normalized so the legacy shape yields IDENTICAL entry shapes to the
+    # registry shape — otherwise a consumer sees different fields depending
+    # on which config shape the project happens to have, which is exactly
+    # the class of drift this module exists to remove.
     legacy = {"active": list(LEGACY_DEFINITIONS.keys()),
-              "defined": {u: dict(e) for u, e in LEGACY_DEFINITIONS.items()}}
+              "defined": {u: _normalize_entry(u, e) for u, e in LEGACY_DEFINITIONS.items()}}
     try:
         cfg = json.loads((Path(repo) / "autopilot.json").read_text(encoding="utf-8"))
     except (OSError, FileNotFoundError, json.JSONDecodeError):
@@ -147,7 +168,7 @@ def load_registry(repo: str | Path = ".") -> dict:
         # resolve() will fail closed on them, matching the old behavior
         # where dispatch.sh would reject an unknown builder argv.
         return {"active": [str(u) for u in builders],
-                "defined": {u: dict(LEGACY_DEFINITIONS[u])
+                "defined": {u: _normalize_entry(u, LEGACY_DEFINITIONS[u])
                             for u in builders if u in LEGACY_DEFINITIONS}}
     if isinstance(builders, dict):
         defined_raw = builders.get("defined")
@@ -232,6 +253,8 @@ def _main(argv: list[str]) -> int:
         print(f"AUTO_LOADS_CONTEXT={'true' if e.get('auto_loads_ambient_context') else 'false'}")
         print(f"AUTH_MODE={auth.get('mode', 'default')}")
         print(f"AUTH_VALUE={auth.get('value', '')}")
+        print(f"IDENTITY={e.get('identity', 'preamble')}")
+        print(f"AGENT_NAME={e.get('agent_name', 'devteam-builder')}")
         return 0
     except RegistryError as exc:
         print(f"builder_registry: {exc}", file=__import__("sys").stderr)
