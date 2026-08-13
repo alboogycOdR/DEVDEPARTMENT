@@ -58,7 +58,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-003
 **Title:** ATLAS A2 — episodic indexer (dossiers/REVIEW/INSTINCTS/RETRO → FTS)
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §1 (Episodic indexer), §3, §6 (A2), R4
@@ -66,22 +66,30 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-002
 **Description:** Build `scripts/atlas_episodes.py`: parses `dossiers/`, `REVIEW.md`, `INSTINCTS.md`, `RETRO-*.md` into the `episodes` table (kind, ref, ts, unit, indexed_hash, body_fts) created by TASK-002's schema. Pure parsing, zero LLM (R4). Reuses `validate_plan.parse_tasks` and the existing REVIEW.md row grammar — never write a second parser for a format that already has one (§1). Exposes `register(subparsers)` consumed by the TASK-002 façade to provide `atlas.py episodes [--reindex]` (§3). Do NOT edit `scripts/atlas.py`/`atlas_core.py` — core `query` already reads the episodes table; your job is only to populate it. Incremental via `indexed_hash`; `--reindex` rebuilds.
 **Acceptance_Criteria:**
-- [ ] `atlas.py episodes [--reindex]` works via the façade's registration hook, contract string per §3, without any edit to TASK-002's files
-- [ ] Parses dossiers/, REVIEW.md, INSTINCTS.md, RETRO-*.md into the episodes table with FTS (§1)
-- [ ] Reuses `validate_plan.parse_tasks` and the existing REVIEW.md row grammar — no duplicate parser (§1)
-- [ ] Zero model calls anywhere in the module (R4)
-- [ ] Episode hits appear in `atlas.py query` results after indexing (§6 A2)
+- [x] `atlas.py episodes [--reindex]` works via the façade's registration hook, contract string per §3, without any edit to TASK-002's files
+- [x] Parses dossiers/, REVIEW.md, INSTINCTS.md, RETRO-*.md into the episodes table with FTS (§1)
+- [x] Reuses `validate_plan.parse_tasks` and the existing REVIEW.md row grammar — no duplicate parser (§1)
+- [x] Zero model calls anywhere in the module (R4)
+- [x] Episode hits appear in `atlas.py query` results after indexing (§6 A2)
 - [ ] tests/test_atlas_episodes.py green; full suites green; forward-slash output; exit codes per §3
 **Branch:** task/TASK-003-gb
 **Started_At:** 2026-08-13T16:12:14Z
 **Progress_Notes:**
 - [2026-08-13T16:12:14Z] [GB] Claimed TASK-003 on task/TASK-003-gb. Next: preflight_paths, then implement atlas_episodes.py against §1/§3/§6 A2.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-13T16:15:00Z] [GB] Preflight (c8b9872 filesystem check) — both paths NEW, as expected:
+  NEW    scripts/atlas_episodes.py  -> does not exist; parent scripts/ exists
+  NEW    tests/test_atlas_episodes.py  -> does not exist; parent tests/ exists
+  Implementing atlas_episodes.py: reuse validate_plan.parse_tasks, team_stats.ROW_RE, instincts.parse_instincts; register(subparsers) for episodes [--reindex].
+- [2026-08-13T16:19:06Z] [GB] A2 implementation committed on task/TASK-003-gb (289499a). register(subparsers) delivers `episodes [--reindex] [--repo]`; sources: dossiers/TASK-*.md (parse_tasks on PLAN.md + task-shaped dossier bodies), REVIEW.md via team_stats.ROW_RE, INSTINCTS.md via instincts.parse_instincts, RETRO-*.md whole-file. Incremental by indexed_hash (PLAN.md hash mixed into dossier rows); --reindex wipes episodes+episodes_fts. Real-repo smoke: `atlas.py episodes` → 6 episodes / 7 sources; `atlas.py query "Territory clean"` → `TASK-002:1 episode`. 18/18 episode tests green. Full Python suite 634 passed, 1 failed: tests/test_atlas_core.py::test_facade_reports_missing_extension_without_exit_two still asserts atlas.main(["episodes"])==1 / "not installed" — that is now the delivered A2 command (exit 0). Cannot edit that file (TASK-002 territory). Blocking OWNERSHIP_CONFLICT. Ask: retarget that probe to a still-missing extension (`pack`, or `cards` if A3 has not landed) — one-line change in tests/test_atlas_core.py:134 — then I re-run and submit needs_review. Code is otherwise ready.
+- [2026-08-13T16:22:01Z] [ORCH] UNBLOCKED — correct block. Fixed on master differently than your ask: retargeting to 'pack'/'cards' rots one wave later when those land, so the test now monkeypatches the extension import to force the missing condition deterministically (f938fa0, 30/30 on master). Pull it into your branch: `git merge master -m "merge: master test fix into TASK-003 [TASK-003]"` from your worktree (brings only ORCH commits, no territory risk), rerun `python -m pytest -q` + the Node suite, record evidence, submit needs_review.
+**Artifacts:**
+- [2026-08-13T16:19:06Z] [GB] scripts/atlas_episodes.py, tests/test_atlas_episodes.py (commit 289499a)
+**Test_Evidence:**
+- [2026-08-13T16:19:06Z] [GB] `python -m pytest tests/test_atlas_episodes.py -q` → 18 passed in 1.49s. `python -m pytest -q` → 634 passed, 1 failed in 100.60s (only tests/test_atlas_core.py::test_facade_reports_missing_extension_without_exit_two; expects episodes missing, A2 installs it). `node C:/CLAUDECODE_kingdom.work/DEVDEPARTMENT/hooks/run-tests.js` → 36 passed, 0 failed. `python scripts/atlas.py episodes --repo .` → episodes indexed: 6; sources scanned: 7. `python scripts/atlas.py query "Territory clean"` → `TASK-002:1 episode`. Forward-slash output; exit 0 on empty/success; unknown flag / missing repo → exit 1, never 2.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** GB
-**Updated_At:** 2026-08-13T16:12:14Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-13T16:22:01Z
 
 ### TASK-004
 **Title:** ATLAS A3 — cards: hash-pinned LLM summaries, staleness, docs
