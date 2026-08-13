@@ -1,8 +1,8 @@
 ---
-plan_version: 1.0
-last_updated: 2026-08-13T14:31:00Z
-overall_status: planned
-orchestrator_notes: "Plan v1.0 — ATLAS build (specs/DEVDEPARTMENT_ATLAS_SPEC.md), 5 tasks TASK-002..006 mapping increments A1..A5. Wave 1 = TASK-002 (CX) alone: the spec dependency graph is a diamond rooted at A1, so no second dependency-free task exists — GB idles one wave by spec structure, not oversight. Wave 2 = TASK-003 (GB) + TASK-004 (S5) in parallel (disjoint by mandated module split). Wave 3 = TASK-005 (CX). Wave 4 = TASK-006 (S5). BEFORE each dispatch: add that task's Owned_Paths that fall under protected globs (scripts/**, docs/**, briefings/**, autopilot.json, onboard.md, .claude/**) to PROTECTED_EXCEPTIONS in hooks/lib.js; delete the entries at done. These are deliberate per-task grants per the lib.js mechanism — review must still reject anything outside Owned_Paths."
+plan_version: 1.1
+last_updated: 2026-08-13T14:44:00Z
+overall_status: in_progress
+orchestrator_notes: "Plan v1.1 — ATLAS build (specs/DEVDEPARTMENT_ATLAS_SPEC.md), 5 tasks TASK-002..006 mapping increments A1..A5. WAVE 1 DISPATCHED 2026-08-13T14:42:46Z: CX launched (detached window) against TASK-002; transcript .devteam/launch/CX-20260813-144246.log. Pre-dispatch fix: dispatch scripts hardcoded 'main' at worktree creation — now resolve autopilot.json git.base_branch (set to master, commit c6a4a69). Wave 2 = TASK-003 (GB) + TASK-004 (S5) parallel after 002 merges. Wave 3 = TASK-005 (CX). Wave 4 = TASK-006 (S5). BEFORE dispatching S5 waves (004/006): add that task's protected-glob Owned_Paths (scripts/**, docs/**, briefings/**, autopilot.json, onboard.md, .claude/**) to PROTECTED_EXCEPTIONS in hooks/lib.js; delete at done. CX/GB don't load hooks, so their grants are review-enforced only. Next ORCH action: /devteam-status once CX reports (claim expected shortly; task ~1 session)."
 ---
 
 # Project Plan
