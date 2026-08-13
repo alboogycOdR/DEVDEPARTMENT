@@ -1,8 +1,8 @@
 ---
-plan_version: 1.3
-last_updated: 2026-08-13T15:55:00Z
+plan_version: 1.4
+last_updated: 2026-08-13T16:00:00Z
 overall_status: in_progress
-orchestrator_notes: "Plan v1.3 — ATLAS build, 5 tasks TASK-002..006 (A1..A5). TASK-002 (CX, terra): implementation committed 6a5c9e6, 617 Python tests green. CX blocked 17:03(local)/~15:50Z with OWNERSHIP_CONFLICT — spec §7 A1 wrongly demanded a supervisor.py consumer of builder_registry. ORCH verdict: block was correct; spec amended (changelog v1.1) — impact criterion binds only on true Python importers (budget.py, validate_plan.py). Unblocked to in_progress 15:55Z with follow-ups: fix impact's miss of budget.py's function-scoped import (in-territory, atlas_core), run Node suite via `node hooks/run-tests.js` (CX believed none existed), use UTC timestamps. Re-dispatch CX to resume. Waves unchanged: 2 = 003(GB)+004(S5) after 002; 3 = 005(CX); 4 = 006(S5); S5 waves need PROTECTED_EXCEPTIONS grants in hooks/lib.js first. Next ORCH action: re-dispatch CX, monitor to needs_review, then headless opus-4-8 /devteam-review."
+orchestrator_notes: "Plan v1.3 — ATLAS build, 5 tasks TASK-002..006 (A1..A5). TASK-002 (CX, terra): implementation committed 6a5c9e6, 617 Python tests green. CX blocked 17:03(local)/~15:50Z with OWNERSHIP_CONFLICT — spec §7 A1 wrongly demanded a supervisor.py consumer of builder_registry. ORCH verdict: block was correct; spec amended (changelog v1.1) — impact criterion binds only on true Python importers (budget.py, validate_plan.py). Unblocked 15:55Z (follow-ups: budget.py edge detection — done c8f4c4c; Node suite; UTC stamps). Second block 15:53Z TOOLING_FAILURE: run-tests.js inherited dispatch's DEVTEAM_UNIT and failed its unset-var test only in builder sessions — ORCH machinery bug, fixed master 88d7965, 36/36 both envs, unblocked 16:00Z. CX to rerun Node suite, self-check, submit needs_review. Waves unchanged: 2 = 003(GB)+004(S5) after 002; 3 = 005(CX); 4 = 006(S5); S5 waves need PROTECTED_EXCEPTIONS grants in hooks/lib.js first. Next ORCH action: re-dispatch CX, monitor to needs_review, then headless opus-4-8 /devteam-review."
 ---
 
 # Project Plan
@@ -15,7 +15,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-002
 **Title:** ATLAS A1 — scanner, schema, core query CLI (façade + extension hooks)
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §0–§3, §6 (A1), §7 (A1 exit criteria)
@@ -41,6 +41,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-13T17:03:00Z] [CX] Full Python suite completed: 617 passed in 92.43s. A1 is blocked on its real-repo impact exit criterion: `scripts/supervisor.py` contains no `builder_registry` reference, so `impact scripts/builder_registry.py` correctly lists dispatch/validate but not supervisor. Adding that dependency requires an out-of-territory edit to `scripts/supervisor.py`; awaiting ORCH's specification/acceptance decision.
 - [2026-08-13T15:55:00Z] [ORCH] UNBLOCKED — correct block, the spec was wrong about the tree. Spec amended (changelog v1.1): the impact criterion binds only on true Python importers; supervisor is not one and is NOT required; do not touch supervisor.py. Note your own evidence shows `impact scripts/builder_registry.py` omits `scripts/budget.py`, which genuinely imports it (function-scoped `import builder_registry as _br`, budget.py:95) — that is a detection gap inside your territory (atlas_core edge extraction must see function-scoped imports); fix it, then re-verify the amended criterion (budget.py + validate_plan.py both listed). Also: 'no Node test suite' is wrong — it runs via `node hooks/run-tests.js` (no package.json needed); run it for the full-suites-green criterion. Timestamps must be UTC (your 17:03:00Z entries appear to be local time). Then self-check criteria and go to needs_review.
 - [2026-08-13T15:53:16Z] [CX] Fresh full scan confirms the AST scanner indexes `budget.py`'s function-scoped import; added regression coverage and committed c8f4c4c. Python suite is green; awaiting resolution of the unrelated Node hook-test failure before review submission.
+- [2026-08-13T16:00:00Z] [ORCH] UNBLOCKED — correct block again. Root cause was ORCH machinery, not your branch: run-tests.js inherited the DEVTEAM_UNIT=CX your dispatch exports, so the unset-var test could only fail inside builder sessions. Fixed on master (88d7965, harness scrubs the var); verified 36/36 with and without DEVTEAM_UNIT exported. Rerun `node hooks/run-tests.js` from your worktree (the fix lives on master in the main checkout — run it there: `node C:/CLAUDECODE_kingdom.work/DEVDEPARTMENT/hooks/run-tests.js`), record evidence, self-check all criteria, and submit needs_review. Nothing else outstanding.
 **Artifacts:**
 - [2026-08-13T15:39:30Z] [CX] scripts/atlas.py, scripts/atlas_core.py, tests/test_atlas_core.py, .gitignore, sync-manifest.json (commit 6a5c9e6)
 **Test_Evidence:**
@@ -48,9 +49,9 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-13T17:03:00Z] [CX] `python -m pytest -q` → 617 passed in 92.43s. `python scripts/atlas.py scan --full --repo .` → 103 scanned, then incremental scan → 103 scanned / 0 changed. `where decide` returned `scripts/supervisor.py:224` plus callers. `impact scripts/builder_registry.py` returned `PLAN.md`, README/docs/dossier/spec references, `scripts/dispatch.ps1`, `scripts/dispatch.sh`, and `scripts/validate_plan.py`; it cannot return supervisor because no source edge exists. No package.json or Node test suite is present in this repository.
 - [2026-08-13T15:53:16Z] [CX] `python -m pytest tests/test_atlas_core.py -q` → 30 passed in 1.12s. `python scripts/atlas.py scan --full --repo .` → 103 scanned; `impact scripts/builder_registry.py` lists `scripts/budget.py` and `scripts/validate_plan.py`. `python -m pytest -q` → 618 passed in 101.46s. `node hooks/run-tests.js` → 35 passed, 1 failed: `unset DEVTEAM_UNIT still means ORCH (interactive sessions unaffected)` expected 0, got 2.
 **Review_Findings:** —
-**Blocked_Reason:** TOOLING_FAILURE — `node hooks/run-tests.js` has one failing pre-existing/out-of-territory hook test: `unset DEVTEAM_UNIT still means ORCH (interactive sessions unaffected)` (expected 0, got 2). TASK-002 cannot meet its full-suites-green criterion until the hooks owner resolves it.
-**Updated_By:** CX
-**Updated_At:** 2026-08-13T15:53:16Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-13T16:00:00Z
 
 ### TASK-003
 **Title:** ATLAS A2 — episodic indexer (dossiers/REVIEW/INSTINCTS/RETRO → FTS)
