@@ -135,7 +135,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-005
 **Title:** ATLAS A4 — context-pack composer with budget + truncation reporting
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §3, §4, §6 (A4), §7 (A4 exit criteria), R1, R4
@@ -158,10 +158,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   NEW    tests/test_atlas_pack.py  -> does not exist; parent tests/ exists
   Read the A4 specification plus atlas_core.py, atlas_cards.py, and the façade registration hook. Implementing the isolated pack extension against the existing parser and SQLite schema.
 - [2026-08-13T16:53:00Z] [CX] Implemented the isolated `atlas_pack` extension and its six tests. It reads PLAN.md through `validate_plan.parse_tasks`, resolves live territory using the preflight classifier, uses the existing graph/cards/episodes schema, and reserves disclosure tokens before lowest-priority truncation. Committed on `task/TASK-005-cx`: `231031f feat(atlas): add budgeted context pack composer [TASK-005]`.
+- [2026-08-13T17:04:53Z] [CX] Addressed all rework findings on `task/TASK-005-cx`: added deterministic FRESH-card coverage for the one-hop-neighborhood and territory-card-body truncation rungs, asserted the indexed TASK-010 episodic hit, and removed the discarded `preflight_paths.describe` call in favor of an explicit comment documenting the intentionally matching resolver rules. Resubmitting for review.
 **Artifacts:**
 - [2026-08-13T16:53:00Z] [CX] scripts/atlas_pack.py, tests/test_atlas_pack.py (commit 231031f)
+- [2026-08-13T17:04:53Z] [CX] scripts/atlas_pack.py, tests/test_atlas_pack.py (rework coverage and resolver clarification; commit a521811)
 **Test_Evidence:**
 - [2026-08-13T16:53:00Z] [CX] `python -m pytest tests/test_atlas_pack.py -q` → 6 passed in 0.65s. `python -m pytest tests/test_atlas_core.py tests/test_atlas_episodes.py tests/test_atlas_cards.py tests/test_atlas_pack.py -q` → 75 passed in 5.34s. `python -m pytest -q` → 663 passed in 80.99s. `node hooks/run-tests.js` → 36 passed, 0 failed. Real-repo smoke: `python scripts/atlas.py scan --repo .`; `episodes --repo .`; `pack --task TASK-005 --budget 3000` and `--format json` → exit 0 with territory outlines, pointer-only neighborhood, episodic hits, A1-only disclosure, R1 footer, and `Truncation: none.`
+- [2026-08-13T17:04:53Z] [CX] `python -m pytest tests/test_atlas_pack.py -q` → 7 passed in 0.73s. `python -m pytest -q` → 664 passed in 72.02s. `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff --check` → clean.
 **Review_Findings:**
 - [2026-08-13T16:59:34Z] [ORCH] REWORK (first-pass). The implementation is functionally complete and correct — I verified all of §4 end-to-end, and independently re-ran the suites in your worktree (6 pack + 663 full Python + 36 Node, all green, matching your Test_Evidence). Territory is clean (net diff master...task/TASK-005-cx = exactly scripts/atlas_pack.py + tests/test_atlas_pack.py, both net-new; single commit 231031f; no merge; no PLAN.md/frontmatter edits; c8b9872 preflight evidence present, 16:49:00Z, both paths NEW). Real-repo `pack --task TASK-005` produces correct territory outline + head-fallback (no cards) + pointer-only neighborhood (no bodies) + matched episodic hits + freshness footer with the R1 sentence verbatim + `Truncation: none.` The block is a TEST-COVERAGE gap against the §4 hard-cap contract, which the review brief flagged as rework-not-note given the suite has only 6 pack tests:
   1. **Truncation ladder is 1/3 tested (blocking).** AC "truncation is lowest-priority-first (3 → 2 → card bodies in 1) and the pack always states what was truncated" is a three-rung claim, but test_budget_drops_lowest_priority_sections_first exercises only rung 1 (episodic drop → "Truncation: episodic hits" at budget 150). Rungs 2 (neighborhood drop) and 3 (card-body drop) have zero coverage. I verified manually that they work (with a fresh card inserted: budget 520 → drops episodic+neighborhood, KEEPS card body, tokens 490≤520; budget 500 → drops all three incl. card bodies, tokens 416≤500; both report the correct cumulative "Truncation: …" line; below the outline+footer floor it raises a clean exit-1 "budget is too small…", never exit 2). Add tests that assert: (a) a budget that drops one-hop neighborhood while keeping territory card bodies, reporting "one-hop neighborhood" and staying ≤ budget; (b) a budget that drops card bodies, reporting "territory card bodies" and staying ≤ budget. This requires a FRESH card in the fixture (as with test_pack_uses_fresh_card) so card-body truncation actually reduces tokens — without one, rungs 2 and 3 collapse and can't be distinguished.
@@ -169,8 +172,8 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   3. **preflight_paths reuse is cosmetic (fix in the same pass, not independently blocking).** _live_files calls `describe(repo, entry)` and discards the result, then reimplements resolution with glob.glob/rglob. describe() is a prose reporter (returns "FILE … exists, N lines" strings), not a resolver, so literal reuse of it for a file list isn't available — but the discarded call is dead I/O that misleadingly claims coupling. Either drop the decorative call with a one-line comment noting resolution deliberately replicates preflight's glob/isfile rules, or factor the shared glob-detection so both paths use one code path. Your glob semantics already match preflight's ("*?[" detection + recursive glob + isfile), so this is about honesty of the coupling, not correctness.
   Non-blocking notes (no action required): (a) the symbol outline lists function-local variables as `const` (e.g. `const paths@53`) — that is atlas_core scanner behavior, outside A4 territory; (b) the em-dash mojibake in console output is Windows code-page display only, the file is correct UTF-8. Fix 1–3 on the same branch (task/TASK-005-cx), rerun `python -m pytest tests/test_atlas_pack.py -q` + `python -m pytest -q` + `node hooks/run-tests.js`, record evidence, and resubmit needs_review. Nothing else outstanding — the composer itself is right.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-13T16:59:34Z
+**Updated_By:** CX
+**Updated_At:** 2026-08-13T17:04:53Z
 
 ### TASK-006
 **Title:** ATLAS A5 — dispatch/maintenance/autopilot/briefings/onboarding integration
