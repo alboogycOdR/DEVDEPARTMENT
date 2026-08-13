@@ -74,6 +74,15 @@ def test_python_import_produces_reverse_impact(repo: Path):
     assert core.impact(repo, "scripts/b.py", 1) == ["scripts/a.py", "web.ts"]
 
 
+def test_function_scoped_python_import_produces_reverse_impact(repo: Path):
+    (repo / "scripts" / "consumer.py").write_text(
+        "def load():\n    import b as dependency\n    return dependency.work(1)\n",
+        encoding="utf-8",
+    )
+    core.scan(repo)
+    assert "scripts/consumer.py" in core.impact(repo, "scripts/b.py", 1)
+
+
 def test_tier_a_regex_symbols(repo: Path):
     core.scan(repo)
     assert any("web.ts:2 func run" in item for item in core.query(repo, "run", 10))
