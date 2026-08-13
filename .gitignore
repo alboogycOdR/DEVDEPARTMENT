@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 .autopilot_state.json
 .devteam/
+.devteam/atlas.db
+.devteam/atlas.db-*
 AUTOPILOT_LOG.md
 STOP
 
