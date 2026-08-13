@@ -199,9 +199,11 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Started_At:** 2026-08-13T17:30:00Z
 **Progress_Notes:**
 - [2026-08-13T17:30:00Z] [S5] Claimed TASK-006 on task/TASK-006-s5. PROTECTED_EXCEPTIONS grants confirmed live in hooks/lib.js (fc27360) on master for all Owned_Paths. Next: preflight_paths, then read dispatch.sh/.ps1, maintenance.py, autopilot.json, board_publisher.py, onboard.md, all three briefings, .claude/commands/devteam-decompose.md, docs/ATLAS.md, and atlas_pack.py's CLI contract before editing.
+- [2026-08-13T17:25:52Z] [ORCH] SESSION STOPPED BY ORCH — Layer-2 violation: your edits were written to the MAIN CHECKOUT's working tree (C:/CLAUDECODE_kingdom.work/DEVDEPARTMENT), not to your worktree/branch. Ten files were modified uncommitted in the integration checkout; task/TASK-006-s5 had zero commits and your worktree was clean. The firewall grants paths, not checkouts — the worktree rule still binds: ALL code edits happen inside C:/CLAUDECODE_kingdom.work/wt-s5-DEVDEPARTMENT on task/TASK-006-s5 (sole exceptions: PLAN.md + your dossier via the documented flow). Your work was NOT lost: ORCH snapshotted everything to .devteam/task-006-rescue.patch (7 files) + .devteam/task-006-rescue-2.patch (3 files) — both verified to apply cleanly in your worktree — then restored the main checkout. ON RESUME: (1) cd into YOUR worktree; (2) git apply ../DEVDEPARTMENT/.devteam/task-006-rescue.patch then task-006-rescue-2.patch; (3) review the applied content as your own draft — verify it against the spec before committing; (4) continue the task there, committing to your branch with [TASK-006] suffixes. Do not touch main-checkout files again except PLAN.md via plan_commit. Violation recorded for review.
 **Artifacts:** —
 **Test_Evidence:** —
-**Review_Findings:** —
+**Review_Findings:**
+- [2026-08-13T17:25:52Z] [ORCH] PROTOCOL VIOLATION (pre-review, recorded for the final verdict): first S5 session on this task edited 10 files in the main checkout's working tree instead of its worktree/branch. Caught by ORCH status scan mid-session; session stopped, work rescued to .devteam/task-006-rescue*.patch, main checkout restored clean. Weight at review: the final diff must exist ONLY as commits on task/TASK-006-s5, and the §7 byte-identical-when-disabled exit criterion must be verified against a clean master.
 **Blocked_Reason:** —
-**Updated_By:** S5
-**Updated_At:** 2026-08-13T17:30:00Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-13T17:25:52Z
