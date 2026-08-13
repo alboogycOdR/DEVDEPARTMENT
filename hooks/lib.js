@@ -189,6 +189,10 @@ const PROTECTED_EXCEPTIONS = [
   // Example (from the project this came out of, where builders had to fix product
   // CAPS extractors that live alongside dispatch/plan_commit in scripts/):
   //   'scripts/extract_caps_taxonomy*.py',
+  //
+  // TASK-004 (S5, ATLAS A3) — active per-task grant, DELETE when TASK-004 is done:
+  'scripts/atlas_cards.py',
+  'docs/ATLAS.md',
 ];
 
 /**
