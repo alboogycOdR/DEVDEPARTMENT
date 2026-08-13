@@ -132,6 +132,15 @@ function Normalize-WtPath([string]$p) {
     return ($p -replace '\\', '/').TrimEnd('/').ToLowerInvariant()
 }
 
+# Integration branch from autopilot.json (git.base_branch, fail-safe default
+# "main") — resolved ONCE here because both the create and refresh paths below
+# need it; creation previously hardcoded "main" and failed on master-based repos.
+$BaseBranch = "main"
+try {
+    $GitCfg = Get-Content "$RepoRoot\autopilot.json" -Raw | ConvertFrom-Json
+    if ($GitCfg.git -and $GitCfg.git.base_branch) { $BaseBranch = $GitCfg.git.base_branch }
+} catch { $BaseBranch = "main" }
+
 if (Test-Path $Wt) {
     # Reuse only if it's actually a registered worktree of THIS repo -- not
     # just "a directory happens to be sitting there."
@@ -165,11 +174,6 @@ if (Test-Path $Wt) {
     $wtBranch = (git -C $Wt rev-parse --abbrev-ref HEAD 2>$null)
     $wtDirty  = @(git -C $Wt status --porcelain 2>$null | Where-Object { $_ -and $_ -notmatch '\.serena' })
     if ($wtBranch -eq "HEAD" -and $wtDirty.Count -eq 0) {
-        $BaseBranch = "main"
-        try {
-            $GitCfg = Get-Content "$RepoRoot\autopilot.json" -Raw | ConvertFrom-Json
-            if ($GitCfg.git -and $GitCfg.git.base_branch) { $BaseBranch = $GitCfg.git.base_branch }
-        } catch { $BaseBranch = "main" }
         $before = (git -C $Wt rev-parse --short HEAD 2>$null)
         git -C $Wt checkout --detach $BaseBranch --quiet 2>$null
         $after = (git -C $Wt rev-parse --short HEAD 2>$null)
@@ -183,7 +187,7 @@ if (Test-Path $Wt) {
     }
 } else {
     Write-Host "[dispatch] Creating worktree at $Wt..." -ForegroundColor Cyan
-    git worktree add --detach $Wt main
+    git worktree add --detach $Wt $BaseBranch
     if ($LASTEXITCODE -ne 0) { Write-Error "[dispatch] git worktree add failed."; exit 1 }
 }
 

@@ -112,7 +112,16 @@ if [[ -d "$WT" ]]; then
   fi
 else
   echo "[dispatch] Creating worktree at $WT..."
-  git worktree add --detach "$WT" main
+  # Integration branch from autopilot.json (git.base_branch, fail-safe default
+  # "main") — hardcoding "main" here broke dispatch on master-based repos.
+  BASE_BRANCH="$(python3 -c "
+import json
+try:
+    print(json.load(open('autopilot.json')).get('git',{}).get('base_branch') or 'main')
+except Exception:
+    print('main')
+" 2>/dev/null || echo main)"
+  git worktree add --detach "$WT" "$BASE_BRANCH"
 fi
 
 # Wave I: control.mode from autopilot.json. Fail-safe default: legacy —

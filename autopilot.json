@@ -104,6 +104,9 @@
   "control": {
     "mode": "legacy"
   },
+  "git": {
+    "base_branch": "master"
+  },
   "usage": {
     "cache_ttl_minutes": 15,
     "defer_above_pct": 90,
