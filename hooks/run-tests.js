@@ -338,14 +338,21 @@ test('unset DEVTEAM_UNIT still means ORCH (interactive sessions unaffected)', ()
 // The mechanism ships EMPTY by design: the pack provides the lever, not anyone's
 // carve-outs. These tests pin both halves — that the default really is deny, and
 // that the matcher does what the comment claims when a project populates it.
-test('exceptions list ships EMPTY, so scripts/** stays fully protected by default', () => {
-  assert.strictEqual(lib.PROTECTED_EXCEPTIONS.length, 0,
-    'the pack must not ship project-specific carve-outs');
+test('non-excepted scripts/** stays blocked regardless of active grants (deny-by-default)', () => {
+  // Was: assert PROTECTED_EXCEPTIONS.length === 0. That pinned the PACK's
+  // ship-state but broke the documented runtime mechanism: any live per-task
+  // grant (e.g. TASK-004's atlas_cards.py) turned this suite red for every
+  // builder gating needs_review on it. The load-bearing invariant is
+  // BEHAVIOR: a protected path NOT in the exceptions list is denied even
+  // while other grants are active. Ship-state hygiene ("keep it short,
+  // delete at done") is enforced by review, not by this suite.
+  assert.ok(!lib.pathInAnyException('scripts/anything.py', lib.PROTECTED_EXCEPTIONS),
+    'scripts/anything.py must never be covered by a real grant — if this fires, a grant is drawn too wide');
   const repo = makeTempRepo();
   const r = runHook('territory-firewall.js',
     { tool_input: { file_path: path.join(repo, 'scripts/anything.py'), content: 'x' } },
     { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
-  assert.strictEqual(r.code, 2, 'scripts/ must stay blocked with an empty exception list');
+  assert.strictEqual(r.code, 2, 'non-excepted scripts/ path must stay blocked');
 });
 
 test('exception matcher grants a specific file without weakening the glob', () => {
