@@ -178,7 +178,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-006
 **Title:** ATLAS A5 — dispatch/maintenance/autopilot/briefings/onboarding integration
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §5, §6 (A5), §7 (A5 exit criteria), R2, R3
@@ -195,12 +195,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] .claude/commands/devteam-decompose.md gains the impact-consultation prose instruction (§5)
 - [ ] §7 A5 exit criteria: dry-run dispatch on a real task shows the ATLAS section; with atlas.enabled=false (default) dispatch prompts are byte-identical to today; nightly audit runs scan without error
 - [ ] docs/ATLAS.md Integration section updated; suites green
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-006-s5
+**Started_At:** 2026-08-13T17:30:00Z
+**Progress_Notes:**
+- [2026-08-13T17:30:00Z] [S5] Claimed TASK-006 on task/TASK-006-s5. PROTECTED_EXCEPTIONS grants confirmed live in hooks/lib.js (fc27360) on master for all Owned_Paths. Next: preflight_paths, then read dispatch.sh/.ps1, maintenance.py, autopilot.json, board_publisher.py, onboard.md, all three briefings, .claude/commands/devteam-decompose.md, docs/ATLAS.md, and atlas_pack.py's CLI contract before editing.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-13T14:31:00Z
+**Updated_By:** S5
+**Updated_At:** 2026-08-13T17:30:00Z
