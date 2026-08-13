@@ -1,8 +1,8 @@
 ---
-plan_version: 1.9
-last_updated: 2026-08-13T16:44:30Z
+plan_version: 2.0
+last_updated: 2026-08-13T16:59:34Z
 overall_status: in_progress
-orchestrator_notes: "Plan v1.9 — WAVE 3 DISPATCHED 2026-08-13T16:43:41Z: CX launched against TASK-005 (A4 pack composer; worktree recreated wt-codex-DEVDEPARTMENT; transcript .devteam/launch/CX-20260813-164341.log). Wave 2 complete: 002/003/004 all done, all first-pass (REVIEW.md tallies CX 1/1 GB 1/1 S5 1/1 pre-005). TASK-004 firewall grants deleted from hooks/lib.js (2bd1370), Node 36/36. TASK-006 (S5, A5) unlocks at 005 done — it needs NEW PROTECTED_EXCEPTIONS grants (scripts/dispatch.sh, scripts/dispatch.ps1, scripts/maintenance.py, scripts/board_publisher.py, docs/ATLAS.md, onboard.md, autopilot.json, briefings/**, .claude/commands/devteam-decompose.md) before dispatch. Fast-follow backlog for a future task: FTS5 MATCH ranking (TASK-002 finding), episodes zero-row convergence (TASK-003 finding). Next ORCH action: monitor 005 to needs_review -> opus-4-8 review (explicit-prompt form) -> then wave 4."
+orchestrator_notes: "Plan v2.0 — TASK-005 (A4 pack composer, CX) REVIEWED 2026-08-13T16:59:34Z on claude-opus-4-8 → REWORK (first-pass), Status needs_review→in_progress. Territory clean, all suites green (6 pack/663 Python/36 Node, ORCH re-run), composer functionally correct end-to-end (verified §4 incl. all 3 truncation rungs manually). Block is a §4 test-coverage gap: (1) truncation ladder only tests rung 1 (episodic drop) — rungs 2 (neighborhood) + 3 (card bodies) untested; needs fresh-card fixture; (2) episodic-hit CONTENT unverified (only header asserted); (3) preflight_paths reuse is cosmetic (describe() called+discarded, resolution reimplemented via glob). CX fixes on task/TASK-005-cx, resubmits. TASK-006 (S5, A5) REMAINS LOCKED — unlocks only at 005 done; when it lands it needs NEW PROTECTED_EXCEPTIONS grants (scripts/dispatch.sh, scripts/dispatch.ps1, scripts/maintenance.py, scripts/board_publisher.py, docs/ATLAS.md, onboard.md, autopilot.json, briefings/**, .claude/commands/devteam-decompose.md) before dispatch. Wave 2 complete: 002/003/004 done, first-pass. Fast-follow backlog: FTS5 MATCH ranking (TASK-002), episodes zero-row convergence (TASK-003). Next ORCH action: monitor 005 re-review → on approval merge + unlock 006."
 ---
 
 # Project Plan
@@ -135,7 +135,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-005
 **Title:** ATLAS A4 — context-pack composer with budget + truncation reporting
-**Status:** needs_review
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §3, §4, §6 (A4), §7 (A4 exit criteria), R1, R4
@@ -162,10 +162,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-13T16:53:00Z] [CX] scripts/atlas_pack.py, tests/test_atlas_pack.py (commit 231031f)
 **Test_Evidence:**
 - [2026-08-13T16:53:00Z] [CX] `python -m pytest tests/test_atlas_pack.py -q` → 6 passed in 0.65s. `python -m pytest tests/test_atlas_core.py tests/test_atlas_episodes.py tests/test_atlas_cards.py tests/test_atlas_pack.py -q` → 75 passed in 5.34s. `python -m pytest -q` → 663 passed in 80.99s. `node hooks/run-tests.js` → 36 passed, 0 failed. Real-repo smoke: `python scripts/atlas.py scan --repo .`; `episodes --repo .`; `pack --task TASK-005 --budget 3000` and `--format json` → exit 0 with territory outlines, pointer-only neighborhood, episodic hits, A1-only disclosure, R1 footer, and `Truncation: none.`
-**Review_Findings:** —
+**Review_Findings:**
+- [2026-08-13T16:59:34Z] [ORCH] REWORK (first-pass). The implementation is functionally complete and correct — I verified all of §4 end-to-end, and independently re-ran the suites in your worktree (6 pack + 663 full Python + 36 Node, all green, matching your Test_Evidence). Territory is clean (net diff master...task/TASK-005-cx = exactly scripts/atlas_pack.py + tests/test_atlas_pack.py, both net-new; single commit 231031f; no merge; no PLAN.md/frontmatter edits; c8b9872 preflight evidence present, 16:49:00Z, both paths NEW). Real-repo `pack --task TASK-005` produces correct territory outline + head-fallback (no cards) + pointer-only neighborhood (no bodies) + matched episodic hits + freshness footer with the R1 sentence verbatim + `Truncation: none.` The block is a TEST-COVERAGE gap against the §4 hard-cap contract, which the review brief flagged as rework-not-note given the suite has only 6 pack tests:
+  1. **Truncation ladder is 1/3 tested (blocking).** AC "truncation is lowest-priority-first (3 → 2 → card bodies in 1) and the pack always states what was truncated" is a three-rung claim, but test_budget_drops_lowest_priority_sections_first exercises only rung 1 (episodic drop → "Truncation: episodic hits" at budget 150). Rungs 2 (neighborhood drop) and 3 (card-body drop) have zero coverage. I verified manually that they work (with a fresh card inserted: budget 520 → drops episodic+neighborhood, KEEPS card body, tokens 490≤520; budget 500 → drops all three incl. card bodies, tokens 416≤500; both report the correct cumulative "Truncation: …" line; below the outline+footer floor it raises a clean exit-1 "budget is too small…", never exit 2). Add tests that assert: (a) a budget that drops one-hop neighborhood while keeping territory card bodies, reporting "one-hop neighborhood" and staying ≤ budget; (b) a budget that drops card bodies, reporting "territory card bodies" and staying ≤ budget. This requires a FRESH card in the fixture (as with test_pack_uses_fresh_card) so card-body truncation actually reduces tokens — without one, rungs 2 and 3 collapse and can't be distinguished.
+  2. **Episodic-hit content is unverified (blocking, same class).** No test asserts an actual episode line appears in the pack — only the "## EPISODIC HITS" header, which renders even when empty ("- No matching indexed episodes."). §4 section 3 (episodic top-K on Title/Description terms) is therefore smoke-checked, not tested. Your fixture already seeds a matching source (dossiers/TASK-010.md "Widget pack…") — add an assertion that its ref/body actually surfaces in the EPISODIC HITS section for the full-budget pack.
+  3. **preflight_paths reuse is cosmetic (fix in the same pass, not independently blocking).** _live_files calls `describe(repo, entry)` and discards the result, then reimplements resolution with glob.glob/rglob. describe() is a prose reporter (returns "FILE … exists, N lines" strings), not a resolver, so literal reuse of it for a file list isn't available — but the discarded call is dead I/O that misleadingly claims coupling. Either drop the decorative call with a one-line comment noting resolution deliberately replicates preflight's glob/isfile rules, or factor the shared glob-detection so both paths use one code path. Your glob semantics already match preflight's ("*?[" detection + recursive glob + isfile), so this is about honesty of the coupling, not correctness.
+  Non-blocking notes (no action required): (a) the symbol outline lists function-local variables as `const` (e.g. `const paths@53`) — that is atlas_core scanner behavior, outside A4 territory; (b) the em-dash mojibake in console output is Windows code-page display only, the file is correct UTF-8. Fix 1–3 on the same branch (task/TASK-005-cx), rerun `python -m pytest tests/test_atlas_pack.py -q` + `python -m pytest -q` + `node hooks/run-tests.js`, record evidence, and resubmit needs_review. Nothing else outstanding — the composer itself is right.
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-08-13T16:53:00Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-13T16:59:34Z
 
 ### TASK-006
 **Title:** ATLAS A5 — dispatch/maintenance/autopilot/briefings/onboarding integration
