@@ -97,7 +97,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-004
 **Title:** ATLAS A3 — cards: hash-pinned LLM summaries, staleness, docs
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §1 (Cards), §3, §6 (A3), §7 (A3 exit criteria), §8 Q1, R1, R4
@@ -105,22 +105,31 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-002
 **Description:** Build `scripts/atlas_cards.py`: Layer 1 card generation. One headless `claude-sonnet-4-6` call per changed file, structured output (purpose, invariants, gotchas, entry_points, tokens_estimate), atomic write into the `cards` table created by TASK-002, pinned to the file's `source_hash` (R1). Never auto-runs inside `scan` (§1). CLI via `register(subparsers)`: `cards --generate [--only <glob>] [--model M=claude-sonnet-4-6]` plus `--max N` interactive cap (spec §8 Q1 default: add `--max`, cheap) and `cards --stale` (§3). Do NOT edit TASK-002's files — core query already derives FRESH/STALE from `cards.source_hash`; your job is generation, pinning, and `--stale` listing. Tests use a fake model transcript (a stubbed subprocess/transcript fixture), never live calls; live verification is an exit-criteria step on Alister's machine (§6 A3). Also author `docs/ATLAS.md`: architecture, R1–R4 verbatim, CLI contract, card lifecycle, degradation behavior.
 **Acceptance_Criteria:**
-- [ ] `cards --generate` issues one headless claude-sonnet-4-6 call per changed file, structured output, atomic DB write, `source_hash`-pinned (§1, R1)
-- [ ] Generation never triggered by `scan` (§1); `--only <glob>`, `--model` override, and `--max N` cap supported (§3, §8 Q1)
-- [ ] `cards --stale` lists cards whose source_hash no longer matches (§3)
-- [ ] §7 A3 exit criteria: a card regenerates only when its source hash changes; a doctored hash flips every query path to STALE-with-warning (verified end-to-end through core query)
-- [ ] Tests use a fake model transcript — zero live model calls in the suite (§6 A3); suites green
-- [ ] `docs/ATLAS.md` exists: architecture, R1–R4, CLI contract, card lifecycle, R4 degradation
-- [ ] No edits outside Owned_Paths (in particular none to atlas.py/atlas_core.py)
+- [x] `cards --generate` issues one headless claude-sonnet-4-6 call per changed file, structured output, atomic DB write, `source_hash`-pinned (§1, R1)
+- [x] Generation never triggered by `scan` (§1); `--only <glob>`, `--model` override, and `--max N` cap supported (§3, §8 Q1)
+- [x] `cards --stale` lists cards whose source_hash no longer matches (§3)
+- [x] §7 A3 exit criteria: a card regenerates only when its source hash changes; a doctored hash flips every query path to STALE-with-warning (verified end-to-end through core query)
+- [x] Tests use a fake model transcript — zero live model calls in the suite (§6 A3); suites green
+- [x] `docs/ATLAS.md` exists: architecture, R1–R4, CLI contract, card lifecycle, R4 degradation
+- [x] No edits outside Owned_Paths (in particular none to atlas.py/atlas_core.py)
 **Branch:** task/TASK-004-s5
 **Started_At:** 2026-08-13T16:30:00Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-13T16:30:30Z] [S5] Claimed TASK-004 on task/TASK-004-s5. Preflight (c8b9872 filesystem check):
+  NEW    scripts/atlas_cards.py  -> does not exist; parent scripts/ exists
+  NEW    tests/test_atlas_cards.py  -> does not exist; parent tests/ exists
+  NEW    docs/ATLAS.md  -> does not exist; parent docs/ exists
+  Read atlas_core.py (query/where/impact FRESH/STALE annotation, schema) and distiller.py (headless-call + fake-transcript test pattern via cfg override) as the two load-bearing precedents. Implementing atlas_cards.py against §1/§3/§6 A3/§7/§8 Q1.
+- [2026-08-13T16:45:00Z] [S5] Implemented scripts/atlas_cards.py: `cards --generate [--only glob] [--model M] [--max N]` and `cards --stale`, both via `register(subparsers)` — no edits to atlas.py/atlas_core.py. Headless call resolved via `_cards_cmd()`: explicit override → `autopilot.json -> atlas.cards_cmd` (same override pattern as distiller.py's `learning.distill_cmd`) → real `claude -p --model M --dangerously-skip-permissions`. Each card is one INSERT-OR-REPLACE committed immediately after that file's model call succeeds (atomic per file; a killed run or a single file's failure never leaves a partial card and never blocks the rest). Model failure / non-JSON / missing required field → CardGenerationError, file skipped, DB untouched for it, clear stderr line, other files unaffected; exit 1 iff any file failed, exit 0 on success incl. zero candidates, never 2. tests/test_atlas_cards.py: 21 tests, all against a real (but fake) subprocess executable that echoes canned JSON — mirrors tests/test_distiller.py's fake_model helper, zero live model calls. Covers: hash-pinned write, never-from-scan, skip-when-unchanged, regenerate-only-on-hash-change, --only, --max, model failure leaves DB untouched, malformed JSON rejected, missing required field rejected, tokens_estimate fallback, --stale listing, the §7 doctored-hash exit criterion verified end-to-end through `atlas_core.query`/`where` (not just this module's own bookkeeping), CLI wiring via the façade (incl. autopilot.json cards_cmd override), never-exit-2. Authored docs/ATLAS.md: R1-R4 verbatim, architecture, full CLI contract, card generation/failure-handling/testing detail, card lifecycle diagram, R4 degradation walkthrough end to end; notes TASK-006 will append an Integration section later.
+- [2026-08-13T16:46:00Z] [S5] Merged local-main/master (98f098c, TASK-003 landed) into task/TASK-004-s5 to pick up scripts/atlas_episodes.py + tests/test_atlas_episodes.py — brings only ORCH/GB commits already on master, no territory risk (diff vs local-main/master after merge is still exactly my three Owned_Paths files, all net-new). Reran full suites post-merge: all green. `python scripts/atlas.py cards --stale` / `cards` (no flag) / `status` smoke-tested on the real repo (no cards generated yet) — degrades cleanly: `cards --stale` exit 0 empty, `cards` with neither flag exit 1 "specify --generate or --stale", `status` shows `cards: 0`. Self-checked all acceptance criteria; submitting needs_review.
+**Artifacts:**
+- [2026-08-13T16:45:00Z] [S5] scripts/atlas_cards.py, tests/test_atlas_cards.py, docs/ATLAS.md (commit a27da61); merge commit (master TASK-003 pickup) on top
+**Test_Evidence:**
+- [2026-08-13T16:46:00Z] [S5] `python -m pytest tests/test_atlas_cards.py -q` → 21 passed in 2.86s. `python -m pytest tests/test_atlas_cards.py tests/test_atlas_core.py tests/test_atlas_episodes.py -q` → 69 passed in 4.89s. `python -m pytest -q` (full suite) → 657 passed in 88.42s. `node hooks/run-tests.js` → 36 passed, 0 failed. Real-repo smoke: `python scripts/atlas.py cards --stale` → exit 0, empty output (no cards yet). `python scripts/atlas.py cards` (no flag) → "atlas cards: specify --generate or --stale", exit 1. `python scripts/atlas.py status` → `cards: 0`, `stale cards: 0`, exit 0. `git diff local-main/master...HEAD --stat` → only docs/ATLAS.md, scripts/atlas_cards.py, tests/test_atlas_cards.py touched (all net-new), matching Owned_Paths exactly.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** S5
-**Updated_At:** 2026-08-13T16:30:00Z
+**Updated_At:** 2026-08-13T16:46:00Z
 
 ### TASK-005
 **Title:** ATLAS A4 — context-pack composer with budget + truncation reporting
