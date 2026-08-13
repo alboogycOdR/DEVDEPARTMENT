@@ -118,7 +118,7 @@
   },
   "judgment_model": "claude-opus-4-8",
   "atlas": {
-    "enabled": false,
+    "enabled": true,
     "budget_tokens": 3000,
     "cards_auto_refresh": false,
     "max_cards_per_night": 30,
