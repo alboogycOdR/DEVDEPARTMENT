@@ -1,8 +1,8 @@
 ---
-plan_version: 1.2
-last_updated: 2026-08-13T15:31:00Z
+plan_version: 1.3
+last_updated: 2026-08-13T15:55:00Z
 overall_status: in_progress
-orchestrator_notes: "Plan v1.2 — ATLAS build, 5 tasks TASK-002..006 (increments A1..A5). Wave 1: two CX launches (14:42Z, 14:45Z) died at model init — codex 400s any gpt-5.6-sol/unpinned config on ChatGPT-account auth (pins were in .codex/config.toml layers, not just the registry). Root-caused via ~/.codex/models_cache.json: account's models are gpt-5.6-terra/luna/5.5/5.4-mini. CX pinned to gpt-5.6-terra (probe-verified, commit e7d9e90), registry + repo .codex/config.toml both updated; user-level ~/.codex/config.toml still pins sol (Alister's call, --model overrides it for dispatches). RELAUNCHED 15:30:52Z against TASK-002; transcript .devteam/launch/CX-20260813-153052.log; ORCH monitor armed (error/claim/exit). Wave 2 = TASK-003 (GB) + TASK-004 (S5) parallel after 002 merges; wave 3 = TASK-005 (CX); wave 4 = TASK-006 (S5). BEFORE dispatching S5 waves (004/006): add protected-glob Owned_Paths to PROTECTED_EXCEPTIONS in hooks/lib.js; delete at done. CX/GB don't load hooks — their grants are review-enforced. Next ORCH action: react to monitor (claim expected within ~10 min; else inspect log)."
+orchestrator_notes: "Plan v1.3 — ATLAS build, 5 tasks TASK-002..006 (A1..A5). TASK-002 (CX, terra): implementation committed 6a5c9e6, 617 Python tests green. CX blocked 17:03(local)/~15:50Z with OWNERSHIP_CONFLICT — spec §7 A1 wrongly demanded a supervisor.py consumer of builder_registry. ORCH verdict: block was correct; spec amended (changelog v1.1) — impact criterion binds only on true Python importers (budget.py, validate_plan.py). Unblocked to in_progress 15:55Z with follow-ups: fix impact's miss of budget.py's function-scoped import (in-territory, atlas_core), run Node suite via `node hooks/run-tests.js` (CX believed none existed), use UTC timestamps. Re-dispatch CX to resume. Waves unchanged: 2 = 003(GB)+004(S5) after 002; 3 = 005(CX); 4 = 006(S5); S5 waves need PROTECTED_EXCEPTIONS grants in hooks/lib.js first. Next ORCH action: re-dispatch CX, monitor to needs_review, then headless opus-4-8 /devteam-review."
 ---
 
 # Project Plan
@@ -15,7 +15,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-002
 **Title:** ATLAS A1 — scanner, schema, core query CLI (façade + extension hooks)
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §0–§3, §6 (A1), §7 (A1 exit criteria)
@@ -32,22 +32,23 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] All output forward-slash paths, UTF-8; exit 0 on success including empty results, 1 on real errors, never 2 (§3)
 - [ ] `.gitignore` and `sync-manifest.json` entries land in this task (R2, §5)
 - [ ] ≥25 tests in tests/test_atlas_core.py incl. incremental-rescan correctness, gitignore honoring, hash stability, forward-slash output (§6 A1); full Python + Node suites stay green
-- [ ] §7 A1 exit criteria on this repo: full scan < 10s; `where decide` finds supervisor.py's function with callers; `impact scripts/builder_registry.py` lists dispatch/validate/supervisor consumers; touching one file re-parses exactly one file
+- [ ] §7 A1 exit criteria on this repo (as amended by spec changelog v1.1): full scan < 10s; `where decide` finds supervisor.py's function with callers; `impact scripts/builder_registry.py` lists its actual Python importers (scripts/budget.py, scripts/validate_plan.py — shell consumers are Tier B, no import edges); touching one file re-parses exactly one file
 **Branch:** task/TASK-002-cx
 **Started_At:** 2026-08-13T15:31:35Z
 **Progress_Notes:**
 - [2026-08-13T15:32:30Z] [CX] Claimed TASK-002 and created task/TASK-002-cx. Beginning A1 implementation: schema, incremental scanner, core read-only queries, and façade.
 - [2026-08-13T15:39:30Z] [CX] Layer 0 implementation committed as 6a5c9e6. Focused suite: 29 passed in 1.00s; real-repo full scan, `where decide`, and `impact scripts/builder_registry.py` verified. Full Python suite was started but exceeded the 125s command window without a result; next: obtain full-suite result, then record acceptance evidence and submit for review.
 - [2026-08-13T17:03:00Z] [CX] Full Python suite completed: 617 passed in 92.43s. A1 is blocked on its real-repo impact exit criterion: `scripts/supervisor.py` contains no `builder_registry` reference, so `impact scripts/builder_registry.py` correctly lists dispatch/validate but not supervisor. Adding that dependency requires an out-of-territory edit to `scripts/supervisor.py`; awaiting ORCH's specification/acceptance decision.
+- [2026-08-13T15:55:00Z] [ORCH] UNBLOCKED — correct block, the spec was wrong about the tree. Spec amended (changelog v1.1): the impact criterion binds only on true Python importers; supervisor is not one and is NOT required; do not touch supervisor.py. Note your own evidence shows `impact scripts/builder_registry.py` omits `scripts/budget.py`, which genuinely imports it (function-scoped `import builder_registry as _br`, budget.py:95) — that is a detection gap inside your territory (atlas_core edge extraction must see function-scoped imports); fix it, then re-verify the amended criterion (budget.py + validate_plan.py both listed). Also: 'no Node test suite' is wrong — it runs via `node hooks/run-tests.js` (no package.json needed); run it for the full-suites-green criterion. Timestamps must be UTC (your 17:03:00Z entries appear to be local time). Then self-check criteria and go to needs_review.
 **Artifacts:**
 - [2026-08-13T15:39:30Z] [CX] scripts/atlas.py, scripts/atlas_core.py, tests/test_atlas_core.py, .gitignore, sync-manifest.json (commit 6a5c9e6)
 **Test_Evidence:**
 - [2026-08-13T15:39:30Z] [CX] `python -m pytest tests/test_atlas_core.py -q` → 29 passed in 1.00s. `python scripts/atlas.py scan --full --repo .` → 103 files scanned; smoke checks for `where decide`, `impact scripts/builder_registry.py`, and `status` passed. `python -m pytest -q` exceeded the 125s command window with no completed result; pending rerun/confirmation.
 - [2026-08-13T17:03:00Z] [CX] `python -m pytest -q` → 617 passed in 92.43s. `python scripts/atlas.py scan --full --repo .` → 103 scanned, then incremental scan → 103 scanned / 0 changed. `where decide` returned `scripts/supervisor.py:224` plus callers. `impact scripts/builder_registry.py` returned `PLAN.md`, README/docs/dossier/spec references, `scripts/dispatch.ps1`, `scripts/dispatch.sh`, and `scripts/validate_plan.py`; it cannot return supervisor because no source edge exists. No package.json or Node test suite is present in this repository.
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT — A1's required real-repo impact result demands a `scripts/supervisor.py` consumer of `scripts/builder_registry.py`, but supervisor currently has no such reference. Creating it would be outside TASK-002 Owned_Paths; ORCH must revise/waive the acceptance criterion or create an integration task.
-**Updated_By:** CX
-**Updated_At:** 2026-08-13T17:03:00Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-13T15:55:00Z
 
 ### TASK-003
 **Title:** ATLAS A2 — episodic indexer (dossiers/REVIEW/INSTINCTS/RETRO → FTS)

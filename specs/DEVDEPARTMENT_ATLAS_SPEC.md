@@ -1,5 +1,7 @@
 # ATLAS — Persistent Project Map & Memory. Build Specification
 
+> **Changelog:** v1.1 (2026-08-13, ORCH) — §7 A1 exit criterion corrected per TASK-002 OWNERSHIP_CONFLICT block: `impact scripts/builder_registry.py` must list the registry's *actual* Python importers (`budget.py`, `validate_plan.py`) — not "dispatch/validate/supervisor". supervisor.py has no builder_registry reference, and dispatch.sh/.ps1 consume it via subprocess (Tier B files carry no import edges per §2), so neither may be *required* of the import graph — an implementation is free to surface additional textual-reference hits, but the criterion binds only on true importers. The original sentence described consumers from memory, not from the tree.
+
 **Status:** SPEC ONLY — nothing in this document is built yet.
 **Baseline:** pack @ `caa5722` (v4.8 + live fixes + marker fix). All suites green (588 Python / 36 Node).
 **Ships as:** v4.9 (increments 1–2) and v5.0 (increment 3), or per actual session boundaries.
@@ -97,7 +99,7 @@ A2 and A3 are parallelizable after A1 (disjoint function groups + disjoint test 
 
 ## 7. Exit criteria
 
-**A1:** on the DEVDEPARTMENT repo itself: full scan < 10s; `where decide` finds supervisor.py's function with callers; `impact scripts/builder_registry.py` lists dispatch/validate/supervisor consumers; rescan after touching one file re-parses exactly one file. **A3:** a card regenerates only when its source hash changes; a doctored hash flips every query path to STALE-with-warning. **A4:** `pack --task` on a synthetic PLAN.md task stays under budget, contains territory outline + neighborhood pointers + the R1 footer; with cards absent, degrades and says so. **A5:** a dry-run dispatch on a real task shows the ATLAS section; `atlas.enabled=false` (default) produces byte-identical dispatch prompts to today; nightly audit runs scan without error. **All:** suites green; no diffs outside the increments' territories; manifest self-check passes.
+**A1:** on the DEVDEPARTMENT repo itself: full scan < 10s; `where decide` finds supervisor.py's function with callers; `impact scripts/builder_registry.py` lists its actual Python importers (`scripts/budget.py`, `scripts/validate_plan.py`; shell consumers are Tier B and carry no import edges — §7 changelog v1.1); rescan after touching one file re-parses exactly one file. **A3:** a card regenerates only when its source hash changes; a doctored hash flips every query path to STALE-with-warning. **A4:** `pack --task` on a synthetic PLAN.md task stays under budget, contains territory outline + neighborhood pointers + the R1 footer; with cards absent, degrades and says so. **A5:** a dry-run dispatch on a real task shows the ATLAS section; `atlas.enabled=false` (default) produces byte-identical dispatch prompts to today; nightly audit runs scan without error. **All:** suites green; no diffs outside the increments' territories; manifest self-check passes.
 
 ## 8. Risks & open questions for Alister
 
