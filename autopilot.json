@@ -52,7 +52,9 @@
         "branch_suffix": "s5",
         "briefing": "briefings/S5_BUILD_BRIEFING.md",
         "auto_loads_ambient_context": true,
-        "usage_provider": "claude"
+        "usage_provider": "claude",
+        "identity": "agent",
+        "_identity_note": "2026-08-13: preamble path refused live by sonnet-5 as prompt injection (exactly the failure docs/BUILDER_REGISTRY.md predicted); --agent devteam-builder is the structural fix."
       },
       "S5B": {
         "cli": "claude",
