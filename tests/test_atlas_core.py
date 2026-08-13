@@ -130,7 +130,17 @@ def test_ignore_matching_cases(path: str, expected: bool):
     assert core.is_ignored(path, [".git/", ".devteam/", "skip.py", "ignored/"]) is expected
 
 
-def test_facade_reports_missing_extension_without_exit_two(capsys):
+def test_facade_reports_missing_extension_without_exit_two(capsys, monkeypatch):
+    # Force the staged-rollout condition instead of probing a fixed subcommand:
+    # A2-A4 each install a real extension module, so any hardcoded name here
+    # rots exactly one wave later (TASK-003 hit this live when it installed
+    # atlas_episodes and this test still expected 'episodes' to be missing).
+    class _NoExtensions:
+        @staticmethod
+        def import_module(name):
+            raise ModuleNotFoundError(f"No module named '{name}'", name=name)
+
+    monkeypatch.setattr(atlas, "importlib", _NoExtensions)
     assert atlas.main(["episodes"]) == 1
     assert "not installed" in capsys.readouterr().err
 
