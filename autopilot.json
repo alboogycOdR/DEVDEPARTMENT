@@ -30,8 +30,8 @@
       },
       "CX": {
         "cli": "codex",
-        "model": null,
-        "_model_note": "gpt-5.6-sol rejected 400 on ChatGPT-account Codex (2026-08-13); null = account default model",
+        "model": "gpt-5.6-terra",
+        "_model_note": "gpt-5.6-sol rejected 400 on ChatGPT-account Codex (2026-08-13). terra = account's flagship agentic-coding model per models_cache.json, probe-verified same day. User-level ~/.codex/config.toml still pins sol; --model overrides it for dispatches.",
         "auth": {
           "mode": "default"
         },

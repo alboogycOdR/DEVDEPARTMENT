@@ -10,7 +10,10 @@
 # AGENTS.md at the repo root is auto-detected by Codex; it carries the protocol.
 
 # --- Model discipline (commits 55ce44a + 779746f) -----------------------------
-model = "gpt-5.6-sol"
+# 2026-08-13: gpt-5.6-sol 400s on ChatGPT-account Codex ("not supported when
+# using Codex with a ChatGPT account"). terra is the account's flagship agentic
+# coding model (see ~/.codex/models_cache.json), probe-verified.
+model = "gpt-5.6-terra"
 model_reasoning_effort = "medium"   # medium is the token-budget sweet spot; raise to
                                     # "high" only if quality issues persist on this model.
 
