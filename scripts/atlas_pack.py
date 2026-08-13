@@ -14,7 +14,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import atlas_core as core  # noqa: E402
-from preflight_paths import describe  # noqa: E402
 from validate_plan import Report, parse_tasks  # noqa: E402
 
 R1_FOOTER = "This pack is a map, not the ground: read live any file you edit."
@@ -43,16 +42,14 @@ def _owned_paths(task) -> list[str]:
 
 
 def _live_files(repo: Path, owned: list[str]) -> list[str]:
-    """Resolve owned territory using the preflight classifier's same rules.
-
-    ``describe`` supplies the classification used in builder preflight; paths
-    are then expanded from the live tree for per-file contents.
-    """
+    """Resolve owned territory using preflight_paths' glob/file/dir rules."""
     import glob
 
     paths: set[str] = set()
     for entry in owned:
-        describe(repo, entry)  # Keep the live classification contract coupled.
+        # ``preflight_paths.describe`` is a human-readable reporter, rather
+        # than a resolver.  Keep its glob/file/directory classification rules
+        # here so pack expansion returns the actual live files to compose.
         if any(ch in entry for ch in "*?["):
             for value in glob.glob(str(repo / entry), recursive=True):
                 candidate = Path(value)

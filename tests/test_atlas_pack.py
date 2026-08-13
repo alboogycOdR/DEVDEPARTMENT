@@ -60,6 +60,7 @@ def test_pack_degrades_without_cards_and_keeps_required_sections(repo: Path):
     text = pack.compose_pack(repo, "TASK-099", 3000)
     assert "## TERRITORY CORE" in text and "scripts/widget.py [python]:" in text
     assert "scripts/consumer.py (pointer only)" in text and "## EPISODIC HITS" in text
+    assert "TASK-010 (dossier): Widget pack previous rework evidence." in text
     assert "A1-only degradation" in text and pack.R1_FOOTER in text and "Truncation: none." in text
 
 
@@ -72,10 +73,21 @@ def test_pack_uses_fresh_card_and_neighborhood_never_includes_body(repo: Path):
 
 
 def test_budget_drops_lowest_priority_sections_first(repo: Path):
+    _insert_fresh_card(repo); text = pack.compose_pack(repo, "TASK-099", 160)
+    assert pack._tokens(text) <= 160
+    assert "Truncation: episodic hits, one-hop neighborhood." in text
+    assert "scripts/consumer.py (pointer only)" not in text
+    assert "card purpose: Widget purpose" in text
+    assert "## TERRITORY CORE" in text and pack.R1_FOOTER in text
+
+
+def test_budget_drops_territory_card_bodies_last(repo: Path):
     _insert_fresh_card(repo); text = pack.compose_pack(repo, "TASK-099", 150)
     assert pack._tokens(text) <= 150
-    assert "Truncation: episodic hits" in text
-    assert "## TERRITORY CORE" in text and pack.R1_FOOTER in text
+    assert "Truncation: episodic hits, one-hop neighborhood, territory card bodies." in text
+    assert "scripts/consumer.py (pointer only)" not in text
+    assert "card purpose: Widget purpose" not in text
+    assert "card: Widget purpose" in text
 
 
 def test_json_is_machine_readable_and_reports_budget(repo: Path):
