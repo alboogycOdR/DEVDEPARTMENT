@@ -15,7 +15,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-002
 **Title:** ATLAS A1 — scanner, schema, core query CLI (façade + extension hooks)
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §0–§3, §6 (A1), §7 (A1 exit criteria)
@@ -38,14 +38,16 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Progress_Notes:**
 - [2026-08-13T15:32:30Z] [CX] Claimed TASK-002 and created task/TASK-002-cx. Beginning A1 implementation: schema, incremental scanner, core read-only queries, and façade.
 - [2026-08-13T15:39:30Z] [CX] Layer 0 implementation committed as 6a5c9e6. Focused suite: 29 passed in 1.00s; real-repo full scan, `where decide`, and `impact scripts/builder_registry.py` verified. Full Python suite was started but exceeded the 125s command window without a result; next: obtain full-suite result, then record acceptance evidence and submit for review.
+- [2026-08-13T17:03:00Z] [CX] Full Python suite completed: 617 passed in 92.43s. A1 is blocked on its real-repo impact exit criterion: `scripts/supervisor.py` contains no `builder_registry` reference, so `impact scripts/builder_registry.py` correctly lists dispatch/validate but not supervisor. Adding that dependency requires an out-of-territory edit to `scripts/supervisor.py`; awaiting ORCH's specification/acceptance decision.
 **Artifacts:**
 - [2026-08-13T15:39:30Z] [CX] scripts/atlas.py, scripts/atlas_core.py, tests/test_atlas_core.py, .gitignore, sync-manifest.json (commit 6a5c9e6)
 **Test_Evidence:**
 - [2026-08-13T15:39:30Z] [CX] `python -m pytest tests/test_atlas_core.py -q` → 29 passed in 1.00s. `python scripts/atlas.py scan --full --repo .` → 103 files scanned; smoke checks for `where decide`, `impact scripts/builder_registry.py`, and `status` passed. `python -m pytest -q` exceeded the 125s command window with no completed result; pending rerun/confirmation.
+- [2026-08-13T17:03:00Z] [CX] `python -m pytest -q` → 617 passed in 92.43s. `python scripts/atlas.py scan --full --repo .` → 103 scanned, then incremental scan → 103 scanned / 0 changed. `where decide` returned `scripts/supervisor.py:224` plus callers. `impact scripts/builder_registry.py` returned `PLAN.md`, README/docs/dossier/spec references, `scripts/dispatch.ps1`, `scripts/dispatch.sh`, and `scripts/validate_plan.py`; it cannot return supervisor because no source edge exists. No package.json or Node test suite is present in this repository.
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT — A1's required real-repo impact result demands a `scripts/supervisor.py` consumer of `scripts/builder_registry.py`, but supervisor currently has no such reference. Creating it would be outside TASK-002 Owned_Paths; ORCH must revise/waive the acceptance criterion or create an integration task.
 **Updated_By:** CX
-**Updated_At:** 2026-08-13T15:39:30Z
+**Updated_At:** 2026-08-13T17:03:00Z
 
 ### TASK-003
 **Title:** ATLAS A2 — episodic indexer (dossiers/REVIEW/INSTINCTS/RETRO → FTS)
