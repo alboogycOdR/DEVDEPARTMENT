@@ -392,3 +392,39 @@ class TestManifestPathsAreLiteral:
         assert not (on_disk - registered), (
             f"test files present in the pack but not registered for sync: "
             f"{sorted(on_disk - registered)}")
+
+
+class TestPackTemplateShipsSafeDefaults:
+    """The pack's own autopilot.json is a TEMPLATE that every onboarded
+    project inherits (new keys arrive via sync's add_only_keys merge), so a
+    value flipped for local use here silently becomes every project's
+    default. Found live: the ATLAS acceptance run enabled atlas on
+    DEVDEPARTMENT and the flip landed in the template, contradicting both
+    the spec's ask-don't-auto-flip rule and onboard.md's own text, which
+    tells the operator the template ships disabled.
+
+    These pin the ask-don't-auto-flip settings specifically -- the ones
+    onboarding is supposed to ASK about. They must ship in their safe,
+    inert state regardless of how the pack repo is being used day to day."""
+
+    def _cfg(self):
+        return json.loads((REPO_ROOT / "autopilot.json").read_text(encoding="utf-8"))
+
+    def test_atlas_ships_disabled(self):
+        assert self._cfg().get("atlas", {}).get("enabled") is False, (
+            "autopilot.json is the template every project inherits -- atlas.enabled must "
+            "ship false and be flipped per project during onboarding, after a scan")
+
+    def test_control_mode_ships_legacy(self):
+        assert self._cfg().get("control", {}).get("mode") == "legacy", (
+            "control.mode must ship legacy: strict changes who may write PLAN.md and is "
+            "an onboarding question, not a pack default")
+
+    def test_s5b_ships_defined_but_inactive(self):
+        """S5B requires a live CLAUDE_CONFIG_DIR verification on the target
+        machine; shipping it active would dispatch to an unauthenticated
+        second login on every project that syncs."""
+        builders = self._cfg().get("builders", {})
+        if isinstance(builders, dict):
+            assert "S5B" not in builders.get("active", []), (
+                "S5B must ship defined-but-inactive until per-machine auth is verified")

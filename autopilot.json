@@ -9,7 +9,7 @@
     "telegram"
   ],
   "review_cmd": "claude -p \"You are ORCH in this repository. Read .claude/commands/devteam-review.md and execute that review workflow end-to-end now for every task with Status: needs_review. The integration branch is per autopilot.json git.base_branch.\" --model claude-opus-4-8 --dangerously-skip-permissions",
-  "_review_cmd_note": "Slash commands do NOT expand in claude -p on this CLI version — verified live 2026-08-13: '/devteam-review' as the -p prompt produced a no-op session ('I don't see a specific request'). The explicit read-and-execute prompt is the working form.",
+  "_review_cmd_note": "Slash commands do NOT expand in claude -p on this CLI version \u2014 verified live 2026-08-13: '/devteam-review' as the -p prompt produced a no-op session ('I don't see a specific request'). The explicit read-and-execute prompt is the working form.",
   "builders": {
     "active": [
       "GB",
@@ -118,10 +118,11 @@
   },
   "judgment_model": "claude-opus-4-8",
   "atlas": {
-    "enabled": true,
+    "enabled": false,
     "budget_tokens": 3000,
     "cards_auto_refresh": false,
     "max_cards_per_night": 30,
-    "exclude": []
+    "exclude": [],
+    "_comment": "Ships DISABLED per the ATLAS spec's ask-don't-auto-flip rule (same as control.mode and the builder roster). Enable per project only AFTER running `python scripts/atlas.py scan --full` there -- an empty/absent db makes dispatch skip the section silently, so a true here without a scan is a no-op that merely looks configured. See docs/ATLAS.md."
   }
 }
