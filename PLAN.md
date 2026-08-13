@@ -1,8 +1,8 @@
 ---
-plan_version: 1.6
-last_updated: 2026-08-13T16:11:11Z
+plan_version: 1.7
+last_updated: 2026-08-13T16:32:48Z
 overall_status: in_progress
-orchestrator_notes: "Plan v1.6 — WAVE 2 DISPATCHED 2026-08-13T16:09:40Z: GB launched against TASK-003 (worktree wt-grok-DEVDEPARTMENT, transcript .devteam/launch/GB-20260813-160940.log) and S5 against TASK-004 (wt-s5-DEVDEPARTMENT, .devteam/launch/S5-20260813-160944.log) — disjoint territories, both depend only on done TASK-002. Pre-dispatch gates done: TASK-004 firewall grants live in hooks/lib.js PROTECTED_EXCEPTIONS (scripts/atlas_cards.py, docs/ATLAS.md — DELETE at 004 done, commit 80c8585); review_cmd fixed (slash cmds do not expand in claude -p — 80c8585); run-tests.js empty-list pin replaced with deny-by-default behavior pin (3933d3e, 36/36 both envs). TASK-002 done/merged dc1b64d, first-pass, REVIEW.md row 16:07:16Z; non-blocking findings tracked there (LIKE vs FTS5 MATCH; ls/find evidence). TASK-005 (CX) unlocks at 003+004 done; TASK-006 (S5) at 005. S5 shares ORCH quota — watch budget. Next ORCH action: monitor claims from GB+S5, then needs_review → headless opus-4-8 review (use explicit-prompt form)."
+orchestrator_notes: "Plan v1.7 — TASK-003 (ATLAS A2 episodic indexer, GB) REVIEWED & MERGED 2026-08-13T16:32:48Z on claude-opus-4-8: APPROVED first-pass, merge 98f098c (--no-ff). Territory clean (only scripts/atlas_episodes.py + tests/test_atlas_episodes.py; GB's own commit 289499a touched exactly those two; merge 6f61a81 carried only ORCH's master test fix f938fa0 + PLAN.md forward — no GB PLAN.md edits, c8b9872 filesystem-check evidence present in 16:15:00Z Progress_Note). Spec verified vs §1/§3/§6 A2/R4; all six ACs map to spec text. Independent runs (opus reviewer, GB worktree): 18 focused / 636 full Python / 36 Node green; real-repo smoke episode hits confirmed (TASK-003:1 episode). One NON-BLOCKING finding logged in TASK-003 Review_Findings (present-but-empty source e.g. INSTINCTS.md never converges to changed:0, forces episodes_fts rebuild each run — cosmetic/perf, no data-correctness impact, no AC violated; fast-follow candidate). WAVE 2 status: TASK-004 (ATLAS A3 cards, S5) now claimed on task/TASK-004-s5 — in flight. TASK-005 (CX, A4) unlocks only when BOTH 003 (done) AND 004 done — still blocked on 004. TASK-006 (S5) at 005. Next ORCH action: monitor TASK-004 to needs_review → headless opus-4-8 review."
 ---
 
 # Project Plan
@@ -58,7 +58,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-003
 **Title:** ATLAS A2 — episodic indexer (dossiers/REVIEW/INSTINCTS/RETRO → FTS)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §1 (Episodic indexer), §3, §6 (A2), R4
@@ -88,10 +88,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Test_Evidence:**
 - [2026-08-13T16:19:06Z] [GB] `python -m pytest tests/test_atlas_episodes.py -q` → 18 passed in 1.49s. `python -m pytest -q` → 634 passed, 1 failed in 100.60s (only tests/test_atlas_core.py::test_facade_reports_missing_extension_without_exit_two; expects episodes missing, A2 installs it). `node C:/CLAUDECODE_kingdom.work/DEVDEPARTMENT/hooks/run-tests.js` → 36 passed, 0 failed. `python scripts/atlas.py episodes --repo .` → episodes indexed: 6; sources scanned: 7. `python scripts/atlas.py query "Territory clean"` → `TASK-002:1 episode`. Forward-slash output; exit 0 on empty/success; unknown flag / missing repo → exit 1, never 2.
 - [2026-08-13T16:26:12Z] [GB] After merge 6f61a81: `python -m pytest tests/test_atlas_episodes.py -q` → 18 passed in 2.60s. `python -m pytest -q` → 636 passed in 87.13s. `node hooks/run-tests.js` → 36 passed, 0 failed. `python scripts/atlas.py episodes --repo .` → episodes indexed: 6; sources scanned: 7; sources changed: 6 (exit 0). `python scripts/atlas.py query "Territory clean"` → `TASK-002:1 episode` / `TASK-003:1 episode` (exit 0). Incremental rerun: 6 indexed / 7 scanned / 1 changed. Forward-slash output; last AC ticked.
-**Review_Findings:** —
+**Review_Findings:**
+- [2026-08-13T16:32:48Z] [ORCH] APPROVED (first-pass), merged to master (98f098c, --no-ff). Territory clean: GB's own commit 289499a touched exactly the two Owned_Paths; merge 6f61a81 carried only ORCH's master commits (f938fa0 test fix + PLAN.md forward), zero GB edits outside territory. c8b9872 filesystem-check evidence present (16:15:00Z Progress_Note, both paths NEW). PLAN.md discipline clean (no GB task-block/frontmatter edits). Spec verified against §1 (episodic indexer), §3 (contract + exit 0/1/never-2, forward-slash), §6 A2 (episodes in query), R4 (zero-LLM) — all six ACs map to spec text. Parser reuse confirmed (validate_plan.parse_tasks, team_stats.ROW_RE, instincts.parse_instincts — no duplicate parser). Independent ORCH runs in GB worktree: tests/test_atlas_episodes.py 18 passed; full `pytest -q` 636 passed 0 failed; `node hooks/run-tests.js` 36 passed 0 failed — matches Test_Evidence. Real-repo smoke: scan 105 files, `episodes` 6 indexed / 7 scanned, `query "Territory clean"` → TASK-002:1 + TASK-003:1 episode, all forward-slash, exit codes correct.
+- [2026-08-13T16:32:48Z] [ORCH] NON-BLOCKING finding (no rework; logged for a fast-follow, same posture as TASK-002's LIKE-vs-MATCH note): the incremental indexer never converges to `sources changed: 0`. A source file that is present but parses to zero episodes (today: INSTINCTS.md, which parse_instincts returns [] for) inserts no rows, so `_existing_source_hashes` (which reads FROM episodes) never records its key; every subsequent run re-counts it as changed and rebuilds episodes_fts. Cosmetic "changed: 1"/N + a redundant FTS rebuild per invocation — no data-correctness impact, query results correct and stable, no AC violated. Also a test-coverage gap: the fixture only exercises sources that yield episodes, so idempotency of a zero-yield present source is untested. Recommend recording per-source content-hash independent of row insertion (e.g. a sources/meta row) and adding a regression test; assign as a small follow-up (likely folded into A4/A5 or a dedicated ticket).
 **Blocked_Reason:** —
-**Updated_By:** GB
-**Updated_At:** 2026-08-13T16:26:12Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-13T16:32:48Z
 
 ### TASK-004
 **Title:** ATLAS A3 — cards: hash-pinned LLM summaries, staleness, docs
