@@ -135,7 +135,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-005
 **Title:** ATLAS A4 — context-pack composer with budget + truncation reporting
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §3, §4, §6 (A4), §7 (A4 exit criteria), R1, R4
@@ -152,13 +152,17 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] tests/test_atlas_pack.py green; full suites green
 **Branch:** task/TASK-005-cx
 **Started_At:** 2026-08-13T16:48:00Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-08-13T16:49:00Z] [CX] Preflight (c8b9872 filesystem check):
+  NEW    scripts/atlas_pack.py  -> does not exist; parent scripts/ exists
+  NEW    tests/test_atlas_pack.py  -> does not exist; parent tests/ exists
+  Read the A4 specification plus atlas_core.py, atlas_cards.py, and the façade registration hook. Implementing the isolated pack extension against the existing parser and SQLite schema.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-08-13T16:48:00Z
+**Updated_At:** 2026-08-13T16:49:00Z
 
 ### TASK-006
 **Title:** ATLAS A5 — dispatch/maintenance/autopilot/briefings/onboarding integration
