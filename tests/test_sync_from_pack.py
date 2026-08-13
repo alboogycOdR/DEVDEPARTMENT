@@ -353,3 +353,42 @@ class TestManifestMarkersMatchRealFiles:
                     f"merge_marker_section/merge_add_only_keys for CLAUDE.md/autopilot.json by "
                     f"literal name -- this entry would be silently ignored. Either wire it into "
                     f"run_sync() or remove the entry.")
+
+
+class TestManifestPathsAreLiteral:
+    """v4.9 regression: the ATLAS increment registered its tests as a single
+    glob entry, "tests/test_atlas_*.py". sync_from_pack.py does LITERAL path
+    lookups -- there is no glob/fnmatch anywhere in it -- so that entry
+    matched nothing and all four real test files would never have reached a
+    single onboarded project. It failed silently in the one direction that
+    matters: the sync report showed a MISSING_IN_PACK line for the glob
+    itself, which reads like a harmless pack-hygiene note rather than
+    "four files are silently not propagating". Same class as the
+    plan_guard/preflight omission (cdf441f); this test closes it as a class
+    rather than one instance."""
+
+    def _manifest(self):
+        return json.loads((REPO_ROOT / sfp.MANIFEST_NAME).read_text(encoding="utf-8"))
+
+    def test_no_wildcard_entries_in_framework_owned(self):
+        globs = [f for f in self._manifest()["framework_owned"] if any(c in f for c in "*?[")]
+        assert not globs, (
+            f"framework_owned entries must be literal paths -- sync_from_pack.py does not "
+            f"expand globs, so these match nothing and silently never propagate: {globs}")
+
+    def test_every_framework_owned_path_exists_in_the_pack(self):
+        """The MISSING_IN_PACK runtime report as a build-time assertion, so a
+        missing file fails the suite instead of printing a line someone has
+        to notice in a sync log."""
+        missing = [f for f in self._manifest()["framework_owned"]
+                   if not (REPO_ROOT / f).exists()]
+        assert not missing, f"manifest lists files absent from the pack: {missing}"
+
+    def test_every_shipped_test_file_is_registered(self):
+        """A test suite that does not propagate is a test suite that silently
+        stops protecting downstream projects."""
+        on_disk = {f"tests/{p.name}" for p in (REPO_ROOT / "tests").glob("test_*.py")}
+        registered = set(self._manifest()["framework_owned"])
+        assert not (on_disk - registered), (
+            f"test files present in the pack but not registered for sync: "
+            f"{sorted(on_disk - registered)}")
