@@ -171,7 +171,7 @@ class TestAllStepsPass:
         assert result.passed is True
         assert result.task_id is None
         assert result.digest_line == "Self-audit: PASS"
-        assert len(result.steps) == 6
+        assert len(result.steps) == 7
 
     def test_plan_md_unchanged_when_all_pass(self, tmp_path, monkeypatch):
         all_pass(monkeypatch)
@@ -195,7 +195,7 @@ class TestIndividualStepFailures:
         (repo / "PLAN.md").write_text(SIMPLE_PLAN, encoding="utf-8")
         result = maint.run_nightly_audit(repo, {}, now=NOW)
         assert result.passed is False
-        assert len(result.steps) == 6  # all 6 still ran
+        assert len(result.steps) == 7  # all 7 still ran
         assert result.task_id == f"TASK-MAINT-{NOW.strftime('%Y-%m-%d')}"
         plan = (repo / "PLAN.md").read_text(encoding="utf-8")
         assert result.task_id in plan
