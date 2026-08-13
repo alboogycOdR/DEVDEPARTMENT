@@ -163,10 +163,10 @@ Usage-window meters:  live-verified against installed claude/codex CLIs? yes/no/
 Sync baseline written (.devteam/sync_state.json):  yes/no
 
 Operating guide:
-  /devteam-decompose            → turn specs/ into the task plan   (model: claude-sonnet-5)
+  /devteam-decompose            → turn specs/ into the task plan   (model: claude-fable-5, medium+ reasoning)
   /devteam-dispatch             → worktrees + launch [the configured active roster — read builders.active, don't paste this literally]          (claude-sonnet-4-6)
   /devteam-status               → health scan                       (claude-sonnet-4-6)
-  /devteam-review               → review, verdict, merge            (claude-sonnet-5)
+  /devteam-review               → review, verdict, merge            (claude-opus-4-8 — headless; NEVER sonnet-5, the S5 builder's own model. NOTE: slash commands do not expand in `claude -p` — use the explicit read-and-execute prompt form, see autopilot.json review_cmd)
   /devteam-autopilot            → one autonomous wave, digest at end
   python3 scripts/supervisor.py --loop --interval 300   → continuous L2 autopilot
                                   (Windows: python scripts\supervisor.py ... — dispatch
