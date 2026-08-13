@@ -95,7 +95,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-004
 **Title:** ATLAS A3 — cards: hash-pinned LLM summaries, staleness, docs
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §1 (Cards), §3, §6 (A3), §7 (A3 exit criteria), §8 Q1, R1, R4
@@ -110,15 +110,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Tests use a fake model transcript — zero live model calls in the suite (§6 A3); suites green
 - [ ] `docs/ATLAS.md` exists: architecture, R1–R4, CLI contract, card lifecycle, R4 degradation
 - [ ] No edits outside Owned_Paths (in particular none to atlas.py/atlas_core.py)
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-004-s5
+**Started_At:** 2026-08-13T16:30:00Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-13T14:31:00Z
+**Updated_By:** S5
+**Updated_At:** 2026-08-13T16:30:00Z
 
 ### TASK-005
 **Title:** ATLAS A4 — context-pack composer with budget + truncation reporting
