@@ -8,6 +8,7 @@ internals. Real subprocess calls are only exercised in the small number of
 tests that specifically need a real git repo (backup, hygiene branch
 pruning) — those use tmp_path + a real `git init`.
 """
+import json
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -534,6 +535,84 @@ class TestRealSteps:
         result = maint._step_node_tests(repo)
         assert result.passed is True
         assert "skipped" in result.detail
+
+
+# ==================================================== step: atlas — corrupt-db escalation
+class TestAtlasDbCorrupt:
+    """_atlas_db_corrupt probes the db file directly, independent of
+    atlas.py's own stdout/stderr — see _step_atlas's docstring."""
+
+    def test_missing_db_is_not_corrupt(self, tmp_path):
+        assert maint._atlas_db_corrupt(tmp_path / "atlas.db") is False
+
+    def test_garbage_file_is_corrupt(self, tmp_path):
+        db = tmp_path / "atlas.db"
+        db.write_bytes(b"not a sqlite database at all, just garbage bytes")
+        assert maint._atlas_db_corrupt(db) is True
+
+    def test_valid_sqlite_db_is_not_corrupt(self, tmp_path):
+        import sqlite3
+        db = tmp_path / "atlas.db"
+        conn = sqlite3.connect(str(db))
+        conn.execute("CREATE TABLE t (x INTEGER)")
+        conn.commit()
+        conn.close()
+        assert maint._atlas_db_corrupt(db) is False
+
+
+class TestStepAtlas:
+    def _repo(self, tmp_path, enabled=True):
+        (tmp_path / "scripts").mkdir(exist_ok=True)
+        (tmp_path / "scripts" / "atlas.py").write_text("# stub", encoding="utf-8")
+        (tmp_path / "autopilot.json").write_text(
+            json.dumps({"atlas": {"enabled": enabled}}), encoding="utf-8"
+        )
+        return tmp_path
+
+    def test_disabled_is_a_pass_and_skips(self, tmp_path):
+        repo = self._repo(tmp_path, enabled=False)
+        result = maint._step_atlas(repo)
+        assert result.passed is True
+        assert "disabled" in result.detail
+
+    def test_ordinary_scan_failure_does_not_escalate(self, tmp_path, monkeypatch):
+        repo = self._repo(tmp_path, enabled=True)
+        monkeypatch.setattr(maint, "_atlas_run", lambda *a, **k: (False, "transient network error"))
+        result = maint._step_atlas(repo)
+        assert result.passed is True
+        assert "scan failed" in result.detail
+
+    def test_corrupt_db_escalates_with_delete_and_rescan_remedy(self, tmp_path, monkeypatch):
+        """Regression for the REWORK finding: atlas.py crashes on a corrupt
+        db with an uncaught, multi-line traceback whose real error line is
+        past _oneline's 400-char head truncation, so a string-marker match
+        against the truncated tail alone can never see it. Simulate exactly
+        that truncated tail (no marker text survives) and confirm escalation
+        still fires — because it now comes from probing the db file itself,
+        not from string-matching atlas.py's output."""
+        repo = self._repo(tmp_path, enabled=True)
+        db_dir = repo / ".devteam"
+        db_dir.mkdir()
+        (db_dir / "atlas.db").write_bytes(b"garbage, not a database")
+        long_traceback = (
+            "Traceback (most recent call last): " + ("x" * 500)
+            + " sqlite3.DatabaseError: file is not a database"
+        )
+        truncated_tail = long_traceback[:400]  # mirrors _oneline's head truncation
+        assert "DatabaseError" not in truncated_tail  # sanity: marker really is gone
+        monkeypatch.setattr(maint, "_atlas_run", lambda *a, **k: (False, truncated_tail))
+        result = maint._step_atlas(repo)
+        assert result.passed is False
+        assert "delete" in result.detail.lower()
+        assert "re-run" in result.detail.lower()
+        assert "scan --full" in result.detail.lower()
+
+    def test_non_corrupt_scan_and_episodes_ok(self, tmp_path, monkeypatch):
+        repo = self._repo(tmp_path, enabled=True)
+        monkeypatch.setattr(maint, "_atlas_run", lambda script, args, cwd, timeout: (True, "ok"))
+        result = maint._step_atlas(repo)
+        assert result.passed is True
+        assert "scan OK" in result.detail
 
 
 # ============================================================== CLI =========

@@ -19,6 +19,7 @@ import argparse
 import json
 import os as _os
 import re
+import sqlite3
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -151,6 +152,39 @@ def _step_node_tests(repo: Path) -> StepResult:
 _ATLAS_CORRUPTION_MARKERS = ("malformed", "not a database", "disk image is malformed", "database disk image")
 
 
+def _atlas_db_corrupt(db: Path) -> bool:
+    """Probe atlas.db directly via sqlite3, independent of atlas.py's own
+    stdout/stderr formatting.
+
+    atlas.py's top-level exception handler does not catch sqlite3.DatabaseError,
+    so a corrupt db makes it crash with an uncaught, multi-line traceback whose
+    actual error line (e.g. "sqlite3.DatabaseError: file is not a database")
+    is the LAST line — well past the 400-char head truncation _oneline applies
+    before any string-marker check could ever see it. String-matching that
+    truncated output can never reach the marker, so it is not a reliable
+    corruption signal on its own. Querying the db file directly sidesteps
+    atlas.py's output entirely and catches both corruption shapes:
+    a completely non-sqlite garbage file (raises DatabaseError immediately on
+    the first statement) and a truncated-but-valid-header sqlite file (opens
+    fine but PRAGMA integrity_check reports problems instead of "ok").
+    """
+    if not db.exists():
+        return False
+    try:
+        conn = sqlite3.connect(str(db))
+        try:
+            rows = conn.execute("PRAGMA integrity_check").fetchall()
+        finally:
+            conn.close()
+        return not (len(rows) == 1 and rows[0][0] == "ok")
+    except sqlite3.DatabaseError:
+        return True
+    except Exception:
+        # Any other failure (permissions, locked file, etc.) is not a
+        # corruption verdict — let the ordinary log-and-continue path handle it.
+        return False
+
+
 def _atlas_run(atlas_script: Path, args: list[str], cwd: Path, timeout: int) -> tuple[bool, str]:
     """Run one `atlas.py` subcommand, returning (ok, combined-output-oneline).
 
@@ -202,11 +236,12 @@ def _step_atlas(repo: Path) -> StepResult:
         return StepResult("atlas", True, "scripts/atlas.py not found — skipped")
 
     notes: list[str] = []
+    db = repo / ".devteam" / "atlas.db"
     ok, tail = _atlas_run(atlas_script, ["scan", "--repo", str(repo)], repo, 300)
     if not ok:
         low = tail.lower()
-        if any(marker in low for marker in _ATLAS_CORRUPTION_MARKERS):
-            db = repo / ".devteam" / "atlas.db"
+        marker_hit = any(marker in low for marker in _ATLAS_CORRUPTION_MARKERS)
+        if marker_hit or _atlas_db_corrupt(db):
             return StepResult(
                 "atlas", False,
                 f"atlas.db appears corrupt: {tail}; remedy: delete {db} and re-run "
