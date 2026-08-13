@@ -189,19 +189,6 @@ const PROTECTED_EXCEPTIONS = [
   // Example (from the project this came out of, where builders had to fix product
   // CAPS extractors that live alongside dispatch/plan_commit in scripts/):
   //   'scripts/extract_caps_taxonomy*.py',
-  //
-  // TASK-006 (S5, ATLAS A5 integration) — active per-task grants, DELETE when
-  // TASK-006 is done. Deliberately the widest grant this pack has issued: A5's
-  // spec territory IS the ORCH machinery (spec §5). Review gates every line.
-  'scripts/dispatch.sh',
-  'scripts/dispatch.ps1',
-  'scripts/maintenance.py',
-  'scripts/board_publisher.py',
-  'docs/ATLAS.md',
-  'onboard.md',
-  'autopilot.json',
-  'briefings/*',
-  '.claude/commands/devteam-decompose.md',
 ];
 
 /**
