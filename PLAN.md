@@ -135,7 +135,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-005
 **Title:** ATLAS A4 — context-pack composer with budget + truncation reporting
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §3, §4, §6 (A4), §7 (A4 exit criteria), R1, R4
@@ -150,15 +150,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] With cards absent, degrades to A1-only content and says so — both degraded and full paths tested (§6 A4)
 - [ ] §7 A4 exit criteria: on a synthetic PLAN.md task the pack stays under budget and contains territory outline + neighborhood pointers + R1 footer
 - [ ] tests/test_atlas_pack.py green; full suites green
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-005-cx
+**Started_At:** 2026-08-13T16:48:00Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-13T14:31:00Z
+**Updated_By:** CX
+**Updated_At:** 2026-08-13T16:48:00Z
 
 ### TASK-006
 **Title:** ATLAS A5 — dispatch/maintenance/autopilot/briefings/onboarding integration
