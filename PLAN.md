@@ -1,8 +1,8 @@
 ---
-plan_version: 1.4
-last_updated: 2026-08-13T16:00:00Z
+plan_version: 1.5
+last_updated: 2026-08-13T16:07:16Z
 overall_status: in_progress
-orchestrator_notes: "Plan v1.3 — ATLAS build, 5 tasks TASK-002..006 (A1..A5). TASK-002 (CX, terra): implementation committed 6a5c9e6, 617 Python tests green. CX blocked 17:03(local)/~15:50Z with OWNERSHIP_CONFLICT — spec §7 A1 wrongly demanded a supervisor.py consumer of builder_registry. ORCH verdict: block was correct; spec amended (changelog v1.1) — impact criterion binds only on true Python importers (budget.py, validate_plan.py). Unblocked 15:55Z (follow-ups: budget.py edge detection — done c8f4c4c; Node suite; UTC stamps). Second block 15:53Z TOOLING_FAILURE: run-tests.js inherited dispatch's DEVTEAM_UNIT and failed its unset-var test only in builder sessions — ORCH machinery bug, fixed master 88d7965, 36/36 both envs, unblocked 16:00Z. CX to rerun Node suite, self-check, submit needs_review. Waves unchanged: 2 = 003(GB)+004(S5) after 002; 3 = 005(CX); 4 = 006(S5); S5 waves need PROTECTED_EXCEPTIONS grants in hooks/lib.js first. Next ORCH action: re-dispatch CX, monitor to needs_review, then headless opus-4-8 /devteam-review."
+orchestrator_notes: "Plan v1.5 — TASK-002 (ATLAS A1) APPROVED & merged to master (--no-ff) after opus-4-8 /devteam-review. First-pass approval. Independent verification: territory clean (5/5 files in Owned_Paths, no PLAN.md edits); 618 Python + 30 core + 36 Node all green (re-run by ORCH, matches CX Test_Evidence); §7 A1 exit criteria all pass on this repo — full scan 1.41s (<10s), `where decide`→supervisor.py:224+callers, `impact builder_registry.py` lists budget.py AND validate_plan.py, one-file touch re-parses exactly 1, exit 0 empty / 1 error / never 2. Non-blocking findings (see REVIEW.md): (1) query uses LIKE substring vs FTS5 MATCH/bm25 ranking — correct+fast at current scale, revisit for large-repo latency; (2) no explicit ls/find filesystem-check evidence in commit history (first-occurrence note, all files new). Branch task/TASK-002-cx deleted. UNLOCKED by TASK-002 done: TASK-003 (GB, A2) and TASK-004 (S5, A3) are now dispatchable in parallel (disjoint territories: atlas_episodes.py vs atlas_cards.py+docs/ATLAS.md). NOTE S5 waves still need PROTECTED_EXCEPTIONS grants in hooks/lib.js before TASK-004 dispatch. TASK-005 (CX, A4) still waits on 002+003+004; TASK-006 (S5, A5) on 002+005. Next ORCH action: dispatch Wave 2 (003+004)."
 ---
 
 # Project Plan
@@ -15,7 +15,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-002
 **Title:** ATLAS A1 — scanner, schema, core query CLI (façade + extension hooks)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §0–§3, §6 (A1), §7 (A1 exit criteria)
@@ -50,10 +50,11 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-13T17:03:00Z] [CX] `python -m pytest -q` → 617 passed in 92.43s. `python scripts/atlas.py scan --full --repo .` → 103 scanned, then incremental scan → 103 scanned / 0 changed. `where decide` returned `scripts/supervisor.py:224` plus callers. `impact scripts/builder_registry.py` returned `PLAN.md`, README/docs/dossier/spec references, `scripts/dispatch.ps1`, `scripts/dispatch.sh`, and `scripts/validate_plan.py`; it cannot return supervisor because no source edge exists. No package.json or Node test suite is present in this repository.
 - [2026-08-13T15:53:16Z] [CX] `python -m pytest tests/test_atlas_core.py -q` → 30 passed in 1.12s. `python scripts/atlas.py scan --full --repo .` → 103 scanned; `impact scripts/builder_registry.py` lists `scripts/budget.py` and `scripts/validate_plan.py`. `python -m pytest -q` → 618 passed in 101.46s. `node hooks/run-tests.js` → 35 passed, 1 failed: `unset DEVTEAM_UNIT still means ORCH (interactive sessions unaffected)` expected 0, got 2.
 - [2026-08-13T15:59:12Z] [CX] `node C:/CLAUDECODE_kingdom.work/DEVDEPARTMENT/hooks/run-tests.js` → 36 passed, 0 failed. `python -m pytest tests/test_atlas_core.py -q` → 30 passed in 1.75s. Fresh scan: full 103 scanned / 103 changed, incremental 103 scanned / 0 changed; `where decide` returned `scripts/supervisor.py:224` and callers; `impact scripts/builder_registry.py` lists both `scripts/budget.py` and `scripts/validate_plan.py`. A combined fresh full-suite rerun exceeded the 125s command window before buffered output; prior completed evidence remains `python -m pytest -q` → 618 passed in 101.46s.
-**Review_Findings:** —
+**Review_Findings:**
+- [2026-08-13T16:07:16Z] [ORCH] APPROVED (first-pass), merged to master. Non-blocking notes for future increments (no rework required): (1) `query`/`query`-episodes search uses SQL `LIKE '%term%'` against the FTS5 virtual tables rather than FTS5 `MATCH`/bm25 — functionally correct, forward-slash + file:line + FRESH/STALE all verified, and instant at 103 files, but it bypasses the FTS index and gives alphabetical rather than relevance ranking; revisit if query latency matters on large repos (A2 populates episodes, so this compounds there). (2) No explicit `ls`/`find` filesystem-check evidence in commit history per c8b9872 — first-occurrence note only; all five Owned_Paths were net-new files so there was nothing to clobber.
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-08-13T15:59:12Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-13T16:07:16Z
 
 ### TASK-003
 **Title:** ATLAS A2 — episodic indexer (dossiers/REVIEW/INSTINCTS/RETRO → FTS)
