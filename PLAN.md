@@ -15,7 +15,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-002
 **Title:** ATLAS A1 — scanner, schema, core query CLI (façade + extension hooks)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §0–§3, §6 (A1), §7 (A1 exit criteria)
@@ -33,15 +33,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] `.gitignore` and `sync-manifest.json` entries land in this task (R2, §5)
 - [ ] ≥25 tests in tests/test_atlas_core.py incl. incremental-rescan correctness, gitignore honoring, hash stability, forward-slash output (§6 A1); full Python + Node suites stay green
 - [ ] §7 A1 exit criteria on this repo: full scan < 10s; `where decide` finds supervisor.py's function with callers; `impact scripts/builder_registry.py` lists dispatch/validate/supervisor consumers; touching one file re-parses exactly one file
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-002-cx
+**Started_At:** 2026-08-13T15:31:35Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-13T14:31:00Z
+**Updated_By:** CX
+**Updated_At:** 2026-08-13T15:31:35Z
 
 ### TASK-003
 **Title:** ATLAS A2 — episodic indexer (dossiers/REVIEW/INSTINCTS/RETRO → FTS)
