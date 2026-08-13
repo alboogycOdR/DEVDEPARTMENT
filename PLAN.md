@@ -58,7 +58,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-003
 **Title:** ATLAS A2 — episodic indexer (dossiers/REVIEW/INSTINCTS/RETRO → FTS)
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §1 (Episodic indexer), §3, §6 (A2), R4
@@ -76,12 +76,16 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Started_At:** 2026-08-13T16:12:14Z
 **Progress_Notes:**
 - [2026-08-13T16:12:14Z] [GB] Claimed TASK-003 on task/TASK-003-gb. Next: preflight_paths, then implement atlas_episodes.py against §1/§3/§6 A2.
+- [2026-08-13T16:15:00Z] [GB] Preflight (c8b9872 filesystem check) — both paths NEW, as expected:
+  NEW    scripts/atlas_episodes.py  -> does not exist; parent scripts/ exists
+  NEW    tests/test_atlas_episodes.py  -> does not exist; parent tests/ exists
+  Implementing atlas_episodes.py: reuse validate_plan.parse_tasks, team_stats.ROW_RE, instincts.parse_instincts; register(subparsers) for episodes [--reindex].
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** GB
-**Updated_At:** 2026-08-13T16:12:14Z
+**Updated_At:** 2026-08-13T16:15:00Z
 
 ### TASK-004
 **Title:** ATLAS A3 — cards: hash-pinned LLM summaries, staleness, docs
