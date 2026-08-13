@@ -135,7 +135,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-005
 **Title:** ATLAS A4 — context-pack composer with budget + truncation reporting
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §3, §4, §6 (A4), §7 (A4 exit criteria), R1, R4
@@ -144,12 +144,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Readiness:** READY — all three dependencies done (TASK-002 ✓, TASK-003 ✓, TASK-004 ✓ merged 2026-08-13T16:41:36Z). CX may claim.
 **Description:** Build `scripts/atlas_pack.py` (registered via the façade hook): `pack --task TASK-NNN --budget N=3000 [--format prompt|json]`. Composes, in order, within budget: (1) territory core — the task's Owned_Paths resolved against the live tree reusing `preflight_paths`' classification, per-file symbol outline + card if FRESH else first-N-lines head; (2) one-hop neighborhood — `impact` closure as pointers + cards only, never bodies; (3) episodic hits — top-K episodes matches on the task's Title/Description terms; (4) freshness footer — scan timestamp, stale-card count, and the R1 sentence verbatim: "This pack is a map, not the ground: read live any file you edit." Hard cap: truncate lowest-priority-first (3 → 2 → card bodies in 1); the pack always states what was truncated. Reads PLAN.md via `validate_plan.parse_tasks` — no second parser. Must degrade to A1-only content when cards are absent and say so (§6 A4) — test both paths. No edits to any other atlas module.
 **Acceptance_Criteria:**
-- [ ] `pack --task TASK-NNN --budget N=3000 [--format prompt|json]` per §3 contract, via registration hook, no edits to other atlas files
-- [ ] Sections compose in §4 order: territory core (outline + FRESH card or first-N-lines head), one-hop neighborhood as pointers+cards never bodies, episodic top-K on Title/Description terms, freshness footer with the R1 sentence verbatim
-- [ ] Budget is a hard cap; truncation is lowest-priority-first (3 → 2 → card bodies in 1) and the pack always states what was truncated (§4)
-- [ ] With cards absent, degrades to A1-only content and says so — both degraded and full paths tested (§6 A4)
-- [ ] §7 A4 exit criteria: on a synthetic PLAN.md task the pack stays under budget and contains territory outline + neighborhood pointers + R1 footer
-- [ ] tests/test_atlas_pack.py green; full suites green
+- [x] `pack --task TASK-NNN --budget N=3000 [--format prompt|json]` per §3 contract, via registration hook, no edits to other atlas files
+- [x] Sections compose in §4 order: territory core (outline + FRESH card or first-N-lines head), one-hop neighborhood as pointers+cards never bodies, episodic top-K on Title/Description terms, freshness footer with the R1 sentence verbatim
+- [x] Budget is a hard cap; truncation is lowest-priority-first (3 → 2 → card bodies in 1) and the pack always states what was truncated (§4)
+- [x] With cards absent, degrades to A1-only content and says so — both degraded and full paths tested (§6 A4)
+- [x] §7 A4 exit criteria: on a synthetic PLAN.md task the pack stays under budget and contains territory outline + neighborhood pointers + R1 footer
+- [x] tests/test_atlas_pack.py green; full suites green
 **Branch:** task/TASK-005-cx
 **Started_At:** 2026-08-13T16:48:00Z
 **Progress_Notes:**
@@ -157,12 +157,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   NEW    scripts/atlas_pack.py  -> does not exist; parent scripts/ exists
   NEW    tests/test_atlas_pack.py  -> does not exist; parent tests/ exists
   Read the A4 specification plus atlas_core.py, atlas_cards.py, and the façade registration hook. Implementing the isolated pack extension against the existing parser and SQLite schema.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-13T16:53:00Z] [CX] Implemented the isolated `atlas_pack` extension and its six tests. It reads PLAN.md through `validate_plan.parse_tasks`, resolves live territory using the preflight classifier, uses the existing graph/cards/episodes schema, and reserves disclosure tokens before lowest-priority truncation. Committed on `task/TASK-005-cx`: `231031f feat(atlas): add budgeted context pack composer [TASK-005]`.
+**Artifacts:**
+- [2026-08-13T16:53:00Z] [CX] scripts/atlas_pack.py, tests/test_atlas_pack.py (commit 231031f)
+**Test_Evidence:**
+- [2026-08-13T16:53:00Z] [CX] `python -m pytest tests/test_atlas_pack.py -q` → 6 passed in 0.65s. `python -m pytest tests/test_atlas_core.py tests/test_atlas_episodes.py tests/test_atlas_cards.py tests/test_atlas_pack.py -q` → 75 passed in 5.34s. `python -m pytest -q` → 663 passed in 80.99s. `node hooks/run-tests.js` → 36 passed, 0 failed. Real-repo smoke: `python scripts/atlas.py scan --repo .`; `episodes --repo .`; `pack --task TASK-005 --budget 3000` and `--format json` → exit 0 with territory outlines, pointer-only neighborhood, episodic hits, A1-only disclosure, R1 footer, and `Truncation: none.`
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-08-13T16:49:00Z
+**Updated_At:** 2026-08-13T16:53:00Z
 
 ### TASK-006
 **Title:** ATLAS A5 — dispatch/maintenance/autopilot/briefings/onboarding integration
