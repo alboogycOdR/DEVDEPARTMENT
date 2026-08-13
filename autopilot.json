@@ -30,7 +30,8 @@
       },
       "CX": {
         "cli": "codex",
-        "model": "gpt-5.6-sol",
+        "model": null,
+        "_model_note": "gpt-5.6-sol rejected 400 on ChatGPT-account Codex (2026-08-13); null = account default model",
         "auth": {
           "mode": "default"
         },
