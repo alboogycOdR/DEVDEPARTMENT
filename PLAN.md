@@ -15,7 +15,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-002
 **Title:** ATLAS A1 — scanner, schema, core query CLI (façade + extension hooks)
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §0–§3, §6 (A1), §7 (A1 exit criteria)
@@ -35,13 +35,14 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] §7 A1 exit criteria on this repo: full scan < 10s; `where decide` finds supervisor.py's function with callers; `impact scripts/builder_registry.py` lists dispatch/validate/supervisor consumers; touching one file re-parses exactly one file
 **Branch:** task/TASK-002-cx
 **Started_At:** 2026-08-13T15:31:35Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-08-13T15:32:30Z] [CX] Claimed TASK-002 and created task/TASK-002-cx. Beginning A1 implementation: schema, incremental scanner, core read-only queries, and façade.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-08-13T15:31:35Z
+**Updated_At:** 2026-08-13T15:32:30Z
 
 ### TASK-003
 **Title:** ATLAS A2 — episodic indexer (dossiers/REVIEW/INSTINCTS/RETRO → FTS)
