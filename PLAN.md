@@ -58,7 +58,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-003
 **Title:** ATLAS A2 — episodic indexer (dossiers/REVIEW/INSTINCTS/RETRO → FTS)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §1 (Episodic indexer), §3, §6 (A2), R4
@@ -72,15 +72,16 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Zero model calls anywhere in the module (R4)
 - [ ] Episode hits appear in `atlas.py query` results after indexing (§6 A2)
 - [ ] tests/test_atlas_episodes.py green; full suites green; forward-slash output; exit codes per §3
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-003-gb
+**Started_At:** 2026-08-13T16:12:14Z
+**Progress_Notes:**
+- [2026-08-13T16:12:14Z] [GB] Claimed TASK-003 on task/TASK-003-gb. Next: preflight_paths, then implement atlas_episodes.py against §1/§3/§6 A2.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-13T14:31:00Z
+**Updated_By:** GB
+**Updated_At:** 2026-08-13T16:12:14Z
 
 ### TASK-004
 **Title:** ATLAS A3 — cards: hash-pinned LLM summaries, staleness, docs
