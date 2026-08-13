@@ -1,8 +1,8 @@
 ---
-plan_version: 1.7
-last_updated: 2026-08-13T16:32:48Z
+plan_version: 1.8
+last_updated: 2026-08-13T16:41:36Z
 overall_status: in_progress
-orchestrator_notes: "Plan v1.7 — TASK-003 (ATLAS A2 episodic indexer, GB) REVIEWED & MERGED 2026-08-13T16:32:48Z on claude-opus-4-8: APPROVED first-pass, merge 98f098c (--no-ff). Territory clean (only scripts/atlas_episodes.py + tests/test_atlas_episodes.py; GB's own commit 289499a touched exactly those two; merge 6f61a81 carried only ORCH's master test fix f938fa0 + PLAN.md forward — no GB PLAN.md edits, c8b9872 filesystem-check evidence present in 16:15:00Z Progress_Note). Spec verified vs §1/§3/§6 A2/R4; all six ACs map to spec text. Independent runs (opus reviewer, GB worktree): 18 focused / 636 full Python / 36 Node green; real-repo smoke episode hits confirmed (TASK-003:1 episode). One NON-BLOCKING finding logged in TASK-003 Review_Findings (present-but-empty source e.g. INSTINCTS.md never converges to changed:0, forces episodes_fts rebuild each run — cosmetic/perf, no data-correctness impact, no AC violated; fast-follow candidate). WAVE 2 status: TASK-004 (ATLAS A3 cards, S5) now claimed on task/TASK-004-s5 — in flight. TASK-005 (CX, A4) unlocks only when BOTH 003 (done) AND 004 done — still blocked on 004. TASK-006 (S5) at 005. Next ORCH action: monitor TASK-004 to needs_review → headless opus-4-8 review."
+orchestrator_notes: "Plan v1.8 — TASK-004 (ATLAS A3 cards, S5) REVIEWED & MERGED 2026-08-13T16:41:36Z on claude-opus-4-8: APPROVED first-pass, merge 88dc7bd (--no-ff). Territory clean (net diff = exactly the three Owned_Paths docs/ATLAS.md + scripts/atlas_cards.py + tests/test_atlas_cards.py, all net-new; S5's commit a27da61 touched exactly those three; legit merge 862c0e3 carried only master's TASK-003 files + PLAN.md forward, zero out-of-territory S5 edits; c8b9872 filesystem-check evidence present 16:30:30Z; PLAN.md byte-identical to master post-merge). Spec verified vs §1 Cards/§3/§6 A3/§7/§8 Q1/R1/R4 — all seven ACs map to spec text; fake-model-transcript test discipline confirmed (zero live calls, subprocess stub). Independent runs (opus reviewer, S5 worktree): 21 focused / 657 full Python / 36 Node green — matches Test_Evidence. §7 A3 exit criteria verified END-TO-END through atlas.py CLI in isolated temp repo: regenerate-only-on-hash-change + doctored-hash FRESH→STALE flip via core.query, exit 0/1/never-2, R4 clean degradation (model unreachable → cards exit 1, scan/query/status still exit 0). One NON-BLOCKING discipline finding in TASK-004 Review_Findings (S5's 16:45/16:46Z evidence stamps run ahead of the ~16:33Z actual commit clock — UTC-hygiene reminder, no correctness/verdict impact). WAVE 2 COMPLETE: TASK-002 ✓, TASK-003 ✓, TASK-004 ✓ all done. TASK-005 (ATLAS A4 context-pack composer, CX) is now UNLOCKED — all three deps (002+003+004) done; marked READY, CX may claim. TASK-006 (ATLAS A5 integration, S5) still gated on TASK-005. Next ORCH action: dispatch/await CX claim on TASK-005."
 ---
 
 # Project Plan
@@ -97,7 +97,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-004
 **Title:** ATLAS A3 — cards: hash-pinned LLM summaries, staleness, docs
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §1 (Cards), §3, §6 (A3), §7 (A3 exit criteria), §8 Q1, R1, R4
@@ -126,10 +126,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-13T16:45:00Z] [S5] scripts/atlas_cards.py, tests/test_atlas_cards.py, docs/ATLAS.md (commit a27da61); merge commit (master TASK-003 pickup) on top
 **Test_Evidence:**
 - [2026-08-13T16:46:00Z] [S5] `python -m pytest tests/test_atlas_cards.py -q` → 21 passed in 2.86s. `python -m pytest tests/test_atlas_cards.py tests/test_atlas_core.py tests/test_atlas_episodes.py -q` → 69 passed in 4.89s. `python -m pytest -q` (full suite) → 657 passed in 88.42s. `node hooks/run-tests.js` → 36 passed, 0 failed. Real-repo smoke: `python scripts/atlas.py cards --stale` → exit 0, empty output (no cards yet). `python scripts/atlas.py cards` (no flag) → "atlas cards: specify --generate or --stale", exit 1. `python scripts/atlas.py status` → `cards: 0`, `stale cards: 0`, exit 0. `git diff local-main/master...HEAD --stat` → only docs/ATLAS.md, scripts/atlas_cards.py, tests/test_atlas_cards.py touched (all net-new), matching Owned_Paths exactly.
-**Review_Findings:** —
+**Review_Findings:**
+- [2026-08-13T16:41:36Z] [ORCH] APPROVED (first-pass), merged to master (88dc7bd, --no-ff). Territory clean: net diff master...task/TASK-004-s5 is exactly the three Owned_Paths (docs/ATLAS.md, scripts/atlas_cards.py, tests/test_atlas_cards.py, all net-new); S5's own commit a27da61 touched exactly those three; the legitimate merge commit 862c0e3 carried only master's already-landed TASK-003 files (scripts/atlas_episodes.py, tests/test_atlas_episodes.py) + PLAN.md forward — zero S5 edits outside territory. c8b9872 filesystem-check evidence present (16:30:30Z preflight, all three paths NEW). PLAN.md discipline clean (no S5 frontmatter/other-block edits; PLAN.md byte-identical to master post-merge). Spec verified against §1 Cards (five fields purpose/invariants/gotchas/entry_points/tokens_estimate; one headless claude-sonnet-4-6 call per changed file; hash-pinned via source_hash; never auto-runs in scan), §3 CLI contract (cards --generate/--stale strings, exit 0/1/never-2, forward-slash UTF-8), §8 Q1 (--max cap added per spec default), §6 A3 (tests use a fake model transcript — zero live calls, confirmed: fake_model subprocess stub echoes canned JSON), §7 A3 exit criteria, R1, R4 — all seven ACs map to spec text. Independent ORCH runs (opus reviewer, S5 worktree): tests/test_atlas_cards.py 21 passed; full pytest -q 657 passed / 0 failed; node hooks/run-tests.js 36 passed / 0 failed — matches Test_Evidence. §7 A3 exit criteria verified END-TO-END through the atlas.py CLI (not just the module) in an isolated temp repo with a fake cards_cmd: card regenerates only on source-hash change (unchanged file → generated: 0); doctored source_hash flips every query path FRESH→STALE-with-warning (`STALE (source changed since card generated)`) via atlas_core.query, exit 0 throughout; R4 clean degradation — model unreachable → cards --generate exit 1 (never 2), scan/query/status all still exit 0.
+- [2026-08-13T16:41:36Z] [ORCH] NON-BLOCKING discipline finding (no rework): S5's 16:45:00Z / 16:46:00Z Progress_Note and Test_Evidence stamps run AHEAD of the wall clock — the actual code+merge commits are timestamped 16:33:36Z/16:33:53Z and the needs_review handoff landed ~16:37Z, so the evidence stamps are ~8–13 min in the future. UTC discipline reminder for S5 (same class as CX's earlier local-time slip on TASK-002); no impact on correctness or the verdict.
 **Blocked_Reason:** —
-**Updated_By:** S5
-**Updated_At:** 2026-08-13T16:46:00Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-13T16:41:36Z
 
 ### TASK-005
 **Title:** ATLAS A4 — context-pack composer with budget + truncation reporting
@@ -139,6 +141,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §3, §4, §6 (A4), §7 (A4 exit criteria), R1, R4
 **Owned_Paths:** scripts/atlas_pack.py, tests/test_atlas_pack.py
 **Depends_On:** TASK-002, TASK-003, TASK-004
+**Readiness:** READY — all three dependencies done (TASK-002 ✓, TASK-003 ✓, TASK-004 ✓ merged 2026-08-13T16:41:36Z). CX may claim.
 **Description:** Build `scripts/atlas_pack.py` (registered via the façade hook): `pack --task TASK-NNN --budget N=3000 [--format prompt|json]`. Composes, in order, within budget: (1) territory core — the task's Owned_Paths resolved against the live tree reusing `preflight_paths`' classification, per-file symbol outline + card if FRESH else first-N-lines head; (2) one-hop neighborhood — `impact` closure as pointers + cards only, never bodies; (3) episodic hits — top-K episodes matches on the task's Title/Description terms; (4) freshness footer — scan timestamp, stale-card count, and the R1 sentence verbatim: "This pack is a map, not the ground: read live any file you edit." Hard cap: truncate lowest-priority-first (3 → 2 → card bodies in 1); the pack always states what was truncated. Reads PLAN.md via `validate_plan.parse_tasks` — no second parser. Must degrade to A1-only content when cards are absent and say so (§6 A4) — test both paths. No edits to any other atlas module.
 **Acceptance_Criteria:**
 - [ ] `pack --task TASK-NNN --budget N=3000 [--format prompt|json]` per §3 contract, via registration hook, no edits to other atlas files
