@@ -48,6 +48,7 @@ FAILURE_OWNED_PATHS: dict[str, list[str]] = {
     "node_tests": ["hooks/**"],
     "hygiene": ["scripts/**"],
     "backup": ["backups/**"],
+    "atlas": [".devteam/**"],
 }
 
 
@@ -144,6 +145,85 @@ def _step_node_tests(repo: Path) -> StepResult:
         return StepResult("node_tests", False, "node hook tests timed out after 300s")
     except Exception as exc:  # noqa: BLE001
         return StepResult("node_tests", False, f"node hook tests crashed: {exc}")
+
+
+# ================================================================ step: atlas
+_ATLAS_CORRUPTION_MARKERS = ("malformed", "not a database", "disk image is malformed", "database disk image")
+
+
+def _atlas_run(atlas_script: Path, args: list[str], cwd: Path, timeout: int) -> tuple[bool, str]:
+    """Run one `atlas.py` subcommand, returning (ok, combined-output-oneline).
+
+    PYTHONIOENCODING is forced to utf-8 in the child's env: on Windows a
+    piped/redirected child's stdout otherwise defaults to the OS ANSI
+    codepage, and atlas.py's own em-dashes/arrows crash it with
+    UnicodeEncodeError before a single byte is written — which would
+    surface here as an ordinary-looking "scan failed" note every single
+    night rather than the real scan actually running.
+    """
+    env = {**_os.environ, "PYTHONIOENCODING": "utf-8"}
+    try:
+        r = subprocess.run([sys.executable, str(atlas_script), *args], cwd=cwd, env=env,
+                           capture_output=True, encoding="utf-8", errors="replace", timeout=timeout)
+        ok = r.returncode == 0
+        tail = _oneline((r.stdout or "") + " " + (r.stderr or ""), max_len=400)
+        return ok, tail
+    except subprocess.TimeoutExpired:
+        return False, f"{' '.join(args)} timed out after {timeout}s"
+    except Exception as exc:  # noqa: BLE001
+        return False, f"{' '.join(args)} crashed: {exc}"
+
+
+def _step_atlas(repo: Path) -> StepResult:
+    """ATLAS A5 (spec §5): nightly scan + episodes --reindex + optional
+    capped card refresh. Deliberately NOT part of the normal fail=escalate
+    contract every other step follows: an ordinary atlas failure (model
+    unreachable, a transient parse error) is logged in this step's detail
+    and the audit moves on — ATLAS is a convenience layer, not something
+    that should page a human at 2am. The one exception the spec carves out
+    is db corruption, which DOES escalate (passed=False), because the
+    prescribed remedy (delete + full rescan) is destructive enough that it
+    should go through a filed task rather than run unattended here.
+
+    Takes only `repo` (not `cfg`) to match every other step function's
+    signature — `run_nightly_audit` dispatches all `_ORDERED_STEPS` the
+    same way except `_step_backup`, and reading autopilot.json directly
+    here keeps that uniform instead of special-casing this step's call."""
+    cfg_path = repo / "autopilot.json"
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8")) if cfg_path.exists() else {}
+    except Exception:
+        cfg = {}
+    atlas_cfg = cfg.get("atlas") or {}
+    if not atlas_cfg.get("enabled", False):
+        return StepResult("atlas", True, "atlas disabled — skipped")
+    atlas_script = repo / "scripts" / "atlas.py"
+    if not atlas_script.exists():
+        return StepResult("atlas", True, "scripts/atlas.py not found — skipped")
+
+    notes: list[str] = []
+    ok, tail = _atlas_run(atlas_script, ["scan", "--repo", str(repo)], repo, 300)
+    if not ok:
+        low = tail.lower()
+        if any(marker in low for marker in _ATLAS_CORRUPTION_MARKERS):
+            db = repo / ".devteam" / "atlas.db"
+            return StepResult(
+                "atlas", False,
+                f"atlas.db appears corrupt: {tail}; remedy: delete {db} and re-run "
+                f"'python scripts/atlas.py scan --full --repo .'",
+            )
+        notes.append(f"scan failed: {tail}")
+    else:
+        notes.append("scan OK")
+        ok2, tail2 = _atlas_run(atlas_script, ["episodes", "--reindex", "--repo", str(repo)], repo, 300)
+        notes.append("episodes --reindex OK" if ok2 else f"episodes --reindex failed: {tail2}")
+
+        if atlas_cfg.get("cards_auto_refresh", False):
+            max_n = atlas_cfg.get("max_cards_per_night", 30)
+            ok3, tail3 = _atlas_run(atlas_script, ["cards", "--generate", "--max", str(max_n)], repo, 1800)
+            notes.append(f"cards --generate (max {max_n}) OK" if ok3 else f"cards --generate failed: {tail3}")
+
+    return StepResult("atlas", True, "; ".join(notes))
 
 
 # =============================================================== step 3: hygiene
@@ -342,6 +422,7 @@ _ORDERED_STEPS = (
     "_step_node_tests",
     "_step_hygiene",
     "_step_backup",
+    "_step_atlas",
 )
 
 

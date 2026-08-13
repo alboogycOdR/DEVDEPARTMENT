@@ -32,6 +32,13 @@ Copy from the pack into the project root, skipping any file that already exists 
 - `autopilot.json` — only if absent (copy the pack's template). The template ships `control.mode: "legacy"` — builders still write PLAN.md themselves, which is the safe default for a project onboarding for the first time. **Ask the human whether they want `control.mode: "strict"` instead** (the CONTROL-block single-writer blackboard — builders never touch PLAN.md; the dispatcher claims tasks and the supervisor applies builder-reported state via a fenced `devteam-control` block) before flipping it; see `docs/CONTROL.md`. Do not flip it unasked — it changes what `dispatch.sh`/`.ps1` do and what briefings/GROK_BUILD_BRIEFING.md + CODEX_BRIEFING.md tell the builder to do.
 - **Builder roster** (v4.7): the pack template's `autopilot.json` ships the default roster (GB/grok, CX/codex, S5/claude — plus S5B defined-but-inactive). Ask the human: "Use the default roster, or configure differently for this project (add/remove units, change models, add a second same-CLI unit with its own auth via CLAUDE_CONFIG_DIR)?" Walk through `docs/BUILDER_REGISTRY.md`'s schema for any changes. Do not silently change the roster from the template default — it changes what dispatch launches on every autopilot tick, same "ask, don't auto-flip" caution as control.mode above. Note for the firewall smoke test later: unit identity is always `DEVTEAM_UNIT`; a config_dir unit's auth var is never needed for hook tests (hooks don't invoke a CLI).
 - `INSTINCTS.md` — only if absent; create empty via `python3 -c "import sys; sys.path.insert(0,'scripts'); import instincts; instincts.save_atomic('.', [])"` (Wave C learning loop's instinct store, created empty per project — never copied from the pack)
+- **ATLAS** (v4.9, project map & memory): the pack template's `autopilot.json` ships `"atlas": {"enabled": false, ...}` — disabled, same "ask, don't auto-flip" pattern as `control.mode` and the roster above. Ask the human: "Enable ATLAS (a persistent, queryable project map — `scripts/atlas.py scan/query/where/impact/cards/pack` — that saves builder orientation cost every dispatch) for this project?" If yes: flip `atlas.enabled: true` in `autopilot.json`, run `python3 scripts/atlas.py scan --full --repo .` once to build the initial `.devteam/atlas.db`, and add the R2 `.gitignore` block below (add it regardless of the answer — the file must never be tracked even if ATLAS stays off for now and gets enabled later without a second onboarding pass):
+  ```
+  # ATLAS (DEVDEPARTMENT) — derived, machine-local, rebuildable from scratch (R2)
+  .devteam/atlas.db
+  .devteam/atlas.db-*
+  ```
+  Do not silently flip `atlas.enabled` — like `control.mode` and the roster, this changes what every future `dispatch.sh`/`.ps1` invocation injects into the builder prompt.
 
 Usage-window meters (`scripts/usage_probe.py`) work out of the box (fail-open — renders `—` until real data exists) but the exact fields it parses out of `claude`/`codex`'s stream output have only been verified against the reference implementation's source, not a live installed CLI (see `docs/USAGE.md`'s verification commands). Mention this in the final report as a "not yet live-verified" item rather than silently asserting it works.
 
@@ -151,6 +158,7 @@ Hooks wired into .claude/settings.json:  yes / already / SKIPPED (no node)
 Tests:  pytest [n], hooks [n], validator [OK/FAIL], audit [PASS/FAIL], supervisor dry-run [actions]
 Firewall smoke test:  GB blocked=?, ORCH allowed=?
 control.mode:  legacy (default) / strict (confirmed with human)
+ATLAS (project map):  disabled (default) / enabled (confirmed with human, initial scan run) — .gitignore R2 block added: yes/no
 Usage-window meters:  live-verified against installed claude/codex CLIs? yes/no/not attempted — see docs/USAGE.md
 Sync baseline written (.devteam/sync_state.json):  yes/no
 

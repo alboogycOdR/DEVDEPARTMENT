@@ -291,6 +291,102 @@ if ($InstinctsSection.Trim().Length -gt 0) {
     $Prompt = $Prompt + "`r`n`r`n" + $InstinctsSection.Trim() + "`r`n"
 }
 
+# ATLAS A5 (§5): mirrors dispatch.sh's block exactly -- same posture as the
+# instincts injection just above (fail-open, one warning line on any error,
+# dispatch proceeds without the section either way), gated on both the db
+# existing and autopilot.json -> atlas.enabled (ships false). In
+# control.mode=strict $TaskId is already resolved by the claim above; in
+# legacy mode this predicts it with the same resume-first priority rule,
+# reusing instincts.py's own private helpers (_deps_done, _PRIORITY_ORDER)
+# instead of re-deriving the logic a third time -- if it can't confidently
+# predict a task, it skips the section rather than guess.
+#
+# PYTHONIOENCODING is forced to utf-8 for every python3 call in this block
+# (saved/restored around it, PS 5.1 has no env(1)-style scoping): Python on
+# Windows defaults a piped/redirected child's stdout to the OS ANSI
+# codepage, not UTF-8, and atlas.py's own em-dashes/arrows then crash with
+# UnicodeEncodeError before a single byte reaches us -- silently defeating
+# the fail-open path's actual purpose (which is to show the section when
+# atlas genuinely succeeds, not to paper over an avoidable encoding crash
+# on the platform this was built and tested on).
+$AtlasDbPath = Join-Path $RepoRoot ".devteam\atlas.db"
+if (Test-Path $AtlasDbPath) {
+    $PrevPyIoEncoding = $env:PYTHONIOENCODING
+    $env:PYTHONIOENCODING = "utf-8"
+    $AtlasEnabled = "False"
+    try {
+        $AtlasEnabled = (& $Py -c "
+import json
+try:
+    print(bool((json.load(open('autopilot.json')).get('atlas') or {}).get('enabled', False)))
+except Exception:
+    print('False')
+" 2>$null | Out-String).Trim()
+    } catch {
+        $AtlasEnabled = "False"
+    }
+    if ($AtlasEnabled -eq "True") {
+        $AtlasTaskId = $TaskId
+        if (-not $AtlasTaskId) {
+            try {
+                $AtlasTaskId = (& $Py -c "
+import sys; sys.path.insert(0, 'scripts')
+import instincts
+from pathlib import Path
+from validate_plan import parse_tasks, Report
+try:
+    text = Path('PLAN.md').read_text(encoding='utf-8')
+    rep = Report()
+    all_tasks = parse_tasks(text, rep)
+    by_id = {t.task_id: t for t in all_tasks}
+    mine = [t for t in all_tasks if t.get('Assigned_To') == '$Id']
+    resuming = [t for t in mine if t.get('Status') in ('in_progress', 'claimed')]
+    if resuming:
+        target = resuming[0]
+    else:
+        pending = [t for t in mine if t.get('Status') == 'pending' and instincts._deps_done(t, by_id)]
+        pending.sort(key=lambda t: (instincts._PRIORITY_ORDER.get(t.get('Priority'), 4), t.task_id))
+        target = pending[0] if pending else None
+    print(target.task_id if target else '')
+except Exception:
+    print('')
+" 2>$null | Out-String).Trim()
+            } catch {
+                $AtlasTaskId = ""
+            }
+        }
+        if ($AtlasTaskId) {
+            $AtlasBudget = "3000"
+            try {
+                $AtlasBudget = (& $Py -c "
+import json
+try:
+    print(int((json.load(open('autopilot.json')).get('atlas') or {}).get('budget_tokens', 3000)))
+except Exception:
+    print(3000)
+" 2>$null | Out-String).Trim()
+            } catch {
+                $AtlasBudget = "3000"
+            }
+            $AtlasSection = ""
+            $AtlasOk = $false
+            try {
+                $AtlasSection = (& $Py "scripts\atlas.py" "pack" "--task" $AtlasTaskId "--budget" $AtlasBudget 2>$null | Out-String)
+                $AtlasOk = ($LASTEXITCODE -eq 0)
+            } catch {
+                $AtlasOk = $false
+            }
+            if ($AtlasOk -and $AtlasSection.Trim().Length -gt 0) {
+                $Prompt = $Prompt + "`r`n`r`n## PROJECT MAP (ATLAS) - a map, not the ground`r`n" + $AtlasSection.Trim() + "`r`n"
+            } else {
+                Write-Warning "[dispatch] atlas pack failed for $AtlasTaskId - dispatching without the ATLAS section."
+            }
+        }
+    }
+    if ($null -eq $PrevPyIoEncoding) { Remove-Item Env:\PYTHONIOENCODING -ErrorAction SilentlyContinue }
+    else { $env:PYTHONIOENCODING = $PrevPyIoEncoding }
+}
+
 # v4.7: per-unit auth, resolved BEFORE the dry-run branch so previews are
 # accurate about it. config_dir mode sets CLAUDE_CONFIG_DIR for the launch
 # only -- saved and restored around each builder invocation, never left set

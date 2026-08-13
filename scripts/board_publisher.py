@@ -37,6 +37,10 @@ try:
     import usage_probe  # noqa: E402 — Wave I (I2)
 except Exception:  # pragma: no cover
     usage_probe = None
+try:
+    import atlas_core  # noqa: E402 — ATLAS A5 (§5): optional board key
+except Exception:  # pragma: no cover
+    atlas_core = None
 
 UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
 COLUMNS = ["pending", "claimed", "in_progress", "needs_review", "blocked", "done"]
@@ -180,6 +184,33 @@ def read_usage_summary(repo: Path) -> dict:
         return {}
 
 
+def read_atlas_summary(repo: Path) -> dict:
+    """ATLAS A5 (§5): optional, cosmetic board key — files/card_coverage_pct/
+    stale_cards. Reads the db directly only if it already exists (never
+    creates one just to publish a board — atlas_core.connect()/init_schema()
+    have file-creating side effects, so existence is checked first); returns
+    {} when ATLAS was never scanned, matching read_learning_summary's and
+    read_usage_summary's "absent subsystem -> empty dict" convention."""
+    if atlas_core is None:
+        return {}
+    try:
+        db = atlas_core.db_path(repo)
+        if not db.exists():
+            return {}
+        con = atlas_core.connect(repo)
+        files = con.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+        cards = con.execute("SELECT COUNT(*) FROM cards").fetchone()[0]
+        stale = con.execute(
+            "SELECT COUNT(*) FROM cards c JOIN files f ON f.id=c.file_id "
+            "WHERE c.source_hash != f.content_hash"
+        ).fetchone()[0]
+        con.close()
+        coverage = round(100 * cards / files) if files else 0
+        return {"files": files, "card_coverage_pct": coverage, "stale_cards": stale}
+    except Exception:
+        return {}
+
+
 def build_board(repo: Path, cfg: dict, now: datetime | None = None) -> dict:
     now = now or now_utc()
     plan_path = repo / "PLAN.md"
@@ -253,6 +284,7 @@ def build_board(repo: Path, cfg: dict, now: datetime | None = None) -> dict:
         "maintenance": read_maintenance_summary(repo),
         "learning": read_learning_summary(repo),
         "usage": read_usage_summary(repo),
+        "atlas": read_atlas_summary(repo),
         "public_note": cfg.get("public_note", ""),
     }
 

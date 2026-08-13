@@ -116,5 +116,12 @@
     "defer_above_pct": 90,
     "critical_overrides": true
   },
-  "judgment_model": "claude-opus-4-8"
+  "judgment_model": "claude-opus-4-8",
+  "atlas": {
+    "enabled": false,
+    "budget_tokens": 3000,
+    "cards_auto_refresh": false,
+    "max_cards_per_night": 30,
+    "exclude": []
+  }
 }

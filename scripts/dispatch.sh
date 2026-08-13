@@ -226,6 +226,87 @@ if [[ -n "$INSTINCTS_SECTION" ]]; then
 ${INSTINCTS_SECTION}"
 fi
 
+# ATLAS A5 (§5): append a token-budgeted project-map section, same posture
+# as the instincts injection just above -- fail-open, one warning line on
+# any error, dispatch proceeds without the section either way. Gated on
+# BOTH the db existing (nothing to pack before A1 has ever scanned) and
+# autopilot.json -> atlas.enabled (ships false; onboarding asks). In
+# control.mode=strict TASK_ID is already resolved by the claim above; in
+# legacy mode nobody pre-resolves which task the unit will end up on (same
+# gap the instincts injection above has), so this predicts it with the
+# identical resume-first priority rule, reusing instincts.py's own private
+# helpers (_deps_done, _PRIORITY_ORDER) rather than re-deriving the logic
+# a third time -- if it can't confidently predict a task, it skips the
+# section rather than guess.
+#
+# PYTHONIOENCODING is forced to utf-8 for every python3 call in this block
+# (scoped to the export/unset pair around it, never leaked past it): Python
+# on Windows defaults a piped/redirected child's stdout to the OS ANSI
+# codepage, not UTF-8, and atlas.py's own em-dashes/arrows then crash with
+# UnicodeEncodeError before a single byte reaches us -- silently defeating
+# the fail-open path's actual purpose (which is to show the section when
+# atlas genuinely succeeds, not to paper over an avoidable encoding crash
+# on the platform this was built and tested on).
+if [[ -f "$REPO_ROOT/.devteam/atlas.db" ]]; then
+  export PYTHONIOENCODING=utf-8
+  ATLAS_ENABLED="$(python3 -c "
+import json
+try:
+    print(bool((json.load(open('autopilot.json')).get('atlas') or {}).get('enabled', False)))
+except Exception:
+    print('False')
+" 2>/dev/null || echo False)"
+  if [[ "$ATLAS_ENABLED" == "True" ]]; then
+    ATLAS_TASK_ID="$TASK_ID"
+    if [[ -z "$ATLAS_TASK_ID" ]]; then
+      ATLAS_TASK_ID="$(python3 -c "
+import sys; sys.path.insert(0, 'scripts')
+import instincts
+from pathlib import Path
+from validate_plan import parse_tasks, Report
+try:
+    text = Path('PLAN.md').read_text(encoding='utf-8')
+    rep = Report()
+    all_tasks = parse_tasks(text, rep)
+    by_id = {t.task_id: t for t in all_tasks}
+    mine = [t for t in all_tasks if t.get('Assigned_To') == '$ID']
+    resuming = [t for t in mine if t.get('Status') in ('in_progress', 'claimed')]
+    if resuming:
+        target = resuming[0]
+    else:
+        pending = [t for t in mine if t.get('Status') == 'pending' and instincts._deps_done(t, by_id)]
+        pending.sort(key=lambda t: (instincts._PRIORITY_ORDER.get(t.get('Priority'), 4), t.task_id))
+        target = pending[0] if pending else None
+    print(target.task_id if target else '')
+except Exception:
+    print('')
+" 2>/dev/null || echo "")"
+    fi
+    if [[ -n "$ATLAS_TASK_ID" ]]; then
+      ATLAS_BUDGET="$(python3 -c "
+import json
+try:
+    print(int((json.load(open('autopilot.json')).get('atlas') or {}).get('budget_tokens', 3000)))
+except Exception:
+    print(3000)
+" 2>/dev/null || echo 3000)"
+      set +e
+      ATLAS_SECTION="$(python3 scripts/atlas.py pack --task "$ATLAS_TASK_ID" --budget "$ATLAS_BUDGET" 2>/dev/null)"
+      ATLAS_RC=$?
+      set -e
+      if [[ $ATLAS_RC -eq 0 && -n "$ATLAS_SECTION" ]]; then
+        PROMPT="${PROMPT}
+
+## PROJECT MAP (ATLAS) — a map, not the ground
+${ATLAS_SECTION}"
+      else
+        echo "[dispatch] WARNING: atlas pack failed for $ATLAS_TASK_ID (exit $ATLAS_RC) — dispatching without the ATLAS section." >&2
+      fi
+    fi
+  fi
+  unset PYTHONIOENCODING
+fi
+
 # v4.7: per-unit auth, resolved BEFORE the dry-run branch so previews are
 # accurate about it. config_dir mode sets CLAUDE_CONFIG_DIR for the launch
 # only (scoped inside the launch subshell via env(1) — it must not leak
