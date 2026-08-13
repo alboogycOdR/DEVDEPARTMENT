@@ -92,10 +92,17 @@ function makeTempRepo(opts) {
 
 /** Run a hook as a child process; returns {code, stderr, stdout}. */
 function runHook(script, payload, env) {
+  // Scrub DEVTEAM_UNIT from the inherited environment: builder sessions run
+  // with it exported (dispatch sets it), and tests that assert the unset-var
+  // default would otherwise fail only when a builder runs the suite — which
+  // is exactly when the suite gates a needs_review submission (TASK-002 hit
+  // this live). Tests that need a unit set it explicitly via `env`.
+  const base = { ...process.env, ...env };
+  if (!env || !('DEVTEAM_UNIT' in env)) delete base.DEVTEAM_UNIT;
   try {
     const stdout = execFileSync(process.execPath, [path.join(HOOKS_DIR, script)], {
       input: JSON.stringify(payload),
-      env: { ...process.env, ...env },
+      env: base,
       encoding: 'utf-8',
     });
     return { code: 0, stdout, stderr: '' };
