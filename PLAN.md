@@ -37,12 +37,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Started_At:** 2026-08-13T15:31:35Z
 **Progress_Notes:**
 - [2026-08-13T15:32:30Z] [CX] Claimed TASK-002 and created task/TASK-002-cx. Beginning A1 implementation: schema, incremental scanner, core read-only queries, and façade.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-13T15:39:30Z] [CX] Layer 0 implementation committed as 6a5c9e6. Focused suite: 29 passed in 1.00s; real-repo full scan, `where decide`, and `impact scripts/builder_registry.py` verified. Full Python suite was started but exceeded the 125s command window without a result; next: obtain full-suite result, then record acceptance evidence and submit for review.
+**Artifacts:**
+- [2026-08-13T15:39:30Z] [CX] scripts/atlas.py, scripts/atlas_core.py, tests/test_atlas_core.py, .gitignore, sync-manifest.json (commit 6a5c9e6)
+**Test_Evidence:**
+- [2026-08-13T15:39:30Z] [CX] `python -m pytest tests/test_atlas_core.py -q` → 29 passed in 1.00s. `python scripts/atlas.py scan --full --repo .` → 103 files scanned; smoke checks for `where decide`, `impact scripts/builder_registry.py`, and `status` passed. `python -m pytest -q` exceeded the 125s command window with no completed result; pending rerun/confirmation.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-08-13T15:32:30Z
+**Updated_At:** 2026-08-13T15:39:30Z
 
 ### TASK-003
 **Title:** ATLAS A2 — episodic indexer (dossiers/REVIEW/INSTINCTS/RETRO → FTS)
