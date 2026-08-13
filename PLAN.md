@@ -1,8 +1,8 @@
 ---
-plan_version: 1.1
-last_updated: 2026-08-13T14:44:00Z
+plan_version: 1.2
+last_updated: 2026-08-13T15:31:00Z
 overall_status: in_progress
-orchestrator_notes: "Plan v1.1 — ATLAS build (specs/DEVDEPARTMENT_ATLAS_SPEC.md), 5 tasks TASK-002..006 mapping increments A1..A5. WAVE 1 DISPATCHED 2026-08-13T14:42:46Z: CX launched (detached window) against TASK-002; transcript .devteam/launch/CX-20260813-144246.log. Pre-dispatch fix: dispatch scripts hardcoded 'main' at worktree creation — now resolve autopilot.json git.base_branch (set to master, commit c6a4a69). Wave 2 = TASK-003 (GB) + TASK-004 (S5) parallel after 002 merges. Wave 3 = TASK-005 (CX). Wave 4 = TASK-006 (S5). BEFORE dispatching S5 waves (004/006): add that task's protected-glob Owned_Paths (scripts/**, docs/**, briefings/**, autopilot.json, onboard.md, .claude/**) to PROTECTED_EXCEPTIONS in hooks/lib.js; delete at done. CX/GB don't load hooks, so their grants are review-enforced only. Next ORCH action: /devteam-status once CX reports (claim expected shortly; task ~1 session)."
+orchestrator_notes: "Plan v1.2 — ATLAS build, 5 tasks TASK-002..006 (increments A1..A5). Wave 1: two CX launches (14:42Z, 14:45Z) died at model init — codex 400s any gpt-5.6-sol/unpinned config on ChatGPT-account auth (pins were in .codex/config.toml layers, not just the registry). Root-caused via ~/.codex/models_cache.json: account's models are gpt-5.6-terra/luna/5.5/5.4-mini. CX pinned to gpt-5.6-terra (probe-verified, commit e7d9e90), registry + repo .codex/config.toml both updated; user-level ~/.codex/config.toml still pins sol (Alister's call, --model overrides it for dispatches). RELAUNCHED 15:30:52Z against TASK-002; transcript .devteam/launch/CX-20260813-153052.log; ORCH monitor armed (error/claim/exit). Wave 2 = TASK-003 (GB) + TASK-004 (S5) parallel after 002 merges; wave 3 = TASK-005 (CX); wave 4 = TASK-006 (S5). BEFORE dispatching S5 waves (004/006): add protected-glob Owned_Paths to PROTECTED_EXCEPTIONS in hooks/lib.js; delete at done. CX/GB don't load hooks — their grants are review-enforced. Next ORCH action: react to monitor (claim expected within ~10 min; else inspect log)."
 ---
 
 # Project Plan
