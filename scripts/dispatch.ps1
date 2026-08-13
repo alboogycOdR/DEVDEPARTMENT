@@ -377,6 +377,10 @@ except Exception:
                 $AtlasOk = $false
             }
             if ($AtlasOk -and $AtlasSection.Trim().Length -gt 0) {
+                # ASCII hyphen here (spec / dispatch.sh use an em-dash) is a deliberate
+                # PS 5.1 ANSI-codepage-safety choice, not an oversight: a literal em-dash
+                # in a UTF-8-without-BOM .ps1 risks mis-decoding on a non-UTF-8 console
+                # codepage. Cosmetic only — ATLAS ships disabled by default.
                 $Prompt = $Prompt + "`r`n`r`n## PROJECT MAP (ATLAS) - a map, not the ground`r`n" + $AtlasSection.Trim() + "`r`n"
             } else {
                 Write-Warning "[dispatch] atlas pack failed for $AtlasTaskId - dispatching without the ATLAS section."
