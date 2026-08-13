@@ -203,5 +203,96 @@ re-scanned with no content change, never triggers a re-generation call.
   every other ATLAS capability (scan, query, where, impact, episodes,
   status) keeps working exactly as if cards had never been attempted.
 
-*(TASK-006 will append an Integration section here covering dispatch,
-maintenance, and autopilot.json wiring once that increment lands.)*
+## Integration (A5)
+
+ATLAS ships **disabled** (`autopilot.json` → `"atlas": {"enabled": false, ...}`);
+every integration point below fails open and is a no-op until a human flips
+it on during onboarding (`onboard.md`'s ask-step, same "ask, don't
+auto-flip" pattern as `control.mode` and the builder roster).
+
+### `dispatch.sh` / `dispatch.ps1`
+
+After instinct injection, if `.devteam/atlas.db` exists **and**
+`autopilot.json → atlas.enabled` is `true`, dispatch resolves the task it's
+about to launch (already known in `control.mode=strict`; predicted with the
+same resume-first priority rule `instincts.py` uses in legacy mode) and
+runs:
+
+```
+python3 scripts/atlas.py pack --task <TASK-ID> --budget <atlas.budget_tokens>
+```
+
+On success the output is appended to the dispatch prompt as a
+`## PROJECT MAP (ATLAS) — a map, not the ground` section. On **any** error
+— pack crashes, times out, returns empty, or a task can't be confidently
+resolved — dispatch proceeds without the section and prints one warning
+line to stderr. This is the identical posture to the instincts injection
+immediately above it in both scripts: fail-open, one line, never a hard
+stop. With `atlas.enabled: false` (the shipped default) or no
+`.devteam/atlas.db` yet, this block is skipped entirely and dispatch
+prompts are byte-identical to a build with no ATLAS integration at all
+(§7 A5 exit criterion).
+
+### `maintenance.py` — nightly audit
+
+A new `_step_atlas` runs after `_step_backup`, gated on `atlas.enabled`:
+
+1. `atlas.py scan --repo .`
+2. `atlas.py episodes --reindex --repo .`
+3. if `atlas.cards_auto_refresh` is true: `atlas.py cards --generate --max <atlas.max_cards_per_night>` (default 30, bounding per-night LLM spend)
+
+Unlike every other audit step, an ordinary ATLAS failure (model
+unreachable, a transient parse error) is logged in the step's detail and
+the audit still passes — ATLAS is a convenience layer, not something that
+should page a human at 2am. The one exception is **database corruption**
+(scan's output matches a known SQLite-corruption marker): that fails the
+step, because the prescribed remedy — delete `.devteam/atlas.db` and
+re-run `atlas.py scan --full --repo .` — is destructive enough that it
+should go through a filed task rather than run unattended inside a nightly
+job.
+
+### `autopilot.json`
+
+```json
+"atlas": {
+  "enabled": false,
+  "budget_tokens": 3000,
+  "cards_auto_refresh": false,
+  "max_cards_per_night": 30,
+  "exclude": []
+}
+```
+
+Ships disabled. `budget_tokens` bounds `pack`'s output; `max_cards_per_night`
+bounds nightly `cards --generate` spend when `cards_auto_refresh` is on.
+
+### `onboard.md`
+
+New ask-step, same "ask, don't auto-flip" pattern as `control.mode` and the
+roster: ask whether to enable ATLAS for the project; if yes, flip
+`atlas.enabled: true` and run an initial `atlas.py scan --full --repo .`.
+The R2 `.gitignore` block (`.devteam/atlas.db`, `.devteam/atlas.db-*`) is
+added regardless of the answer, so a later enable doesn't need a second
+onboarding pass.
+
+### Briefings (`briefings/*.md`, all three units)
+
+Each gains a short "ATLAS — the project map (if present)" section:
+what the `## PROJECT MAP (ATLAS)` prompt section is, R1 verbatim ("This
+pack is a map, not the ground: read live any file you edit."), and
+`atlas.py query/where/impact` documented as plain CLIs any builder — GB,
+CX, or S5 — can shell out to mid-session, no MCP server required (R3).
+
+### `.claude/commands/devteam-decompose.md`
+
+One added instruction: when carving `Owned_Paths`, consult
+`atlas.py impact <path>` on candidate territories before finalizing them,
+and record any surprising coupling it surfaces in the task's Description.
+Prose-only; ATLAS is an aid to the carve, never a gate on it.
+
+### `board_publisher.py`
+
+Optional, cosmetic `"atlas"` board key: `{"files", "card_coverage_pct",
+"stale_cards"}`, read directly from `.devteam/atlas.db` if it exists (`{}`
+otherwise, matching the `learning`/`usage` keys' "absent subsystem → empty
+dict" convention). Never part of exit criteria.
