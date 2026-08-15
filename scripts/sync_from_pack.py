@@ -225,8 +225,22 @@ def merge_add_only_keys(project_file: Path, pack_file: Path, apply: bool,
 
     added: list[str] = []
 
+    # Keys whose VALUES are project-specific even though the pack's copy has
+    # them: the pack repo doubles as its own live project, so its autopilot.json
+    # carries DEVDEPARTMENT's own settings, not template defaults. Propagating
+    # git.base_branch bit live on 2026-08-15: the sync injected the pack's
+    # "master" into main-based rwc-admin-portal, which would have fail-closed
+    # every plan_commit there. Each project sets these itself (onboarding asks).
+    PROJECT_OWNED_KEYS = {"git"}
+
     def add_missing(dst: dict, src: dict, prefix: str) -> None:
         for key, value in src.items():
+            if prefix == "" and key in PROJECT_OWNED_KEYS:
+                if key not in dst:
+                    report.merge_notes.append(
+                        f"{rel}: key '{key}' is project-owned — NOT copied from the pack; "
+                        f"set it per this project's own layout (e.g. git.base_branch)")
+                continue
             if key not in dst:
                 dst[key] = value
                 added.append(prefix + key)
