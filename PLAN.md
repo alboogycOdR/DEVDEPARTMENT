@@ -1,8 +1,8 @@
 ---
-plan_version: 2.6
-last_updated: 2026-08-15T16:01:18Z
+plan_version: 2.7
+last_updated: 2026-08-15T16:24:00Z
 overall_status: done
-orchestrator_notes: "Plan v2.6 — A6 mini-wave from oikonomos field defects (2026-08-15). Defect 1 (stale index at dispatch) already fixed by ORCH: scan-before-pack in both dispatch scripts, 5af80c7, pushed. Defect 2 decision (Alister): cards stay OPT-IN; visibility fixed via A6. TASK-007 (GB): spec §9 — status deltas (git-vs-indexed, commits-since-scan), scan records last_scan_head, cards opt-in hint, onboard.md cards ask-step. onboard.md is protected — grant added to PROTECTED_EXCEPTIONS at dispatch, delete at done (GB/grok does not load hooks; review-enforced). After 007 done+merged: sync to oikonomos/orb-jun-26/rwc-admin-portal. Next ORCH action: dispatch GB."
+orchestrator_notes: "Plan v2.7 — TASK-007 (ATLAS A6, GB) APPROVED first-pass and merged to master (747bd80, --no-ff); branch deleted. A6 mini-wave COMPLETE. Territory clean (exactly 3 Owned_Paths, no touches to atlas.py/atlas_cards.py/atlas_pack.py/dispatch.*/maintenance.py); §9 A6-1/2/3 verified empirically on this repo (delta moves without scan + reconciles after; no-git → n/a at exit 0; cards opt-in hint verbatim); suites 40/687/36 re-run by ORCH, match Test_Evidence. TWO ORCH FOLLOW-UPS (dedicated [ORCH] commits, NOT done in the review commit): (1) remove the TASK-007 onboard.md PROTECTED_EXCEPTIONS grant — 007 merged, no task needs it (mirror the TASK-006 grant-removal follow-up still pending in hooks/lib.js fc27360); (2) sync the pack to oikonomos / orb-jun-26 / rwc-admin-portal — the A6 discoverability fixes are the whole point of this wave; pack is READY. Housekeeping: physical worktree dir C:/CLAUDECODE_kingdom.work/wt-grok-DEVDEPARTMENT is git-de-registered (branch deleted) but the folder is locked by a lingering process — delete manually when free (same as the wt-s5 stale dir from TASK-006). Prior (v2.6): A6 mini-wave from oikonomos field defects; Defect 1 (stale index at dispatch) fixed by scan-before-pack 5af80c7; Defect 2 (Alister): cards stay OPT-IN, visibility fixed via A6."
 ---
 
 # Project Plan
@@ -241,7 +241,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-007
 **Title:** ATLAS A6 — status staleness in judgeable units; opt-in cards made visible
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §9 (A6, v1.2), §3 (contract invariants), R4
@@ -270,7 +270,8 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-15T16:16:30Z] [GB] scripts/atlas_core.py, tests/test_atlas_core.py, onboard.md (commit 14d096b)
 **Test_Evidence:**
 - [2026-08-15T16:16:30Z] [GB] `python -m pytest tests/test_atlas_core.py -q` → 40 passed in 3.76s. `python -m pytest -q` → 687 passed in 81.78s. `node hooks/run-tests.js` → 36 passed, 0 failed. Real-repo §9: after commit without scan → `commits since last scan: 1`, `tracked files: 111 (git) vs 111 indexed — in sync`; after `scan` → commits 0, in sync; cards hint verbatim; exit 0. No-git: PATH emptied in tests → `tracked files: n/a` + `commits since last scan: n/a`, last_scan_head "". Forward-slash output; never exit 2.
-**Review_Findings:** —
+**Review_Findings:**
+- [2026-08-15T16:24:00Z] [ORCH] APPROVED (first-pass), merged to master (747bd80, --no-ff), branch deleted. Territory CLEAN: net diff master...task/TASK-007-gb = exactly the three Owned_Paths (scripts/atlas_core.py, tests/test_atlas_core.py, onboard.md), single GB commit 14d096b, zero files outside territory; NO edits to atlas.py/atlas_cards.py/atlas_pack.py/dispatch.sh/.ps1/maintenance.py (verified via --stat). onboard.md change is the ONE granted line only — the ATLAS ask-step cards question, gated on ATLAS enabled with silence=neither (no other onboard.md edit; within the deliberate ORCH grant). c8b9872 filesystem-check evidence present (16:08:30Z preflight, all three EXIST). PLAN.md discipline clean (no GB frontmatter/other-block edits; no PLAN.md commit on branch). Spec verified against §9 A6-1/A6-2/A6-3, §3 invariants, R4 — all seven ACs map to spec text. Independent ORCH runs (opus reviewer): test_atlas_core.py 40 passed; full `pytest -q` 687 passed / 0 failed; `node hooks/run-tests.js` 36 passed / 0 failed — matches Test_Evidence exactly. §9 exit criteria verified EMPIRICALLY on this repo: (a) A6-1 — scan records last_scan_head = real HEAD with git, empty string '' in a non-git tree (confirmed via direct sqlite read); (b) A6-2 delta moves WITHOUT a scan — baseline `111 (git) vs 111 indexed — in sync` / `commits since last scan: 0`, after a throwaway commit (no scan) `112 (git) vs 111 indexed — 1 not indexed` / `commits since last scan: 1`, and RECONCILES after rescan `112 vs 112 — in sync` / `commits 0` (throwaway commit reset out; branch merged at 14d096b, no pollution); (c) R4 no-git degradation — non-git dir renders `tracked files: n/a` + `commits since last scan: n/a` at exit 0, cards opt-in hint verbatim; (d) cards opt-in hint renders verbatim on empty table, exit 0 throughout, forward-slash, em-dash literal per spec (the `—` is correct UTF-8; terminal codepage-render only). N filters git ls-files by the scanner's own membership (ignore rules + TEXT_EXTENSIONS) so a fresh clean-tree scan can report "in sync" — faithful reading of "same rules the scanner applies" (scan skips non-text-extension files at atlas_core.py:218), documented honestly in an in-code comment; tests test_status_ignore_rules_exclude_tracked_files_from_delta + test_status_dotdir_tracked_files_are_not_stripped confirm the ignore-rule filtering and the dot-path fix. NON-BLOCKING (no rework): a git-tracked text-extension file the scanner skips for binary/non-UTF-8 content would count as "not indexed" — a benign edge the repo never hits (empirically in sync); note for a future ticket only. FOLLOW-UP for ORCH (deliberately NOT in this merge): the onboard.md PROTECTED_EXCEPTIONS grant for TASK-007 (GB) is now safe to remove — 007 is merged and no task needs it; remove in a dedicated [ORCH] commit. Pack is READY TO SYNC to oikonomos / orb-jun-26 / rwc-admin-portal (the A6 discoverability fixes are the whole reason for this mini-wave).
 **Blocked_Reason:** —
-**Updated_By:** GB
-**Updated_At:** 2026-08-15T16:16:30Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-15T16:24:00Z
