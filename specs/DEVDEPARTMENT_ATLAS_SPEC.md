@@ -1,5 +1,6 @@
 # ATLAS — Persistent Project Map & Memory. Build Specification
 
+> **Changelog:** v1.2 (2026-08-15, ORCH) — Added increment **A6** (§9): status staleness in judgeable units + opt-in cards made visible, from oikonomos field defects (2026-08-15). §5 amendment recorded: dispatch.sh/.ps1 now run an incremental `scan` immediately before `pack` (non-fatal, ORCH commit 5af80c7) — the nightly audit was the only other scan caller, so intra-day dispatches served stale maps while pack's own db-open refreshed atlas.db's mtime and hid it. Cards policy decision (Alister, 2026-08-15): generation stays **opt-in** (Q1 deliberate-spend preserved); the defect was discoverability, fixed by A6's status messaging + onboarding ask-step — `cards_auto_refresh` default remains false.
 > **Changelog:** v1.1 (2026-08-13, ORCH) — §7 A1 exit criterion corrected per TASK-002 OWNERSHIP_CONFLICT block: `impact scripts/builder_registry.py` must list the registry's *actual* Python importers (`budget.py`, `validate_plan.py`) — not "dispatch/validate/supervisor". supervisor.py has no builder_registry reference, and dispatch.sh/.ps1 consume it via subprocess (Tier B files carry no import edges per §2), so neither may be *required* of the import graph — an implementation is free to surface additional textual-reference hits, but the criterion binds only on true importers. The original sentence described consumers from memory, not from the tree.
 
 **Status:** SPEC ONLY — nothing in this document is built yet.
@@ -106,6 +107,22 @@ A2 and A3 are parallelizable after A1 (disjoint function groups + disjoint test 
 - **Q1 — card cost ceiling:** `max_cards_per_night=30` at sonnet-4-6 ≈ trivial spend, but first full generation on a big project (ORB: hundreds of files) is one deliberate `cards --generate` run. Acceptable, or want a `--max N` interactive cap too? (Spec default: add `--max`, cheap.)
 - **Q2 — embeddings:** deliberately out of v1 (FTS5 + graph covers the shaped queries). FAISS/Chroma slot in later as an A6 without schema change. Agree to defer?
 - **Q3 — MQL5 Tier A:** worth a real symbol extractor for `.mq5` given CRT Systems EA? Non-goal here; would be its own small increment with your MQL5 grammar knowledge as the spec source.
+
+## 9. Increment A6 — status staleness in judgeable units; opt-in cards made visible (v1.2)
+
+**Origin:** oikonomos field report, 2026-08-15. Two discoverability failures: (a) `status` reported a bare `last scan` timestamp the reader had to date-arithmetic against reality — an index 8 merged tasks and 30 files stale looked healthy; (b) `status` reported `cards: 0` as if normal, with no signal that generation is opt-in and had simply never been run.
+
+**A6-1 — scan records its position.** `scan` writes two `meta` keys at the end of every successful run: `last_scan_head` (the repo's HEAD commit hash at scan time; empty string when git is unavailable) and the existing scan timestamp. No schema migration — `meta` is already key/value.
+
+**A6-2 — status reports deltas, not timestamps alone.** `status` output gains, after the existing lines:
+- `tracked files: <N> (git) vs <M> indexed — <D> not indexed` where N is `git ls-files` count filtered by the same ignore rules the scanner applies, M the `files` table count. D=0 renders `— in sync`.
+- `commits since last scan: <K>` via `git rev-list --count <last_scan_head>..HEAD`; renders `n/a` when git or `last_scan_head` is unavailable (R4 degradation — status must never fail because git is absent).
+- When the `cards` table is empty: `cards: 0 (generation is opt-in and has never run — python scripts/atlas.py cards --generate)`. When cards exist, the existing count/stale lines are unchanged.
+All existing §3 contract behavior holds: plain UTF-8, forward slashes, exit 0 on success, 1 on real errors, never 2.
+
+**A6-3 — onboarding asks about cards.** The onboard.md ATLAS ask-step gains a second question, asked only when ATLAS is enabled: "Generate summary cards now (one sonnet-4-6 call per file — a deliberate spend, ~N files detected), and/or enable nightly `cards_auto_refresh` (capped at `max_cards_per_night`)?" Default on silence: neither — status's A6-2 hint remains the reminder. Same ask-don't-auto-flip pattern as every other onboarding decision.
+
+**A6 exit criteria:** on this repo: `status` shows git-vs-indexed delta and commits-since-scan that change correctly after a commit without a scan and return to in-sync after a scan; with an empty cards table the opt-in hint renders verbatim; with git renamed away (PATH manipulation in tests), both new lines degrade to `n/a`/graceful text at exit 0. Tests cover: meta head recording, delta computation, the no-git degradation, and the cards hint. Suites green.
 
 ## Session handover protocol
 

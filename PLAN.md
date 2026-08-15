@@ -1,8 +1,8 @@
 ---
-plan_version: 2.5
-last_updated: 2026-08-13T18:47:00Z
+plan_version: 2.6
+last_updated: 2026-08-15T16:01:18Z
 overall_status: done
-orchestrator_notes: "Plan v2.5 — ATLAS COMPLETE AND LIVE. All 5 tasks done+merged (006 final merge a02f393). Closeout done: TASK-006 firewall grants deleted (bbc76f1, Node 36/36); acceptance run per spec handover — atlas.py scan --full (112 files) + episodes (12) on DEVDEPARTMENT, atlas.enabled=true, dry-run dispatch verified fail-open with no eligible task (section renders only with one; the with-task render was empirically verified at review). Cards deliberately NOT generated — first cards --generate is a deliberate spend decision (spec Q1), Alister to trigger. Backlog for next decompose: FTS5 MATCH ranking (002 finding), episodes zero-row convergence (003 finding), firewall checkout-awareness (006 violation lesson), CRLF/.gitattributes policy. Sync to orb-jun-26/rwc-admin-portal per spec handover when Alister says go. No active tasks; builders idle."
+orchestrator_notes: "Plan v2.6 — A6 mini-wave from oikonomos field defects (2026-08-15). Defect 1 (stale index at dispatch) already fixed by ORCH: scan-before-pack in both dispatch scripts, 5af80c7, pushed. Defect 2 decision (Alister): cards stay OPT-IN; visibility fixed via A6. TASK-007 (GB): spec §9 — status deltas (git-vs-indexed, commits-since-scan), scan records last_scan_head, cards opt-in hint, onboard.md cards ask-step. onboard.md is protected — grant added to PROTECTED_EXCEPTIONS at dispatch, delete at done (GB/grok does not load hooks; review-enforced). After 007 done+merged: sync to oikonomos/orb-jun-26/rwc-admin-portal. Next ORCH action: dispatch GB."
 ---
 
 # Project Plan
@@ -238,3 +238,30 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-13T19:42:00Z] [ORCH] RE-REVIEW after rework → APPROVED (second review pass), merged to master (--no-ff), branch deleted. The single blocking finding is FIXED and the fix is real, not cosmetic. Root cause (marker string-match against `_oneline(...,400)` head-truncated atlas.py output, which never reaches the corruption line because atlas.py crashes with an uncaught multi-line traceback) is now bypassed entirely by `_atlas_db_corrupt(db)` in scripts/maintenance.py: it probes `.devteam/atlas.db` DIRECTLY via `sqlite3` (`PRAGMA integrity_check`, plus `sqlite3.DatabaseError` on a non-db garbage file) — independent of atlas.py's stdout shape. `_step_atlas` escalates on `marker_hit OR _atlas_db_corrupt(db)`, so the corrupt path is now REACHABLE. Verified: (a) corrupt-db → `passed=False`, remedy detail contains "delete {db}", "re-run", "scan --full" (= spec §5 delete + full rescan); (b) ordinary scan failure (no corrupt db) → `passed=True`, logged only (fail-open preserved); (c) `_atlas_db_corrupt` returns False for a missing db and for a valid sqlite db (no false escalation on healthy runs — probe only runs after a scan failure anyway). Regression test present and DISCRIMINATING: `tests/test_maintenance.py::TestStepAtlas::test_corrupt_db_escalates_with_delete_and_rescan_remedy` writes real garbage bytes to `.devteam/atlas.db`, monkeypatches `_atlas_run` to return a tail with the marker text STRIPPED (`assert "DatabaseError" not in truncated_tail`), so escalation can ONLY come from the direct db probe — exactly the failure mode the finding described. Plus `TestAtlasDbCorrupt` ×3 (missing/garbage/valid) and `TestStepAtlas` fail-open + ok-path coverage. All 4 target tests confirmed RUN+PASSED individually (subagent, in worktree). Suites re-run by ORCH in worktree: `pytest tests/ -q` 671 passed / 0 failed (664 prior + 7 new atlas tests, no regressions), `node hooks/run-tests.js` 36/0. Territory CLEAN: net diff master...task/TASK-006-s5 = exactly the 12 files across 10 Owned_Paths, zero outside; four S5 commits (0878709, 408d4d4, 46492e8, 10b50fd); no PLAN.md commit on branch; main checkout had no tracked mods. §7 byte-identical-when-disabled still holds: this pass's dispatch.ps1 change (10b50fd) is a comment-only note INSIDE the atlas-enabled branch — the disabled gate and PROMPT assembly are untouched, so the prior empirical 2705==2705 verification stands. Cosmetic hyphen/em-dash finding ADDRESSED (non-gating): S5 kept the ASCII hyphen deliberately (PS 5.1 codepage safety in a UTF-8-without-BOM .ps1) and added an explanatory comment per ORCH's suggested resolution. NOT first-pass (the earlier corrupt-db rework + the pre-review worktree/main-checkout protocol violation are both counted). This is A5, the FINAL ATLAS task — the ATLAS plan is now COMPLETE (5/5: TASK-002/003/004/005/006 all done+merged). FOLLOW-UP for ORCH (deliberately NOT done in this review commit): the PROTECTED_EXCEPTIONS grants for TASK-006's Owned_Paths in hooks/lib.js (fc27360) are now safe to remove — 006 is merged and no task needs them; remove them in a dedicated [ORCH] commit. Stale worktree dir C:/CLAUDECODE_kingdom.work/wt-s5-DEVDEPARTMENT is git-de-registered (branch deleted) but physically locked by a lingering process — delete the folder manually when free.
 **Updated_By:** ORCH
 **Updated_At:** 2026-08-13T19:42:00Z
+
+### TASK-007
+**Title:** ATLAS A6 — status staleness in judgeable units; opt-in cards made visible
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** high
+**Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §9 (A6, v1.2), §3 (contract invariants), R4
+**Owned_Paths:** scripts/atlas_core.py, tests/test_atlas_core.py, onboard.md
+**Depends_On:** TASK-002
+**Description:** Implement spec §9 exactly. A6-1: scan records `last_scan_head` (HEAD hash, empty when git unavailable) into the existing meta key/value table — no schema migration. A6-2: `status` gains three behaviors — git-tracked vs indexed delta line (git ls-files filtered by the scanner's own ignore rules; "— in sync" when D=0), `commits since last scan: K` via `git rev-list --count <last_scan_head>..HEAD` degrading to `n/a` without git/head (R4 — status must never fail because git is absent), and the verbatim opt-in hint when the cards table is empty: `cards: 0 (generation is opt-in and has never run — python scripts/atlas.py cards --generate)`. Existing cards>0 output unchanged. §3 invariants hold: UTF-8, forward slashes, exit 0/1 never 2. A6-3: onboard.md ATLAS ask-step gains the cards question (only when ATLAS enabled; default on silence = neither; ask-don't-auto-flip). Do NOT touch atlas.py, atlas_cards.py, dispatch scripts, or maintenance.py — dispatch scan-before-pack already shipped (5af80c7).
+**Acceptance_Criteria:**
+- [ ] scan writes meta `last_scan_head` on every successful run; empty string when git unavailable (§9 A6-1)
+- [ ] status shows `tracked files: N (git) vs M indexed — D not indexed` / `— in sync`, using the scanner's own ignore rules for N (§9 A6-2)
+- [ ] status shows `commits since last scan: K` via rev-list; `n/a` degradation without git or head, exit 0 (§9 A6-2, R4)
+- [ ] empty cards table renders the opt-in hint verbatim; non-empty cards output unchanged (§9 A6-2)
+- [ ] onboard.md ATLAS ask-step gains the cards question per §9 A6-3
+- [ ] §9 exit criteria pass on this repo: delta/commits change after a commit without scan, return to in-sync after scan; no-git degradation tested via PATH manipulation
+- [ ] Tests cover meta head recording, delta computation, no-git degradation, cards hint; full Python + Node suites green
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-15T16:01:18Z
