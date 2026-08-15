@@ -1,7 +1,9 @@
 """Focused coverage for the deterministic ATLAS Layer 0 implementation."""
 from __future__ import annotations
 
+import os
 import sqlite3
+import subprocess
 import sys
 from pathlib import Path
 
@@ -149,3 +151,160 @@ def test_facade_argument_errors_are_one(capsys):
     with pytest.raises(SystemExit) as error:
         atlas.build_parser().parse_args(["scan", "--unknown"])
     assert error.value.code == 1
+
+
+def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["GIT_CEILING_DIRECTORIES"] = str(repo.resolve().parent)
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        check=check,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+    )
+
+
+def _init_git(repo: Path) -> str:
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@example.com")
+    _git(repo, "config", "user.name", "T")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "init")
+    return _git(repo, "rev-parse", "HEAD").stdout.strip()
+
+
+def test_scan_records_last_scan_head(repo: Path):
+    head = _init_git(repo)
+    core.scan(repo)
+    con = core.connect(repo)
+    stored = con.execute("SELECT value FROM meta WHERE key='last_scan_head'").fetchone()[0]
+    con.close()
+    assert stored == head
+
+
+def test_scan_records_empty_head_when_git_unavailable(repo: Path, monkeypatch: pytest.MonkeyPatch):
+    empty = repo / ".empty_path"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))
+    core.scan(repo)
+    con = core.connect(repo)
+    stored = con.execute("SELECT value FROM meta WHERE key='last_scan_head'").fetchone()[0]
+    con.close()
+    assert stored == ""
+
+
+def test_status_delta_and_commits_after_commit_then_rescan(repo: Path):
+    _init_git(repo)
+    core.scan(repo)
+    first = "\n".join(core.status(repo))
+    assert " — in sync" in first
+    assert "commits since last scan: 0" in first
+    (repo / "notes.md").write_text("findable words\nand a commit\n", encoding="utf-8")
+    _git(repo, "add", "notes.md")
+    _git(repo, "commit", "-q", "-m", "change notes")
+    mid = "\n".join(core.status(repo))
+    assert "commits since last scan: 1" in mid
+    assert " — in sync" in mid
+    (repo / "extra.md").write_text("brand new tracked file\n", encoding="utf-8")
+    _git(repo, "add", "extra.md")
+    _git(repo, "commit", "-q", "-m", "add extra")
+    stale = "\n".join(core.status(repo))
+    assert "commits since last scan: 2" in stale
+    assert "not indexed" in stale
+    assert " — in sync" not in stale
+    core.scan(repo)
+    fresh = "\n".join(core.status(repo))
+    assert " — in sync" in fresh
+    assert "commits since last scan: 0" in fresh
+    assert "not indexed" not in fresh
+
+
+def test_status_dotdir_tracked_files_are_not_stripped(repo: Path):
+    hidden = repo / ".claude" / "commands"
+    hidden.mkdir(parents=True)
+    (hidden / "devteam-status.md").write_text("# cmd\n", encoding="utf-8")
+    _init_git(repo)
+    core.scan(repo)
+    text = "\n".join(core.status(repo))
+    con = core.connect(repo)
+    indexed = {row[0] for row in con.execute("SELECT path FROM files")}
+    con.close()
+    assert ".claude/commands/devteam-status.md" in indexed
+    assert " — in sync" in text
+    assert "not indexed" not in text
+
+
+def test_status_ignore_rules_exclude_tracked_files_from_delta(repo: Path):
+    _init_git(repo)
+    (repo / ".gitignore").write_text("skip.py\n", encoding="utf-8")
+    (repo / "skip.py").write_text("def hidden():\n    return 1\n", encoding="utf-8")
+    _git(repo, "add", "-f", "skip.py", ".gitignore")
+    _git(repo, "commit", "-q", "-m", "track ignored skip.py")
+    core.scan(repo)
+    text = "\n".join(core.status(repo))
+    con = core.connect(repo)
+    indexed = {row[0] for row in con.execute("SELECT path FROM files")}
+    n_files = con.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+    con.close()
+    assert "skip.py" not in indexed
+    assert f"tracked files: {n_files} (git) vs {n_files} indexed — in sync" in text
+    assert "skip.py" not in text
+
+
+def test_status_degrades_when_git_absent_from_path(repo: Path, monkeypatch: pytest.MonkeyPatch):
+    _init_git(repo)
+    core.scan(repo)
+    empty = repo / ".empty_path"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))
+    lines = core.status(repo)
+    text = "\n".join(lines)
+    assert "tracked files: n/a" in text
+    assert "commits since last scan: n/a" in text
+    assert "last scan:" in text
+    assert "\\" not in text
+
+
+def test_status_commits_na_without_recorded_head(repo: Path):
+    core.scan(repo)
+    text = "\n".join(core.status(repo))
+    assert "commits since last scan: n/a" in text
+    assert "tracked files: n/a" in text
+
+
+def test_status_cards_opt_in_hint_when_empty(repo: Path):
+    core.scan(repo)
+    lines = core.status(repo)
+    assert core.CARDS_OPT_IN_HINT in lines
+    assert lines[1] == core.CARDS_OPT_IN_HINT
+    assert any(line.startswith("stale cards: 0") for line in lines)
+
+
+def test_status_cards_line_unchanged_when_cards_exist(repo: Path):
+    core.scan(repo)
+    con = core.connect(repo)
+    row = con.execute("select id,content_hash from files where path='notes.md'").fetchone()
+    con.execute(
+        "insert into cards values(?,?,?,?,?,?,?,?,?)",
+        (row["id"], row["content_hash"], "now", "test", "", "", "", "", 1),
+    )
+    con.commit()
+    con.close()
+    lines = core.status(repo)
+    text = "\n".join(lines)
+    assert "cards: 1" in text
+    assert core.CARDS_OPT_IN_HINT not in lines
+    assert "generation is opt-in" not in text
+    assert any(line.startswith("stale cards: 0") for line in lines)
+
+
+def test_onboard_asks_about_cards_when_atlas_enabled():
+    text = (ROOT / "onboard.md").read_text(encoding="utf-8")
+    assert "Generate summary cards now" in text
+    assert "cards_auto_refresh" in text
+    assert "max_cards_per_night" in text
+    assert "If (and only if) ATLAS is enabled" in text
+    assert "Default on silence: neither" in text
