@@ -241,7 +241,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-007
 **Title:** ATLAS A6 — status staleness in judgeable units; opt-in cards made visible
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §9 (A6, v1.2), §3 (contract invariants), R4
@@ -249,13 +249,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-002
 **Description:** Implement spec §9 exactly. A6-1: scan records `last_scan_head` (HEAD hash, empty when git unavailable) into the existing meta key/value table — no schema migration. A6-2: `status` gains three behaviors — git-tracked vs indexed delta line (git ls-files filtered by the scanner's own ignore rules; "— in sync" when D=0), `commits since last scan: K` via `git rev-list --count <last_scan_head>..HEAD` degrading to `n/a` without git/head (R4 — status must never fail because git is absent), and the verbatim opt-in hint when the cards table is empty: `cards: 0 (generation is opt-in and has never run — python scripts/atlas.py cards --generate)`. Existing cards>0 output unchanged. §3 invariants hold: UTF-8, forward slashes, exit 0/1 never 2. A6-3: onboard.md ATLAS ask-step gains the cards question (only when ATLAS enabled; default on silence = neither; ask-don't-auto-flip). Do NOT touch atlas.py, atlas_cards.py, dispatch scripts, or maintenance.py — dispatch scan-before-pack already shipped (5af80c7).
 **Acceptance_Criteria:**
-- [ ] scan writes meta `last_scan_head` on every successful run; empty string when git unavailable (§9 A6-1)
-- [ ] status shows `tracked files: N (git) vs M indexed — D not indexed` / `— in sync`, using the scanner's own ignore rules for N (§9 A6-2)
-- [ ] status shows `commits since last scan: K` via rev-list; `n/a` degradation without git or head, exit 0 (§9 A6-2, R4)
-- [ ] empty cards table renders the opt-in hint verbatim; non-empty cards output unchanged (§9 A6-2)
-- [ ] onboard.md ATLAS ask-step gains the cards question per §9 A6-3
-- [ ] §9 exit criteria pass on this repo: delta/commits change after a commit without scan, return to in-sync after scan; no-git degradation tested via PATH manipulation
-- [ ] Tests cover meta head recording, delta computation, no-git degradation, cards hint; full Python + Node suites green
+- [x] scan writes meta `last_scan_head` on every successful run; empty string when git unavailable (§9 A6-1)
+- [x] status shows `tracked files: N (git) vs M indexed — D not indexed` / `— in sync`, using the scanner's own ignore rules for N (§9 A6-2)
+- [x] status shows `commits since last scan: K` via rev-list; `n/a` degradation without git or head, exit 0 (§9 A6-2, R4)
+- [x] empty cards table renders the opt-in hint verbatim; non-empty cards output unchanged (§9 A6-2)
+- [x] onboard.md ATLAS ask-step gains the cards question per §9 A6-3
+- [x] §9 exit criteria pass on this repo: delta/commits change after a commit without scan, return to in-sync after scan; no-git degradation tested via PATH manipulation
+- [x] Tests cover meta head recording, delta computation, no-git degradation, cards hint; full Python + Node suites green
 **Branch:** task/TASK-007-gb
 **Started_At:** 2026-08-15T16:05:19Z
 **Progress_Notes:**
@@ -265,9 +265,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   FILE   tests/test_atlas_core.py  -> exists, 151 line(s), 6159 bytes
   FILE   onboard.md  -> exists, 180 line(s), 14770 bytes
   Implementing A6-1 last_scan_head, A6-2 status deltas + cards hint, A6-3 onboard ask-step.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-15T16:16:30Z] [GB] A6 implemented on task/TASK-007-gb (14d096b). scan writes meta last_scan_head (empty when git unavailable; GIT_CEILING_DIRECTORIES isolates nested/tmp trees). status appends tracked-files delta + commits-since-scan; empty cards table uses the spec hint verbatim. N uses ignore rules + TEXT_EXTENSIONS so a fresh scan can report in sync (git tracks non-text files the scanner never indexes). Dot-path fix: do not lstrip("./") as a character set — that turned .claude/... into claude/... . onboard.md ATLAS ask-step gained the cards question (only if enabled; silence = neither). Territory vs master: exactly the three Owned_Paths. Submitting needs_review.
+**Artifacts:**
+- [2026-08-15T16:16:30Z] [GB] scripts/atlas_core.py, tests/test_atlas_core.py, onboard.md (commit 14d096b)
+**Test_Evidence:**
+- [2026-08-15T16:16:30Z] [GB] `python -m pytest tests/test_atlas_core.py -q` → 40 passed in 3.76s. `python -m pytest -q` → 687 passed in 81.78s. `node hooks/run-tests.js` → 36 passed, 0 failed. Real-repo §9: after commit without scan → `commits since last scan: 1`, `tracked files: 111 (git) vs 111 indexed — in sync`; after `scan` → commits 0, in sync; cards hint verbatim; exit 0. No-git: PATH emptied in tests → `tracked files: n/a` + `commits since last scan: n/a`, last_scan_head "". Forward-slash output; never exit 2.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** GB
-**Updated_At:** 2026-08-15T16:08:30Z
+**Updated_At:** 2026-08-15T16:16:30Z
