@@ -241,7 +241,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-007
 **Title:** ATLAS A6 — status staleness in judgeable units; opt-in cards made visible
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §9 (A6, v1.2), §3 (contract invariants), R4
@@ -256,12 +256,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] onboard.md ATLAS ask-step gains the cards question per §9 A6-3
 - [ ] §9 exit criteria pass on this repo: delta/commits change after a commit without scan, return to in-sync after scan; no-git degradation tested via PATH manipulation
 - [ ] Tests cover meta head recording, delta computation, no-git degradation, cards hint; full Python + Node suites green
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-007-gb
+**Started_At:** 2026-08-15T16:05:19Z
+**Progress_Notes:**
+- [2026-08-15T16:05:19Z] [GB] Claimed TASK-007 on task/TASK-007-gb. Next: preflight_paths, then implement §9 A6-1/A6-2/A6-3 in atlas_core + onboard.md.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-15T16:01:18Z
+**Updated_By:** GB
+**Updated_At:** 2026-08-15T16:05:19Z
