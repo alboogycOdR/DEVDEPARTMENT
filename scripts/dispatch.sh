@@ -74,7 +74,10 @@ case "$CLI" in
   # single-turn non-interactive mode, which does not show it -- confirmed
   # with a live scratch-directory test. -p must be the LAST flag here: its
   # value is the next argv entry, and $PROMPT is appended at the call site.
-  grok)  CMD=(grok --always-approve --permission-mode bypassPermissions -p) ;;
+  # Registry model pin (2026-08-15, parity with dispatch.ps1): codex/claude honour
+  # $MODEL; grok didn't, making autopilot.json's model field a dead knob for GB.
+  # -p must stay LAST: its value is the next argv entry ($PROMPT at the call site).
+  grok)  CMD=(grok --always-approve --permission-mode bypassPermissions ${MODEL:+--model "$MODEL"} -p) ;;
   # --reasoning-effort is not a valid `codex exec` CLI flag (confirmed against
   # codex-cli 0.144.5); model_reasoning_effort is authoritative via
   # .codex/config.toml, per that file's own comment.
@@ -295,9 +298,20 @@ except Exception:
       # without this every post-merge dispatch ships a stale map — and
       # pack's db-open updates atlas.db's mtime, hiding the staleness from
       # casual inspection. Incremental scan ~seconds; non-fatal on failure.
+      # RETRY ONCE (parity with dispatch.ps1): concurrent dispatch is the
+      # NORMAL mode — two builders launched seconds apart both scan the same
+      # sqlite db, and a cold scan's long write transaction can lose the
+      # lock. One retry after a short pause clears it; a second failure
+      # degrades to the pre-fix behaviour (stale index) with a visible
+      # warning, which is the property that matters.
       set +e
-      python3 scripts/atlas.py scan --repo "$REPO_ROOT" >/dev/null 2>&1 \
-        || echo "[dispatch] WARNING: atlas scan failed — pack will use the existing (possibly stale) index." >&2
+      ATLAS_SCAN_OK=0
+      for _attempt in 1 2; do
+        if python3 scripts/atlas.py scan --repo "$REPO_ROOT" >/dev/null 2>&1; then ATLAS_SCAN_OK=1; break; fi
+        [[ $_attempt -eq 1 ]] && sleep 3
+      done
+      [[ $ATLAS_SCAN_OK -eq 1 ]] \
+        || echo "[dispatch] WARNING: atlas scan failed twice (concurrent dispatch can contend on .devteam/atlas.db) — packing against the existing, possibly stale index." >&2
       ATLAS_SECTION="$(python3 scripts/atlas.py pack --task "$ATLAS_TASK_ID" --budget "$ATLAS_BUDGET" 2>/dev/null)"
       ATLAS_RC=$?
       set -e

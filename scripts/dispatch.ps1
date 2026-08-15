@@ -76,6 +76,7 @@ $Wt = Join-Path $ParentDir ("wt-" + $Reg["WORKTREE_SUFFIX"] + "-" + $ProjectName
 # CLI-invocation table — keyed by CLI FAMILY, not unit (S5/S5B share the
 # claude row). These quirks are properties of the CLI binaries, not project
 # config, so they stay here:
+$PromptViaStdin = $false
 switch ($Cli) {
     "grok" {
         # Bare `grok <prompt>` starts the INTERACTIVE TUI with a trust-dialog
@@ -83,7 +84,20 @@ switch ($Cli) {
         # -p switches to single-turn non-interactive mode. -p must be LAST:
         # $Prompt is appended right after this array at the call site.
         $Cmd = "grok"
-        $CmdArgs = @("--always-approve", "--permission-mode", "bypassPermissions", "-p")
+        $CmdArgs = @("--always-approve", "--permission-mode", "bypassPermissions")
+        # Registry model pin (fix 2026-08-15). The codex and claude branches both
+        # honour $Model; this one did not, so autopilot.json's `model` field for GB
+        # was a DEAD KNOB -- settable, resolved into $Model by builder_registry.py,
+        # and then silently ignored. A config field that looks authoritative and is
+        # not is worse than an absent one: GB's model was in fact coming from the
+        # user-level ~/.grok/config.toml ([models] default), outside the repo, out of
+        # version control, and invisible to anyone reading the registry. Left null,
+        # behaviour is unchanged (the guard below is skipped) and GB still floats on
+        # the CLI default -- but the pin now works when set.
+        if ($Model) { $CmdArgs += @("--model", $Model) }
+        # -p must stay LAST: $Prompt is appended immediately after this array at the
+        # call site, and -p/--single takes it as its value.
+        $CmdArgs += "-p"
     }
     "codex" {
         # Routed through cmd /c: npm's codex.ps1 shim spuriously pipes $input
@@ -92,10 +106,19 @@ switch ($Cli) {
         # cmd /c invokes codex.cmd, which has no such pipeline semantics.
         # --reasoning-effort is NOT a valid codex exec flag (codex-cli 0.144.5);
         # model_reasoning_effort is authoritative via .codex/config.toml.
+        # PROMPT VIA STDIN (fix 2026-08-14, oikonomos live failure): cmd.exe
+        # treats embedded newlines in an argument as command breaks and drops
+        # into "More?" continuation reading stdin — the multiline prompt never
+        # reached codex ("Builder process error: Reading additional input from
+        # stdin...", zero-work session). Same principle as the legacy-mode
+        # launcher's prompt file: a file has no quoting. `codex exec -` reads
+        # the prompt from stdin; the strict-mode launch path below redirects
+        # the prompt file into it inside a single-line cmd string.
         $Cmd = "cmd"
         $CmdArgs = @("/c", "codex", "exec")
         if ($Model) { $CmdArgs += @("--model", $Model) }
         $CmdArgs += @("-s", "danger-full-access")
+        $PromptViaStdin = $true
     }
     "claude" {
         # claude.exe is a native binary (not an npm .ps1 shim) -- no cmd /c
@@ -368,22 +391,52 @@ except Exception:
             } catch {
                 $AtlasBudget = "3000"
             }
-            # Refresh the index BEFORE composing the pack (oikonomos defect,
-            # 2026-08-15): nothing else scans intra-day — the nightly audit is
-            # the only other caller — so without this every dispatch after a
-            # merge ships a map of a repo that no longer exists. Deceptively:
-            # pack's own db-open updates atlas.db's mtime, so the file LOOKS
-            # freshly written at the second of every dispatch while its
-            # contents age. Incremental scan is ~seconds; non-fatal on failure
-            # (pack still runs against whatever index exists).
-            try {
-                & $Py "scripts\atlas.py" "scan" "--repo" $RepoRoot 2>$null | Out-Null
-                if ($LASTEXITCODE -ne 0) { Write-Warning "[dispatch] atlas scan failed - pack will use the existing (possibly stale) index." }
-            } catch {
-                Write-Warning "[dispatch] atlas scan failed - pack will use the existing (possibly stale) index."
-            }
             $AtlasSection = ""
             $AtlasOk = $false
+            # REFRESH BEFORE PACK (fix 2026-08-15). This path called `pack` only,
+            # and NOTHING anywhere called `scan` -- so the index was only ever
+            # rebuilt when a human ran it by hand. Measured consequence: the last
+            # manual scan was 09:14Z, and by 15:09Z the map was 8 merged tasks and
+            # 30 files out of date (213 indexed vs 243 real). Every builder
+            # dispatched in that window received a PROJECT MAP of a repo that no
+            # longer existed -- `atlas query consumeApproval` and `redactPayload`
+            # both returned nothing for code that was already merged, and `impact`
+            # returned empty for a file that genuinely had importers. `pack` opens
+            # the db and updates its mtime, which made the index look fresh on
+            # inspection while its contents aged silently; that is why this went
+            # unnoticed for six hours.
+            #
+            # A fresh scan restored all three (impact resolved, symbols resolved),
+            # so the features were starving, not broken. Scan is incremental and
+            # costs ~10s cold, far less when little changed -- negligible against a
+            # builder session, and cheap insurance against handing a builder a map
+            # of the wrong repo. Failure is non-fatal: pack still runs against
+            # whatever index exists, and pack's own freshness footer reports the
+            # scan timestamp, so a degraded map is visible rather than silent.
+            # Retry once. Concurrent dispatch is the NORMAL mode for this pack --
+            # wave 7 launched two builders 4s apart -- and both scans write the same
+            # sqlite .devteam/atlas.db, so a cold scan (one with changes to write,
+            # i.e. a long write transaction) can lose the lock and error. Observed
+            # live on the first concurrent wave after this scan step was added; a
+            # `changed: 0` scan does not reproduce it because the write window is
+            # too short to contend. One retry after a short pause clears it, since
+            # by then the other dispatch's scan has usually committed and this one
+            # finds `changed: 0`. Still non-fatal on a second failure: packing
+            # against a stale index is the pre-fix behaviour, and the warning makes
+            # it visible rather than silent -- which is the property that matters,
+            # since a silently stale index is exactly what went unnoticed for six
+            # hours before this step existed.
+            $AtlasScanOk = $false
+            foreach ($attempt in 1, 2) {
+                try {
+                    & $Py "scripts\atlas.py" "scan" 2>$null | Out-Null
+                    if ($LASTEXITCODE -eq 0) { $AtlasScanOk = $true; break }
+                } catch { }
+                if ($attempt -eq 1) { Start-Sleep -Seconds 3 }
+            }
+            if (-not $AtlasScanOk) {
+                Write-Warning "[dispatch] atlas scan failed twice (concurrent dispatch can contend on .devteam/atlas.db) - packing against the existing, possibly stale index."
+            }
             try {
                 $AtlasSection = (& $Py "scripts\atlas.py" "pack" "--task" $AtlasTaskId "--budget" $AtlasBudget 2>$null | Out-String)
                 $AtlasOk = ($LASTEXITCODE -eq 0)
@@ -418,6 +471,31 @@ if ($AuthMode -eq "config_dir" -and $AuthValue) {
 $AuthNote = ""
 if ($AuthDir) { $AuthNote = "CLAUDE_CONFIG_DIR=$AuthDir " }
 
+# PROMPT QUOTING (fix 2026-08-15, oikonomos live failure — GB/TASK-020 died in 2s).
+#
+# Windows PowerShell 5.1 does NOT escape embedded double quotes when it builds the
+# command line for a native exe. The target's CRT argv parser then re-splits the
+# argument at an unbalanced quote run, so ONE prompt arrives as TWO argv entries.
+# Observed exactly: grok got `-p <first-half>` plus a positional `<remainder>` and
+# refused with "the argument '--single <PROMPT>' cannot be used with '[PROMPT]'",
+# the split landing mid-ATLAS-excerpt. Measured with an argv probe on the real
+# 3392-char prompt (42 double quotes): ARGC=6 unescaped, ARGC=5 escaped.
+#
+# This is CONTENT-DEPENDENT, which is why GB succeeded on TASK-001/004/008/010 and
+# then failed here: the ATLAS project-map section varies per task, and the index was
+# rebuilt at 27faec6 just before this wave. A latent intermittent, not a regression.
+#
+# Applies to every CLI that takes the prompt as an ARGUMENT — grok AND claude (S5),
+# whose prompt is likewise a trailing positional. S5 has not tripped it yet; it is
+# the same landmine, so it is fixed here rather than left for a future wave.
+# codex is exempt: it already routes the prompt through stdin ($PromptViaStdin),
+# because a file has no quoting — the same principle, applied one layer earlier.
+#
+# Escaping is content-preserving: verified that `{"control_version": 1` arrives with
+# real quotes and no literal \" over-escaping, which matters because a mangled
+# control-block spec is what produced S5's invalid devteam-control block on TASK-003.
+$PromptArg = if ($PromptViaStdin) { $Prompt } else { $Prompt -replace '"', '\"' }
+
 if ($DryRun) {
     Write-Host "[dispatch] DRY RUN - would run: (cd $Wt ; $AuthNote$Cmd $($CmdArgs -join ' ') `"<prompt>`")" -ForegroundColor Yellow
     Write-Host "--- Prompt ---"
@@ -444,17 +522,46 @@ if ($ControlMode -eq "strict") {
 
     Push-Location $Wt
     $PrevConfigDir = $env:CLAUDE_CONFIG_DIR
+    $PrevEAP = $ErrorActionPreference
     try {
         if ($AuthDir) { $env:CLAUDE_CONFIG_DIR = $AuthDir }
-        & $Cmd @($CmdArgs + @($Prompt)) 2>&1 | Tee-Object -FilePath $LogPath
+        # EAP Continue during the builder run: under Stop, the first native
+        # stderr line routed through `2>&1 |` throws (PS 5.1 NativeCommandError)
+        # and aborts the pipeline before the log is written — codex's version
+        # banner on stderr killed a live dispatch this way (2026-08-14). The
+        # legacy-mode runner already sets Continue for the same reason.
+        $ErrorActionPreference = "Continue"
+        if ($PromptViaStdin) {
+            # Multiline prompt cannot survive a cmd /c argument (see codex case
+            # comment). Write it to a file and redirect into `codex exec -`.
+            # Log redirection also happens INSIDE cmd (raw UTF-8, no PS streams,
+            # no Tee-Object UTF-16, no stderr-to-pipeline exception surface).
+            $PromptFile = Join-Path $DevteamDir "$TaskId-$RunTs.prompt.txt"
+            [System.IO.File]::WriteAllText($PromptFile, $Prompt, (New-Object System.Text.UTF8Encoding($false)))
+            $NativeArgs = @($CmdArgs | Select-Object -Skip 1)  # drop leading /c
+            $CmdLine = ($NativeArgs -join " ") + " - < `"$PromptFile`" > `"$LogPath`" 2>&1"
+            & cmd /c $CmdLine
+            if (Test-Path $LogPath) { Get-Content $LogPath | Write-Host }
+        } else {
+            & $Cmd @($CmdArgs + @($PromptArg)) 2>&1 | Tee-Object -FilePath $LogPath
+        }
     } catch {
         Write-Warning "[dispatch] Builder process error: $($_.Exception.Message)"
     } finally {
         if ($null -eq $PrevConfigDir) { Remove-Item Env:\CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue }
         else { $env:CLAUDE_CONFIG_DIR = $PrevConfigDir }
         Pop-Location
+        $ErrorActionPreference = $PrevEAP
     }
 
+    # Re-encode the captured log to UTF-8 (no BOM) before extraction: PS 5.1's
+    # Tee-Object writes UTF-16 LE, and control.py reads utf-8 — the fence regex
+    # can never match interleaved NULs (live failure 2026-08-14, oikonomos:
+    # builder emitted a valid CONTROL block, extract said UNREPORTED).
+    if (Test-Path $LogPath) {
+        $RawLog = Get-Content $LogPath -Raw
+        [System.IO.File]::WriteAllText($LogPath, $RawLog, (New-Object System.Text.UTF8Encoding($false)))
+    }
     Write-Host "[dispatch] Session ended. Extracting devteam-control block..." -ForegroundColor Cyan
     $ExtractOut = (& $Py "scripts\control.py" "extract" "--log" $LogPath "--task" $TaskId "--unit" $Id "--repo" $RepoRoot | Out-String).Trim()
     Write-Host "[dispatch] $ExtractOut"
@@ -492,7 +599,16 @@ if ($ControlMode -eq "strict") {
     )
     if ($AuthDir) { $RunnerLines += "`$env:CLAUDE_CONFIG_DIR = '$AuthDir'" }
     $RunnerLines += @(
-        "`$Prompt = [System.IO.File]::ReadAllText('$PromptPath')",
+        "`$Prompt = [System.IO.File]::ReadAllText('$PromptPath')"
+    )
+    if (-not $PromptViaStdin) {
+        # Same PS 5.1 embedded-quote defect as the in-process path (see the
+        # $PromptArg comment above). The file read hands back the RAW prompt, so
+        # the escape has to happen here too -- the file solves BOM and newlines,
+        # not argv splitting.
+        $RunnerLines += "`$Prompt = `$Prompt -replace '`"', '\`"'"
+    }
+    $RunnerLines += @(
         "Write-Host '[$Id] starting in $Wt' -ForegroundColor Green",
         # Same invocation shape as the in-process path below -- one flat array of
         # args with the prompt appended -- so both paths pass arguments identically.
@@ -518,7 +634,7 @@ if ($ControlMode -eq "strict") {
     $PrevConfigDir = $env:CLAUDE_CONFIG_DIR
     try {
         if ($AuthDir) { $env:CLAUDE_CONFIG_DIR = $AuthDir }
-        & $Cmd @($CmdArgs + @($Prompt))
+        & $Cmd @($CmdArgs + @($PromptArg))
     } catch {
         Write-Warning "[dispatch] Builder process error: $($_.Exception.Message)"
     } finally {

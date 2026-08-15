@@ -47,7 +47,25 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import tg_commands as tgc  # noqa: E402 — reuse git plumbing + PLAN.md line editor
+import builder_registry as _br  # noqa: E402 — unit IDs come from the registry, never hardcoded
 from validate_plan import Report, Task, parse_tasks  # noqa: E402
+
+
+def _builder_units(repo: str | Path = ".") -> set[str]:
+    """Every DEFINED builder unit for this project, from autopilot.json's
+    registry. NOT a hardcoded {GB, CX}: the roster is per-project and may
+    contain S5, S5B, or any future unit (docs/BUILDER_REGISTRY.md). Falls
+    back to the legacy pair only if the registry cannot be read at all.
+
+    Fixes a live strict-mode failure (oikonomos, 2026-08-14): a dispatch of
+    the registry-active unit S5 died on `--unit: invalid choice: 'S5'`, so
+    strict mode silently supported only two of the three configured builders.
+    Structural units (ORCH/SV) are excluded — they never claim a task.
+    """
+    try:
+        return set(_br.load_registry(repo)["defined"].keys())
+    except Exception:
+        return {"GB", "CX"}
 
 FENCE_RE = re.compile(
     r"```devteam-control\s*\n(.*?)\n```", re.DOTALL
@@ -422,7 +440,9 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     c = sub.add_parser("claim", help="claim-at-dispatch: resume or claim a task for a unit")
-    c.add_argument("--unit", required=True, choices=["GB", "CX"])
+    c.add_argument("--unit", required=True,
+                   help="builder unit ID; validated against autopilot.json's registry after parsing "
+                        "(--repo is needed to resolve it, so this cannot be an argparse choices list)")
     c.add_argument("--repo", default=".")
     c.add_argument("--dry-run", action="store_true",
                    help="predict the outcome without writing PLAN.md/.devteam/inflight")
@@ -433,10 +453,19 @@ def main(argv: list[str] | None = None) -> int:
     e = sub.add_parser("extract", help="scan a captured run log for the CONTROL fence (dispatch.sh/.ps1)")
     e.add_argument("--log", required=True, help="path to the captured stdout log")
     e.add_argument("--task", required=True)
-    e.add_argument("--unit", required=True, choices=["GB", "CX"])
+    e.add_argument("--unit", required=True,
+                   help="builder unit ID; validated against autopilot.json's registry after parsing")
     e.add_argument("--repo", default=".")
 
     ns = ap.parse_args(argv)
+
+    # Registry-driven unit validation (replaces the old hardcoded choices=["GB","CX"]).
+    # Fail CLOSED: an unknown unit must never be treated as a valid claimant.
+    if getattr(ns, "unit", None) is not None:
+        _valid = _builder_units(ns.repo)
+        if ns.unit not in _valid:
+            ap.error(f"--unit: invalid choice: {ns.unit!r} "
+                     f"(defined builders for this project: {', '.join(sorted(_valid))})")
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     repo = Path(ns.repo)
 
