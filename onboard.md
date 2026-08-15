@@ -39,6 +39,7 @@ Copy from the pack into the project root, skipping any file that already exists 
   .devteam/atlas.db-*
   ```
   Do not silently flip `atlas.enabled` — like `control.mode` and the roster, this changes what every future `dispatch.sh`/`.ps1` invocation injects into the builder prompt.
+  If (and only if) ATLAS is enabled: ask "Generate summary cards now (one sonnet-4-6 call per file — a deliberate spend, ~N files detected), and/or enable nightly `cards_auto_refresh` (capped at `max_cards_per_night`)?" Default on silence: neither — do not run `cards --generate`, leave `cards_auto_refresh` false. Status's opt-in hint remains the reminder. Same ask-don't-auto-flip pattern as every other onboarding decision.
 
 Usage-window meters (`scripts/usage_probe.py`) work out of the box (fail-open — renders `—` until real data exists) but the exact fields it parses out of `claude`/`codex`'s stream output have only been verified against the reference implementation's source, not a live installed CLI (see `docs/USAGE.md`'s verification commands). Mention this in the final report as a "not yet live-verified" item rather than silently asserting it works.
 

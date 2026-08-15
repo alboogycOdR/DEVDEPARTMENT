@@ -15,6 +15,7 @@ import json
 import os
 import re
 import sqlite3
+import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -254,6 +255,7 @@ def scan(repo: Path, full: bool = False) -> tuple[int, int, int]:
             target = con.execute("SELECT id FROM files WHERE path=?", (resolved,)).fetchone()
             if target: con.execute("UPDATE edges SET dst_file_id=? WHERE id=?", (target[0], edge["id"]))
     con.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('last_full_scan',?)", (now(),))
+    con.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('last_scan_head',?)", (_git_head(repo),))
     con.commit(); con.close()
     return scanned, changed, removed
 
@@ -308,15 +310,123 @@ def impact(repo: Path, path: str, hops: int) -> list[str]:
     con.close(); return sorted(result)
 
 
+CARDS_OPT_IN_HINT = (
+    "cards: 0 (generation is opt-in and has never run — python scripts/atlas.py cards --generate)"
+)
+
+
+def _git_env(repo: Path) -> dict[str, str]:
+    """Isolate git to *repo* so a parent checkout is never inherited."""
+    env = os.environ.copy()
+    for key in (
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_COMMON_DIR",
+        "GIT_PREFIX",
+    ):
+        env.pop(key, None)
+    ceiling = str(repo.resolve().parent)
+    prior = env.get("GIT_CEILING_DIRECTORIES", "")
+    env["GIT_CEILING_DIRECTORIES"] = os.pathsep.join(p for p in (ceiling, prior) if p)
+    return env
+
+
+def _run_git(repo: Path, args: list[str]) -> str | None:
+    """Return stdout of a git invocation, or None when git is unavailable/fails."""
+    try:
+        proc = subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            env=_git_env(repo),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout
+
+
+def _git_head(repo: Path) -> str:
+    out = _run_git(repo, ["rev-parse", "HEAD"])
+    return (out or "").strip()
+
+
+def _git_tracked_paths(repo: Path) -> list[str] | None:
+    out = _run_git(repo, ["ls-files", "-z"])
+    if out is None:
+        return None
+    paths = []
+    for raw in out.split("\0"):
+        if not raw:
+            continue
+        rel = slash(raw)
+        while rel.startswith("./"):
+            rel = rel[2:]
+        paths.append(rel)
+    return paths
+
+
+def _commits_since_scan(repo: Path, last_head: str) -> str:
+    if not last_head:
+        return "n/a"
+    out = _run_git(repo, ["rev-list", "--count", f"{last_head}..HEAD"])
+    if out is None:
+        return "n/a"
+    text = out.strip()
+    return text if text else "n/a"
+
+
+def _tracked_delta_line(repo: Path, indexed_count: int, indexed_paths: set[str]) -> str:
+    tracked = _git_tracked_paths(repo)
+    if tracked is None:
+        return "tracked files: n/a"
+    patterns = _ignore_patterns(repo)
+    # Match scanner membership (ignore rules + text extensions) so a fresh
+    # scan on a clean tree can report "in sync" — git tracks non-text files
+    # the scanner never indexes.
+    eligible = []
+    for rel in tracked:
+        if is_ignored(rel, patterns):
+            continue
+        if Path(rel).suffix.lower() not in TEXT_EXTENSIONS:
+            continue
+        eligible.append(rel)
+    n = len(eligible)
+    missing = sum(1 for rel in eligible if rel not in indexed_paths)
+    if missing == 0:
+        return f"tracked files: {n} (git) vs {indexed_count} indexed — in sync"
+    return f"tracked files: {n} (git) vs {indexed_count} indexed — {missing} not indexed"
+
+
 def status(repo: Path) -> list[str]:
     con = connect(repo); init_schema(con)
     files = con.execute("SELECT COUNT(*) FROM files").fetchone()[0]
     cards = con.execute("SELECT COUNT(*) FROM cards").fetchone()[0]
     stale = con.execute("SELECT COUNT(*) FROM cards c JOIN files f ON f.id=c.file_id WHERE c.source_hash != f.content_hash").fetchone()[0]
     last = con.execute("SELECT value FROM meta WHERE key='last_full_scan'").fetchone()
+    head_row = con.execute("SELECT value FROM meta WHERE key='last_scan_head'").fetchone()
+    indexed_paths = {row[0] for row in con.execute("SELECT path FROM files")}
     con.close()
     size = db_path(repo).stat().st_size if db_path(repo).exists() else 0
-    return [f"files: {files}", f"cards: {cards}", f"stale cards: {stale}", f"db size: {size}", f"last scan: {last[0] if last else 'never'}"]
+    cards_line = CARDS_OPT_IN_HINT if cards == 0 else f"cards: {cards}"
+    last_head = head_row[0] if head_row else ""
+    return [
+        f"files: {files}",
+        cards_line,
+        f"stale cards: {stale}",
+        f"db size: {size}",
+        f"last scan: {last[0] if last else 'never'}",
+        _tracked_delta_line(repo, files, indexed_paths),
+        f"commits since last scan: {_commits_since_scan(repo, last_head)}",
+    ]
 
 
 def _repo_arg(value: str | None) -> Path:
