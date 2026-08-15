@@ -241,7 +241,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-007
 **Title:** ATLAS A6 — status staleness in judgeable units; opt-in cards made visible
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_ATLAS_SPEC.md §9 (A6, v1.2), §3 (contract invariants), R4
@@ -260,9 +260,14 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Started_At:** 2026-08-15T16:05:19Z
 **Progress_Notes:**
 - [2026-08-15T16:05:19Z] [GB] Claimed TASK-007 on task/TASK-007-gb. Next: preflight_paths, then implement §9 A6-1/A6-2/A6-3 in atlas_core + onboard.md.
+- [2026-08-15T16:08:30Z] [GB] Preflight (c8b9872 filesystem check) — all three paths EXIST:
+  FILE   scripts/atlas_core.py  -> exists, 352 line(s), 17686 bytes
+  FILE   tests/test_atlas_core.py  -> exists, 151 line(s), 6159 bytes
+  FILE   onboard.md  -> exists, 180 line(s), 14770 bytes
+  Implementing A6-1 last_scan_head, A6-2 status deltas + cards hint, A6-3 onboard ask-step.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** GB
-**Updated_At:** 2026-08-15T16:05:19Z
+**Updated_At:** 2026-08-15T16:08:30Z
