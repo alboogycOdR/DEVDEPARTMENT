@@ -290,7 +290,14 @@ try:
 except Exception:
     print(3000)
 " 2>/dev/null || echo 3000)"
+      # Refresh the index BEFORE composing the pack (oikonomos defect,
+      # 2026-08-15): the nightly audit is the only other scan caller, so
+      # without this every post-merge dispatch ships a stale map — and
+      # pack's db-open updates atlas.db's mtime, hiding the staleness from
+      # casual inspection. Incremental scan ~seconds; non-fatal on failure.
       set +e
+      python3 scripts/atlas.py scan --repo "$REPO_ROOT" >/dev/null 2>&1 \
+        || echo "[dispatch] WARNING: atlas scan failed — pack will use the existing (possibly stale) index." >&2
       ATLAS_SECTION="$(python3 scripts/atlas.py pack --task "$ATLAS_TASK_ID" --budget "$ATLAS_BUDGET" 2>/dev/null)"
       ATLAS_RC=$?
       set -e

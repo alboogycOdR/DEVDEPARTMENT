@@ -368,6 +368,20 @@ except Exception:
             } catch {
                 $AtlasBudget = "3000"
             }
+            # Refresh the index BEFORE composing the pack (oikonomos defect,
+            # 2026-08-15): nothing else scans intra-day — the nightly audit is
+            # the only other caller — so without this every dispatch after a
+            # merge ships a map of a repo that no longer exists. Deceptively:
+            # pack's own db-open updates atlas.db's mtime, so the file LOOKS
+            # freshly written at the second of every dispatch while its
+            # contents age. Incremental scan is ~seconds; non-fatal on failure
+            # (pack still runs against whatever index exists).
+            try {
+                & $Py "scripts\atlas.py" "scan" "--repo" $RepoRoot 2>$null | Out-Null
+                if ($LASTEXITCODE -ne 0) { Write-Warning "[dispatch] atlas scan failed - pack will use the existing (possibly stale) index." }
+            } catch {
+                Write-Warning "[dispatch] atlas scan failed - pack will use the existing (possibly stale) index."
+            }
             $AtlasSection = ""
             $AtlasOk = $false
             try {
