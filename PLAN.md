@@ -306,7 +306,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-009
 **Title:** Episodic indexer converges — record hashes for zero-episode sources
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/PACK_HARDENING_2026-08.md §3 C2, §0 (H3), §7
@@ -323,12 +323,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Started_At:** 2026-08-16T18:35:23Z
 **Progress_Notes:**
 - [2026-08-16T18:35:23Z] [CX] Claimed TASK-009 on task/TASK-009-cx. Next: reproduce the zero-episode incremental-index convergence failure and add a discriminating regression test.
+- [2026-08-16T18:38:00Z] [CX] Baseline inspected: per-source hashes are derived only from episode rows, so a zero-episode source has no persisted key. Implementing metadata-backed source hashes and regression coverage.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-08-16T18:35:23Z
+**Updated_At:** 2026-08-16T18:38:00Z
 
 ### TASK-010
 **Title:** Repository line-ending policy — .gitattributes without breaking byte-exact sync
