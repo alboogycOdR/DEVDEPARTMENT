@@ -306,7 +306,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-009
 **Title:** Episodic indexer converges — record hashes for zero-episode sources
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/PACK_HARDENING_2026-08.md §3 C2, §0 (H3), §7
@@ -314,22 +314,23 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** —
 **Description:** The incremental episode indexer never converges to `sources changed: 0`. A source file that is present but parses to zero episodes — today `INSTINCTS.md` — inserts no rows, so `_existing_source_hashes`, which reads FROM the episodes table, never records a key for it; every subsequent run therefore re-counts it as changed and rebuilds. Record the indexed hash for EVERY source scanned, including zero-episode ones, so the second consecutive run is a genuine no-op. Keep existing `--reindex` semantics (full rebuild) intact, and do not change the §3 CLI contract, output shape or exit codes. Independent of TASK-008: different file, no shared territory, so the two run concurrently — this wave is also a deliberate test of concurrent multi-worktree dispatch.
 **Acceptance_Criteria:**
-- [ ] A source that parses to zero episodes has its hash recorded on the first run (§3 C2)
-- [ ] Two consecutive `atlas.py episodes` runs on this repo: the second reports `sources changed: 0` (§7)
-- [ ] `--reindex` still performs a full rebuild
-- [ ] §3 CLI contract, output shape and exit codes unchanged; forward-slash paths preserved
-- [ ] Regression test pinning the zero-episode source case, failing against current code (§0 H3); full Python + Node suites green
+- [x] A source that parses to zero episodes has its hash recorded on the first run (§3 C2)
+- [x] Two consecutive `atlas.py episodes` runs on this repo: the second reports `sources changed: 0` (§7)
+- [x] `--reindex` still performs a full rebuild
+- [x] §3 CLI contract, output shape and exit codes unchanged; forward-slash paths preserved
+- [x] Regression test pinning the zero-episode source case, failing against current code (§0 H3); full Python + Node suites green
 **Branch:** task/TASK-009-cx
 **Started_At:** 2026-08-16T18:35:23Z
 **Progress_Notes:**
 - [2026-08-16T18:35:23Z] [CX] Claimed TASK-009 on task/TASK-009-cx. Next: reproduce the zero-episode incremental-index convergence failure and add a discriminating regression test.
 - [2026-08-16T18:38:00Z] [CX] Baseline inspected: per-source hashes are derived only from episode rows, so a zero-episode source has no persisted key. Implementing metadata-backed source hashes and regression coverage.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-16T18:45:00Z] [CX] Implemented metadata-backed source hashes for every scanned source, including zero-episode inputs; committed 0b75073 and submitting for review.
+**Artifacts:** scripts/atlas_episodes.py, tests/test_atlas_episodes.py (commit 0b75073)
+**Test_Evidence:** `python -m pytest tests/test_atlas_episodes.py -q` → 19 passed; `python -m pytest -q` → 698 passed in 116.60s; `node hooks/run-tests.js` → 36 passed, 0 failed. Live two-run CLI second result: `sources changed: 0`; `--reindex`: 11 sources changed.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-08-16T18:38:00Z
+**Updated_At:** 2026-08-16T18:45:00Z
 
 ### TASK-010
 **Title:** Repository line-ending policy — .gitattributes without breaking byte-exact sync
