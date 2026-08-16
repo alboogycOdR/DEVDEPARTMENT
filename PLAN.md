@@ -412,7 +412,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-012
 **Title:** Dispatch-failure ceiling, --once reaping, and an honest failure message
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/L2_DISPATCH_RESILIENCE.md §3 (R-B: B1/B2/B3), §0, §1 (L2, L3, L4), §5, §6
@@ -427,12 +427,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] The notification no longer asserts a single cause; it carries exit code, command, both candidate causes and the transcript pointer (§3 B3, §1 L3)
 - [ ] Tick behaviour for healthy dispatches is unchanged (§3)
 - [ ] Regression tests in tests/test_supervisor.py that FAIL against current code (§1 L4); full Python + Node suites green
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-012-cx
+**Started_At:** 2026-08-16T21:30:00Z
+**Progress_Notes:**
+- [2026-08-16T21:30:00Z] [CX] Claimed TASK-012 on task/TASK-012-cx. Next: preflight owned paths, inspect existing dispatch/reap flow, then add the ceiling, single-tick reap, and regression coverage.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-16T21:06:13Z
+**Updated_By:** CX
+**Updated_At:** 2026-08-16T21:30:00Z
