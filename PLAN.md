@@ -377,7 +377,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-011
 **Title:** Dispatch reclaims an empty, unregistered worktree directory
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/L2_DISPATCH_RESILIENCE.md §2 (R-A), §1 (L1, L4), §5, §6
@@ -385,12 +385,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** —
 **Description:** Observed three times, and it broke a live L2 tick: removing a worktree leaves its directory behind when a process still holds a handle on it (Windows). The directory is then empty and unregistered, and every future dispatch for that unit fails at the guard refusing to reuse an unrecognised directory — a permanent stall for that builder. The guard is right to refuse a foreign directory holding someone's work; it just cannot tell that from an empty husk. In BOTH dispatch scripts, when the expected worktree path exists but is not a registered worktree of this repo: if the directory is EMPTY (no entries at all, dotfiles included) remove it, log one line saying what was reclaimed and why, and proceed to create the worktree normally; if it is NON-EMPTY keep today's hard refusal verbatim including the manual-inspection guidance; if removal fails because the lock is still held, refuse cleanly with the current message — never crash, never leave partial state. The two scripts must behave identically: this is a behavioural contract, not a Windows patch. Per §6, acceptance evidence must show the failure conditions actually occurring, not just the happy path.
 **Acceptance_Criteria:**
-- [ ] An EMPTY unregistered directory at the worktree path is reclaimed and dispatch proceeds to create the worktree (§2)
-- [ ] A directory containing even one file is still refused with the existing message and guidance (§2)
-- [ ] A directory containing only a dotfile counts as NON-EMPTY and is refused (§2)
-- [ ] Reclaim emits exactly one explanatory log line; a failed removal refuses cleanly without crashing or leaving partial state (§2)
-- [ ] dispatch.sh and dispatch.ps1 behave identically; `bash -n scripts/dispatch.sh` passes and the PowerShell parser accepts dispatch.ps1 (§2)
-- [ ] Regression tests in tests/test_dispatch_worktree.py that FAIL against current code (§1 L4); full Python + Node suites green
+- [x] An EMPTY unregistered directory at the worktree path is reclaimed and dispatch proceeds to create the worktree (§2)
+- [x] A directory containing even one file is still refused with the existing message and guidance (§2)
+- [x] A directory containing only a dotfile counts as NON-EMPTY and is refused (§2)
+- [x] Reclaim emits exactly one explanatory log line; a failed removal refuses cleanly without crashing or leaving partial state (§2)
+- [x] dispatch.sh and dispatch.ps1 behave identically; `bash -n scripts/dispatch.sh` passes and the PowerShell parser accepts dispatch.ps1 (§2)
+- [x] Regression tests in tests/test_dispatch_worktree.py that FAIL against current code (§1 L4); full Python + Node suites green
 **Branch:** task/TASK-011-gb
 **Started_At:** 2026-08-16T21:14:26Z
 **Progress_Notes:**
@@ -400,12 +400,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   FILE   scripts/dispatch.ps1  -> exists, 653 line(s), 39738 bytes
   FILE   tests/test_dispatch_worktree.py  -> exists, 276 line(s), 13877 bytes
   Implementing empty-husk reclaim inside the existing unregistered-directory guard in both scripts; extending tests/test_dispatch_worktree.py for empty / file / dotfile / failed-removal.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-16T21:20:27Z] [GB] R-A implemented on task/TASK-011-gb (b5cd0e6). Empty unregistered husk is rmdir'd / Directory.Delete'd (never rm -rf) then worktree add proceeds; non-empty and dotfile-only keep the verbatim refusal; a cwd-held empty dir on Windows refuses without crash or leftover files. Territory vs master: exactly the three Owned_Paths. Submitting needs_review.
+**Artifacts:**
+- [2026-08-16T21:20:27Z] [GB] scripts/dispatch.sh, scripts/dispatch.ps1, tests/test_dispatch_worktree.py (commit b5cd0e6)
+**Test_Evidence:**
+- [2026-08-16T21:20:27Z] [GB] `python -m pytest tests/test_dispatch_worktree.py -q` → 25 passed in 34.53s (7 new: empty husk reclaim, file refusal + guidance, dotfile-only refusal, cwd-lock failed-removal, PS1 empty reclaim, PS1 dotfile refusal, bash -n + PSParser). `python -m pytest -q` → 724 passed in 93.77s (717 baseline + 7). `node hooks/run-tests.js` → 36 passed, 0 failed. Failed-removal induced with a live Python cwd handle on the empty husk (Windows); dispatch exit 1, refusal text intact, dir still empty. Empty husk: one "Reclaimed empty unregistered directory" line then "Creating worktree"; .git present after add. L4: empty-husk tests assert returncode 0 + Reclaimed — that is the pre-fix refusal path.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** GB
-**Updated_At:** 2026-08-16T21:16:00Z
+**Updated_At:** 2026-08-16T21:20:27Z
 
 ### TASK-012
 **Title:** Dispatch-failure ceiling, --once reaping, and an honest failure message
