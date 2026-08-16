@@ -581,3 +581,33 @@ class TestMarkerSectionLocalEditGuard:
         merged = (proj / "CLAUDE.md").read_text(encoding="utf-8")
         assert "RULE v2 IMPROVED" in merged and "MY EDIT" not in merged
         assert any("DISCARDED" in n for n in report.merge_notes)
+
+    def test_shorter_sentinel_does_not_match_inside_a_longer_heading(self, tmp_path):
+        """`## Builder territory mapping` is a SUBSTRING of
+        `### Builder territory mapping`, so an unanchored find() matched at
+        offset+1 and left a stray '#' in the section body. That single
+        character made the comparison unequal forever: oikonomos's CLAUDE.md
+        could never reach a clean sync, and a merge would have written the
+        stray '#' back into the file."""
+        manifest = {"manifest_version": 1, "framework_owned": [], "project_owned": [],
+                    "merge_special": {"CLAUDE.md": {
+                        "strategy": "marker_section",
+                        "marker": "# CLAUDE.md \u2014 Orchestrator Briefing (ORCH)",
+                        "markers": ["# CLAUDE.md \u2014 Orchestrator Briefing (ORCH)",
+                                    "## Multi-Agent Orchestration \u2014 DEVDEPARTMENT (ORCH)"],
+                        # SHORTER form listed first, exactly as the real manifest has it
+                        "preserve_after": ["## Builder territory mapping for THIS project",
+                                           "### Builder territory mapping for THIS project"]}}}
+        pack = make_pack(tmp_path, {"CLAUDE.md":
+            "# CLAUDE.md \u2014 Orchestrator Briefing (ORCH)\n\n## Git conventions\nSAME\n"},
+            manifest=manifest)
+        proj_text = ("# CLAUDE.md \u2014 MYPROJECT\n\n"
+                     "## Multi-Agent Orchestration \u2014 DEVDEPARTMENT (ORCH)\n\n"
+                     "### Git conventions\nSAME\n\n"
+                     "### Builder territory mapping for THIS project\n- Source root: `packages/`\n")
+        proj = make_project(tmp_path, {"CLAUDE.md": proj_text})
+        report = sfp.run_sync(proj_file_pack := pack, proj, apply=True)
+        assert any("already current" in n for n in report.merge_notes), (
+            "section is identical modulo heading level; the H3 sentinel must be matched "
+            f"whole-line, not as a substring. notes={report.merge_notes}")
+        assert (proj / "CLAUDE.md").read_text(encoding="utf-8") == proj_text

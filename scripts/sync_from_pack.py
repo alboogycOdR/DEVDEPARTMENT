@@ -168,6 +168,29 @@ def decide_file(rel: str, pack: Path, project: Path, state: dict,
 #  merge_special strategies
 # --------------------------------------------------------------------------- #
 
+def _find_line(text: str, needles: list[str], start: int = 0) -> int:
+    """Index of the start of the first line at/after ``start`` whose stripped
+    content equals one of ``needles`` (-1 if none).
+
+    Anchored to line starts because a shorter markdown heading is a SUBSTRING
+    of a longer one: a plain ``find()`` of ``## Builder territory mapping``
+    matches inside ``### Builder territory mapping`` at offset+1, silently
+    leaving a stray ``#`` behind. Observed on oikonomos, where that one
+    character made the section compare unequal forever — the file could never
+    reach a clean sync, and a merge would have written the stray '#' back out.
+    """
+    pos, n = start, len(text)
+    while pos <= n:
+        eol = text.find("\n", pos)
+        line = text[pos:eol if eol >= 0 else n]
+        if line.strip() in needles:
+            return pos
+        if eol < 0:
+            return -1
+        pos = eol + 1
+    return -1
+
+
 def _heading_level(line: str) -> int:
     """Number of leading '#' on a markdown heading (0 if not a heading)."""
     stripped = line.lstrip()
@@ -234,18 +257,22 @@ def merge_marker_section(project_file: Path, pack_file: Path, markers: list[str]
     pack_text = pack_file.read_text(encoding="utf-8")
     proj_text = project_file.read_text(encoding="utf-8")
 
-    # Which marker does THIS project actually use?
-    marker = next((m for m in markers if m in proj_text), None)
+    # Which marker does THIS project actually use? Line-anchored (see _find_line).
+    marker, pidx = None, -1
+    for m in markers:
+        idx = _find_line(proj_text, [m])
+        if idx >= 0:
+            marker, pidx = m, idx
+            break
     if marker is None:
         report.merge_notes.append(
             f"{rel}: none of the known markers ({'; '.join(markers)}) found in the project copy — "
             f"cannot merge safely; flagged for manual attention")
         return
-    pidx = proj_text.find(marker)
 
     # Pack side: take its content BELOW its own marker line (the project keeps
     # its own heading). Fall back to the whole pack file if it has no marker.
-    pack_idx = next((pack_text.find(m) for m in markers if m in pack_text), -1)
+    pack_idx = next((i for i in (_find_line(pack_text, [m]) for m in markers) if i >= 0), -1)
     if pack_idx >= 0:
         line_end = pack_text.find("\n", pack_idx)
         pack_body = pack_text[line_end:] if line_end >= 0 else ""
@@ -256,14 +283,14 @@ def merge_marker_section(project_file: Path, pack_file: Path, markers: list[str]
     # appears AFTER the marker stays exactly as the project wrote it.
     tail = ""
     tail_idx = len(proj_text)
-    for sentinel in (preserve_after or []):
-        sidx = proj_text.find(sentinel, pidx)
-        if sidx >= 0:
-            tail = proj_text[sidx:]
-            tail_idx = sidx
-            report.merge_notes.append(
-                f"{rel}: preserving the project's own '{sentinel.lstrip('# ').strip()}' section below the pack content")
-            break
+    sidx = _find_line(proj_text, list(preserve_after or []), pidx + 1)
+    if sidx >= 0:
+        tail = proj_text[sidx:]
+        tail_idx = sidx
+        eol = proj_text.find("\n", sidx)
+        name = proj_text[sidx:eol if eol >= 0 else len(proj_text)].strip().lstrip("# ").strip()
+        report.merge_notes.append(
+            f"{rel}: preserving the project's own '{name}' section below the pack content")
 
     # The project's current copy of the section, and the note line (if any)
     # onboarding wrote directly under the marker heading.
