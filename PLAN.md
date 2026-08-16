@@ -412,7 +412,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-012
 **Title:** Dispatch-failure ceiling, --once reaping, and an honest failure message
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/L2_DISPATCH_RESILIENCE.md §3 (R-B: B1/B2/B3), §0, §1 (L2, L3, L4), §5, §6
@@ -420,20 +420,21 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** —
 **Description:** READ §0 FIRST: the supervisor ALREADY detects failed dispatches — launch_shell_bg returns a Popen, execute() tracks it in `inflight`, and reap_inflight() polls each at the start of the next tick and routes nonzero exits to _notify_if_builder_unreachable as P2. Do not rebuild that; the gaps are narrower. (B1) No ceiling: nothing records the failure, so the next tick sees the unit idle with a pending task, dispatches again, fails again and notifies again, forever. Add a per-unit consecutive-failure counter to RuntimeState mirroring the existing rework_counts / stale_resets / conflict_counts pattern; at `autopilot.json` -> max_dispatch_failures (default 2) stop dispatching that unit and raise ONE P2 saying it is parked and why; any successful dispatch resets its counter to zero. (B2) `--once` never reaps: reap_inflight runs at the START of a tick, so a single-tick run exits before any second tick and the Popen handles are discarded — which is exactly how the live failure escaped notice. Make `--once` reap before returning, waiting briefly for in-flight dispatches to settle, reporting through the same path a loop tick uses. (B3) The message names the wrong cause: _notify_if_builder_unreachable attributes every nonzero exit to an unreachable builder CLI, but the observed cause was a stale worktree directory, sending a reader to the wrong machine. Widen it to give the exit code and the actual command, name both unreachable-CLI and local dispatch-precondition failure as candidates, and point at the dispatch transcript — keep the T1 Watchtower explanation, it is still a real case.
 **Acceptance_Criteria:**
-- [ ] A unit whose dispatch fails twice consecutively is no longer dispatched, with ONE P2 naming the ceiling (§3 B1)
-- [ ] A successful dispatch resets that unit's failure counter to zero (§3 B1)
-- [ ] `max_dispatch_failures` present in autopilot.json with default 2 (§3 B1)
-- [ ] `--once` surfaces a dispatch that exits nonzero instead of exiting silently, proven with a forced-failure dispatch command (§3 B2, §6)
-- [ ] The notification no longer asserts a single cause; it carries exit code, command, both candidate causes and the transcript pointer (§3 B3, §1 L3)
-- [ ] Tick behaviour for healthy dispatches is unchanged (§3)
-- [ ] Regression tests in tests/test_supervisor.py that FAIL against current code (§1 L4); full Python + Node suites green
+- [x] A unit whose dispatch fails twice consecutively is no longer dispatched, with ONE P2 naming the ceiling (§3 B1)
+- [x] A successful dispatch resets that unit's failure counter to zero (§3 B1)
+- [x] `max_dispatch_failures` present in autopilot.json with default 2 (§3 B1)
+- [x] `--once` surfaces a dispatch that exits nonzero instead of exiting silently, proven with a forced-failure dispatch command (§3 B2, §6)
+- [x] The notification no longer asserts a single cause; it carries exit code, command, both candidate causes and the transcript pointer (§3 B3, §1 L3)
+- [x] Tick behaviour for healthy dispatches is unchanged (§3)
+- [x] Regression tests in tests/test_supervisor.py that FAIL against current code (§1 L4); full Python + Node suites green
 **Branch:** task/TASK-012-cx
 **Started_At:** 2026-08-16T21:30:00Z
 **Progress_Notes:**
 - [2026-08-16T21:30:00Z] [CX] Claimed TASK-012 on task/TASK-012-cx. Next: preflight owned paths, inspect existing dispatch/reap flow, then add the ceiling, single-tick reap, and regression coverage.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-16T21:42:00Z] [CX] Added per-unit consecutive dispatch-failure state, parking at the configured ceiling, a short `--once` reap, and command/transcript-aware diagnostics; committed eb8f04e and submitting for review.
+**Artifacts:** scripts/supervisor.py, tests/test_supervisor.py, autopilot.json (commit eb8f04e)
+**Test_Evidence:** `python -m pytest tests/test_supervisor.py -q` → 28 passed in 3.12s; `python -m py_compile scripts/supervisor.py` → passed; `python -m pytest -q` → 723 passed in 80.93s; `node hooks/run-tests.js` → 36 passed, 0 failed. Focused tests force a child dispatch command to exit 7 under `--once`, assert its P2 carries the exit code + command, and cover ceiling/parking plus reset-on-zero exit.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-08-16T21:30:00Z
+**Updated_At:** 2026-08-16T21:42:00Z
