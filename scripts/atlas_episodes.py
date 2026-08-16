@@ -27,6 +27,7 @@ from validate_plan import EMPTY_VALUES, Report, parse_tasks  # noqa: E402
 
 DOSSIER_NAME_RE = re.compile(r"^(TASK-[A-Z0-9-]+)\.md$", re.IGNORECASE)
 RETRO_GLOB = "RETRO-*.md"
+SOURCE_HASH_PREFIX = "episodes_source_hash:"
 
 
 @dataclass(frozen=True)
@@ -158,7 +159,33 @@ def _existing_source_hashes(con) -> dict[tuple[str, str], str]:
     found: dict[tuple[str, str], str] = {}
     for row in con.execute("SELECT kind, ref, indexed_hash FROM episodes"):
         found[_source_key(row["kind"], row["ref"])] = row["indexed_hash"]
+    for row in con.execute(
+        "SELECT key, value FROM meta WHERE key LIKE ?", (SOURCE_HASH_PREFIX + "%",)
+    ):
+        key = _source_hash_key_to_source(row["key"])
+        if key is not None:
+            found[key] = row["value"]
     return found
+
+
+def _source_hash_meta_key(key: tuple[str, str]) -> str:
+    return f"{SOURCE_HASH_PREFIX}{key[0]}:{key[1]}"
+
+
+def _source_hash_key_to_source(meta_key: str) -> tuple[str, str] | None:
+    if not meta_key.startswith(SOURCE_HASH_PREFIX):
+        return None
+    kind, separator, ident = meta_key[len(SOURCE_HASH_PREFIX) :].partition(":")
+    if not kind or not separator or not ident:
+        return None
+    return kind, ident
+
+
+def _record_source_hash(con, key: tuple[str, str], digest: str) -> None:
+    con.execute(
+        "INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)",
+        (_source_hash_meta_key(key), digest),
+    )
 
 
 def _delete_source(con, key: tuple[str, str]) -> None:
@@ -167,6 +194,7 @@ def _delete_source(con, key: tuple[str, str]) -> None:
         con.execute("DELETE FROM episodes WHERE kind=?", (kind,))
     else:
         con.execute("DELETE FROM episodes WHERE kind=? AND ref=?", (kind, ident))
+    con.execute("DELETE FROM meta WHERE key=?", (_source_hash_meta_key(key),))
 
 
 def _insert_episodes(con, episodes: list[Episode]) -> None:
@@ -245,6 +273,7 @@ def index_episodes(repo: Path, reindex: bool = False) -> tuple[int, int, int]:
     if reindex:
         con.execute("DELETE FROM episodes")
         con.execute("DELETE FROM episodes_fts")
+        con.execute("DELETE FROM meta WHERE key LIKE ?", (SOURCE_HASH_PREFIX + "%",))
         existing: dict[tuple[str, str], str] = {}
     else:
         existing = _existing_source_hashes(con)
@@ -256,10 +285,12 @@ def index_episodes(repo: Path, reindex: bool = False) -> tuple[int, int, int]:
         scanned += 1
         seen.add(key)
         if existing.get(key) == digest:
+            _record_source_hash(con, key, digest)
             continue
         changed += 1
         _delete_source(con, key)
         _insert_episodes(con, episodes)
+        _record_source_hash(con, key, digest)
 
     for key in existing:
         if key not in seen:
