@@ -278,7 +278,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-008
 **Title:** atlas_core correctness — gitignore semantics, main-checkout index, FTS5 ranking
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/PACK_HARDENING_2026-08.md §1 (H-A), §2 (H-B), §3 C1, §0 (H1/H2/H3), §7
@@ -298,12 +298,17 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Started_At:** 2026-08-16T18:41:07Z
 **Progress_Notes:**
 - [2026-08-16T18:41:07Z] [GB] Claimed TASK-008 on task/TASK-008-gb. Next: preflight_paths, then H-A/H-B/C1 in atlas_core.
+- [2026-08-16T18:43:50Z] [GB] Preflight (c8b9872 filesystem check) — all three paths EXIST:
+  FILE   scripts/atlas_core.py  -> exists, 462 line(s), 21204 bytes
+  FILE   tests/test_atlas_core.py  -> exists, 310 line(s), 11767 bytes
+  FILE   docs/ATLAS.md  -> exists, 298 line(s), 14537 bytes
+  Baseline full scan of this repo (pre-H-A): files scanned: 116. Implementing H-A gitignore semantics, H-B main-checkout db_path, C1 FTS5 MATCH/bm25.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** GB
-**Updated_At:** 2026-08-16T18:41:07Z
+**Updated_At:** 2026-08-16T18:43:50Z
 
 ### TASK-009
 **Title:** Episodic indexer converges — record hashes for zero-episode sources
