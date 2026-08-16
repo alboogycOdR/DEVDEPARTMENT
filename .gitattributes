@@ -10,3 +10,54 @@
 # not a correctness fix like the *.sh rule above.
 *.py text eol=lf
 *.js text eol=lf
+
+# --- H-D: repo line-ending policy (specs/PACK_HARDENING_2026-08.md §4) ---
+#
+# ORCH decision on spec §8 Q1: option (b) — `* text=auto` going forward only,
+# WITHOUT a mass renormalization commit (option (a) would have been a single
+# large whitespace-only diff touching every tracked text file). This is the
+# lower-risk choice for a pack other projects sync from byte-exactly: do NOT
+# run `git add --renormalize .` / `git diff --renormalize` and commit the
+# result on top of this file — that would rewrite tracked-file bytes wholesale
+# and is exactly what this policy was chosen to avoid. Existing files are left
+# as-is until they are next touched; new/edited text files get LF normalized
+# into the repository automatically from here on.
+#
+# Interaction with scripts/sync_from_pack.py: sync's entire conflict model is
+# hash equality over byte-exact reads (read_bytes/write_bytes, no encoding or
+# newline translation — see the CRLF lesson noted in that script's own
+# docstring) comparing the pack's on-disk working-tree bytes against each
+# downstream project's copy. That comparison happens on disk, not through a
+# fresh `git checkout`, so this policy does not by itself flip clean files to
+# CONFLICT. A bulk renormalization commit WOULD, because it changes the bytes
+# every downstream project's baseline is compared against — which is the
+# second reason option (b) was chosen over (a).
+#
+# `*.md text eol=lf` targets PLAN.md specifically: `* text=auto` alone still
+# lets core.autocrlf convert LF blobs to CRLF on checkout (Windows), which is
+# what produced the "LF will be replaced by CRLF" warning on every PLAN.md
+# edit; the explicit eol=lf pins the working-tree line ending so the warning
+# stops. PLAN.md's stored content is already LF, so this does not change any
+# committed bytes.
+* text=auto
+*.md text eol=lf
+
+# Explicit binary markings — none of these extensions are tracked in this
+# repo today, but pin them now so a future addition (screenshots in specs/,
+# vendored fonts, a bundled sqlite fixture, etc.) never gets text-normalized
+# or line-ending-converted by accident.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.bundle binary
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
