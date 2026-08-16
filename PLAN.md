@@ -331,7 +331,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-010
 **Title:** Repository line-ending policy — .gitattributes without breaking byte-exact sync
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** specs/PACK_HARDENING_2026-08.md §4 (H-D), §8 Q1, §7
@@ -344,12 +344,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] `python -m pytest tests/test_sync_from_pack.py` green — byte-exactness preserved (§4)
 - [ ] `git diff --stat` shows NO mass renormalisation of existing tracked files (§8 Q1 option b)
 - [ ] Full Python + Node suites green
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-010-s5
+**Started_At:** 2026-08-16T18:35:14Z
+**Progress_Notes:**
+- [2026-08-16T18:35:14Z] [S5] Claimed TASK-010 on task/TASK-010-s5. Next: preflight_paths, then implement .gitattributes against §4/§8 Q1/§7.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-16T17:55:49Z
+**Updated_By:** S5
+**Updated_At:** 2026-08-16T18:35:14Z
