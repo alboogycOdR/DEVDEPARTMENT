@@ -377,7 +377,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-011
 **Title:** Dispatch reclaims an empty, unregistered worktree directory
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/L2_DISPATCH_RESILIENCE.md §2 (R-A), §1 (L1, L4), §5, §6
@@ -395,12 +395,17 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Started_At:** 2026-08-16T21:14:26Z
 **Progress_Notes:**
 - [2026-08-16T21:14:26Z] [GB] Claimed TASK-011 on task/TASK-011-gb. Next: preflight_paths, then add empty-husk reclaim inside the existing unregistered-directory guard in both dispatch scripts.
+- [2026-08-16T21:16:00Z] [GB] Preflight (c8b9872 filesystem check) — all three paths EXIST:
+  FILE   scripts/dispatch.sh  -> exists, 387 line(s), 24273 bytes
+  FILE   scripts/dispatch.ps1  -> exists, 653 line(s), 39738 bytes
+  FILE   tests/test_dispatch_worktree.py  -> exists, 276 line(s), 13877 bytes
+  Implementing empty-husk reclaim inside the existing unregistered-directory guard in both scripts; extending tests/test_dispatch_worktree.py for empty / file / dotfile / failed-removal.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** GB
-**Updated_At:** 2026-08-16T21:14:26Z
+**Updated_At:** 2026-08-16T21:16:00Z
 
 ### TASK-012
 **Title:** Dispatch-failure ceiling, --once reaping, and an honest failure message
