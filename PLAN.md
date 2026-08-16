@@ -1,8 +1,8 @@
 ---
-plan_version: 3.4
-last_updated: 2026-08-16T21:06:13Z
+plan_version: 3.5
+last_updated: 2026-08-16T21:30:24Z
 overall_status: in_progress
-orchestrator_notes: "Plan v3.4 — L2 DISPATCH RESILIENCE wave, from the first live L2 run (2026-08-16). Pack-hardening wave CLOSED: TASK-008/009/010 all done, merged, first-pass; grants removed; 717 pytest / 36 node green. This wave fixes what that run exposed: TASK-011 (GB) makes dispatch reclaim an empty unregistered worktree directory — the condition that stalled GB on tick 1 and has now recurred three times; TASK-012 (CX) gives repeated dispatch failure a ceiling, makes --once reap its in-flight dispatches, and stops the failure notice naming the wrong cause. CORRECTION recorded in spec §0: the supervisor ALREADY detects failed dispatches via reap_inflight/_notify_if_builder_unreachable — an earlier ORCH reading claimed it did not. The real gaps are the missing ceiling, the --once hole, and the misleading message. S5 is deliberately idle this wave: only two disjoint territories exist and inventing a third task to keep it busy would be make-work. Both tasks are dependency-free and concurrent. Firewall grants for scripts/dispatch.sh, scripts/dispatch.ps1, scripts/supervisor.py and autopilot.json are live in hooks/lib.js; DELETE each when its task reaches done. Next ORCH action: dispatch via the L2 supervisor."
+orchestrator_notes: "Plan v3.4 — L2 DISPATCH RESILIENCE wave, from the first live L2 run (2026-08-16). Pack-hardening wave CLOSED: TASK-008/009/010 all done, merged, first-pass; grants removed; 717 pytest / 36 node green. This wave fixes what that run exposed: TASK-011 (GB) makes dispatch reclaim an empty unregistered worktree directory — the condition that stalled GB on tick 1 and has now recurred three times; TASK-012 (CX) gives repeated dispatch failure a ceiling, makes --once reap its in-flight dispatches, and stops the failure notice naming the wrong cause. CORRECTION recorded in spec §0: the supervisor ALREADY detects failed dispatches via reap_inflight/_notify_if_builder_unreachable — an earlier ORCH reading claimed it did not. The real gaps are the missing ceiling, the --once hole, and the misleading message. S5 is deliberately idle this wave: only two disjoint territories exist and inventing a third task to keep it busy would be make-work. Both tasks are dependency-free and concurrent. Firewall grants for scripts/dispatch.sh, scripts/dispatch.ps1, scripts/supervisor.py and autopilot.json are live in hooks/lib.js; DELETE each when its task reaches done. Next ORCH action: dispatch via the L2 supervisor. UPDATE 2026-08-16T21:30Z (v3.5): TASK-011 (GB) DONE — approved first-pass, merged --no-ff (bc1aefb). Empty unregistered worktree husk is now reclaimed in both dispatch scripts; the self-healing condition that stalled GB three times is fixed. §6 graded evidence honoured (empty reclaim, one-file + dotfile-only refusal, real cwd-lock removal failure, PS1 parity) and L4 proven empirically (tests fail on pre-fix master). Suites 724 pytest / 36 node green. TASK-011 firewall grants for dispatch.sh + dispatch.ps1 remain LIVE in hooks/lib.js — removal deferred to Alister's dedicated grant step. TASK-012 (CX) STILL IN FLIGHT in wt-codex on task/TASK-012-cx (supervisor.py / test_supervisor.py / autopilot.json) — its grants stay; not touched this pass."
 ---
 
 # Project Plan
@@ -377,7 +377,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-011
 **Title:** Dispatch reclaims an empty, unregistered worktree directory
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/L2_DISPATCH_RESILIENCE.md §2 (R-A), §1 (L1, L4), §5, §6
@@ -405,10 +405,11 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-16T21:20:27Z] [GB] scripts/dispatch.sh, scripts/dispatch.ps1, tests/test_dispatch_worktree.py (commit b5cd0e6)
 **Test_Evidence:**
 - [2026-08-16T21:20:27Z] [GB] `python -m pytest tests/test_dispatch_worktree.py -q` → 25 passed in 34.53s (7 new: empty husk reclaim, file refusal + guidance, dotfile-only refusal, cwd-lock failed-removal, PS1 empty reclaim, PS1 dotfile refusal, bash -n + PSParser). `python -m pytest -q` → 724 passed in 93.77s (717 baseline + 7). `node hooks/run-tests.js` → 36 passed, 0 failed. Failed-removal induced with a live Python cwd handle on the empty husk (Windows); dispatch exit 1, refusal text intact, dir still empty. Empty husk: one "Reclaimed empty unregistered directory" line then "Creating worktree"; .git present after add. L4: empty-husk tests assert returncode 0 + Reclaimed — that is the pre-fix refusal path.
-**Review_Findings:** —
+**Review_Findings:**
+- [2026-08-16T21:30:24Z] [ORCH] APPROVED (first-pass), merged to master (bc1aefb, --no-ff). Territory CLEAN: net diff master...task/TASK-011-gb = exactly the 3 Owned_Paths (scripts/dispatch.sh, scripts/dispatch.ps1, tests/test_dispatch_worktree.py), single GB commit b5cd0e6, zero outside; no PLAN.md commit on branch; no frontmatter/other-block edits. c8b9872 filesystem-check evidence present (21:16:00Z preflight, all three EXIST). Spec verified §2 (R-A) / §1 (L1, L4) / §5 / §6 — all 6 ACs map to spec text. Control flow re-derived on both scripts: reclaim only inside the existing unregistered-directory guard; a registered worktree still hits the reuse/refresh path (ps1) and the create path is reached after reclaim; empty→reclaim, non-empty and dotfile-only→verbatim refusal, locked-removal→clean exit-1 refusal, never crash/partial. Safety: bash uses `ls -A`+`rmdir` (never rm -rf), ps uses `Get-ChildItem -Force`+non-recursive `Directory.Delete` — neither can delete a dir holding real work; exactly one reclaim log line each. §6 (GRADED) SATISFIED — evidence shows the failures actually occurring: ORCH independently ran TestEmptyHuskReclaim in the worktree, 7/7 passed incl. the cwd-lock failed-removal case (ran, NOT skipped → lock-refusal path genuinely exercised on Windows) and the PS1 parity + dotfile-refusal cases. L4 verified EMPIRICALLY: swapped master (pre-fix) scripts under the new tests → test_empty_unregistered_directory_is_reclaimed + the PS1 twin both FAIL (exit-1 refusal, no "Reclaimed"); branch versions restored; tests are genuine regressions, not tautologies. ORCH re-ran full suites in worktree (subagent): pytest 724/0/0-skipped (717 baseline + 7), node 36/0 — matches Test_Evidence exactly, 0 skipped confirms the lock test ran. Branch deleted, wt-grok detached to master (clean, reuse-ready). NOTE: TASK-011 firewall grants for scripts/dispatch.sh + scripts/dispatch.ps1 remain LIVE in hooks/lib.js — left untouched this pass per Alister's instruction (ORCH removes grants in a dedicated step); TASK-012's supervisor.py/autopilot.json grants must stay for CX's in-flight work.
 **Blocked_Reason:** —
-**Updated_By:** GB
-**Updated_At:** 2026-08-16T21:20:27Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-16T21:30:24Z
 
 ### TASK-012
 **Title:** Dispatch-failure ceiling, --once reaping, and an honest failure message
