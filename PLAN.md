@@ -278,7 +278,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-008
 **Title:** atlas_core correctness — gitignore semantics, main-checkout index, FTS5 ranking
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/PACK_HARDENING_2026-08.md §1 (H-A), §2 (H-B), §3 C1, §0 (H1/H2/H3), §7
@@ -294,15 +294,16 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] `query` uses FTS5 MATCH with bm25 relevance ordering; multi-word and punctuation-bearing queries succeed; §3 CLI contract, FRESH/STALE and exit codes unchanged (§3 C1)
 - [ ] Regression tests for all three fixes, each failing against current code (§0 H3); full Python + Node suites green
 - [ ] A full scan of this repo reports a file count consistent with corrected exclusions, and the delta vs the previous count is stated in Test_Evidence (§7)
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-008-gb
+**Started_At:** 2026-08-16T18:41:07Z
+**Progress_Notes:**
+- [2026-08-16T18:41:07Z] [GB] Claimed TASK-008 on task/TASK-008-gb. Next: preflight_paths, then H-A/H-B/C1 in atlas_core.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-16T17:55:49Z
+**Updated_By:** GB
+**Updated_At:** 2026-08-16T18:41:07Z
 
 ### TASK-009
 **Title:** Episodic indexer converges — record hashes for zero-episode sources
