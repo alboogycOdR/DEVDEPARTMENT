@@ -285,3 +285,66 @@ class TestDispatchCmdCwdIndependence:
         )
         assert len(launched) == 1
         assert "CX" in launched[0]
+
+
+class _FinishedDispatch:
+    def __init__(self, returncode):
+        self.returncode = returncode
+
+    def poll(self):
+        return self.returncode
+
+
+def test_second_consecutive_dispatch_failure_parks_unit_once(tmp_path, monkeypatch):
+    notices = []
+    monkeypatch.setattr(sup, "notify", lambda cfg, priority, message, repo: notices.append((priority, message)))
+    state = RuntimeState(dispatch_failures={"GB": 1})
+    inflight = {"GB": (_FinishedDispatch(23), "TASK-001", "forced-failure-command")}
+    sup.reap_inflight(inflight, CFG, state, tmp_path, NOW)
+
+    assert state.dispatch_failures == {"GB": 2}
+    assert len(notices) == 1
+    assert notices[0][0] == "P2"
+    assert "parked" in notices[0][1]
+    assert "max_dispatch_failures=2" in notices[0][1]
+    assert "DISPATCH" not in kinds(decide(FM + task(), state, CFG, NOW))
+
+
+def test_successful_dispatch_resets_failure_counter(tmp_path):
+    state = RuntimeState(dispatch_failures={"GB": 1})
+    inflight = {"GB": (_FinishedDispatch(0), "TASK-001", "successful-command")}
+    sup.reap_inflight(inflight, CFG, state, tmp_path, NOW)
+
+    assert state.dispatch_failures == {"GB": 0}
+    assert "DISPATCH" in kinds(decide(FM + task(), state, CFG, NOW))
+
+
+def test_failed_dispatch_notification_names_candidates_command_and_transcript(tmp_path, monkeypatch):
+    notices = []
+    monkeypatch.setattr(sup, "notify", lambda cfg, priority, message, repo: notices.append((priority, message)))
+    inflight = {"GB": (_FinishedDispatch(17), "TASK-001", "dispatch --builder GB")}
+    sup.reap_inflight(inflight, CFG, RuntimeState(), tmp_path, NOW)
+
+    assert notices[0][0] == "P2"
+    message = notices[0][1]
+    assert "17" in message
+    assert "dispatch --builder GB" in message
+    assert "unreachable" in message
+    assert "local dispatch precondition" in message
+    assert "AUTOPILOT_LOG.md" in message
+
+
+def test_once_reaps_forced_dispatch_failure(tmp_path, capsys):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+    command = f'"{sys.executable}" -c "import sys; sys.exit(7)"'
+    (repo / "autopilot.json").write_text(
+        __import__("json").dumps({"builders": ["GB"], "dispatch_cmd": {"GB": command}}),
+        encoding="utf-8",
+    )
+
+    assert sup.main(["--once", "--repo", str(repo)]) == 0
+    output = capsys.readouterr().out
+    assert "exited 7" in output
+    assert command in output

@@ -89,6 +89,7 @@ DEFAULT_CONFIG = {
     "interval_seconds": 300,
     "stale_minutes": 90,
     "max_rework": 2,
+    "max_dispatch_failures": 2,
     "digest_hours": 4,
     "notify_channels": ["console", "file"],
     # review uses sonnet-5 per ORCH model discipline table (CLAUDE.md 1020f7a)
@@ -151,6 +152,7 @@ class RuntimeState:
     rework_counts: dict[str, int] = field(default_factory=dict)     # task_id -> times sent to rework
     stale_resets: dict[str, int] = field(default_factory=dict)      # task_id -> times reset from stale
     conflict_counts: dict[str, int] = field(default_factory=dict)   # task_id -> OWNERSHIP_CONFLICT occurrences
+    dispatch_failures: dict[str, int] = field(default_factory=dict) # unit -> consecutive failed dispatches
     busy_units: dict[str, str] = field(default_factory=dict)        # unit -> task_id currently dispatched
     last_digest_ts: str = ""
     mute_until: str = ""   # Wave A-remainder: ISO-8601 UTC ts; "" = not muted. Set by /mute.
@@ -325,6 +327,8 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
     for unit in _active_builders(cfg):
         if unit in active_by_unit:
             continue
+        if state.dispatch_failures.get(unit, 0) >= cfg["max_dispatch_failures"]:
+            continue  # parked after repeated failed launches; reap_inflight emitted the one P2
         eligible = [t for t in real
                     if t.get("Status") == "pending" and t.get("Assigned_To") == unit
                     and _deps_done(t, by_id) and t.task_id not in handled]
@@ -426,24 +430,47 @@ def launch_shell_bg(cmd: str, repo: Path) -> subprocess.Popen:
     return subprocess.Popen(cmd, shell=True, cwd=repo)
 
 
-def reap_inflight(inflight: dict[str, tuple[subprocess.Popen, str]], cfg: dict,
-                  state: RuntimeState, repo: Path, now: datetime) -> None:
+def reap_inflight(inflight: dict[str, tuple[subprocess.Popen, str, str]], cfg: dict,
+                  state: RuntimeState, repo: Path, now: datetime, wait_seconds: float = 0.0) -> None:
     """Check every tracked background dispatch for completion; surface
     _notify_if_builder_unreachable for any that exited nonzero, exactly as
     the old synchronous path did, just deferred to whichever later tick
-    notices the process has actually finished."""
-    for unit in list(inflight.keys()):
-        proc, task_id = inflight[unit]
-        rc = proc.poll()
-        if rc is None:
-            continue  # still running
-        del inflight[unit]
-        _notify_if_builder_unreachable(rc, unit, task_id or None, cfg, state, repo, now)
+    notices the process has actually finished. `--once` supplies a short
+    wait so a fast launch failure is not discarded when the process exits."""
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        for unit in list(inflight.keys()):
+            proc, task_id, command = inflight[unit]
+            rc = proc.poll()
+            if rc is None:
+                continue
+            del inflight[unit]
+            state.busy_units.pop(unit, None)
+            if rc == 0:
+                state.dispatch_failures[unit] = 0
+                continue
+            failures = state.dispatch_failures.get(unit, 0) + 1
+            state.dispatch_failures[unit] = failures
+            ceiling = cfg["max_dispatch_failures"]
+            if failures == ceiling:
+                detail = (f"{task_id or '?'}: dispatch for {unit} failed {failures} consecutive times "
+                          f"(max_dispatch_failures={ceiling}) and is now parked; no further dispatches "
+                          f"will be attempted until a successful dispatch resets the counter. Last exit code: {rc}; "
+                          f"command: {command}. Check the dispatch transcript in AUTOPILOT_LOG.md.")
+                if is_muted(state, now):
+                    log_line(repo, f"MUTED: suppressed P2 dispatch-failure ceiling notice — {detail}")
+                else:
+                    notify(cfg, "P2", detail, repo)
+            else:
+                _notify_if_builder_unreachable(rc, unit, task_id or None, command, cfg, state, repo, now)
+        if not inflight or time.monotonic() >= deadline:
+            return
+        time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
 
 
 def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, dry_run: bool,
             now: datetime | None = None,
-            inflight: dict[str, tuple[subprocess.Popen, str]] | None = None) -> bool:
+            inflight: dict[str, tuple[subprocess.Popen, str, str]] | None = None) -> bool:
     """Execute actions. Returns False if the loop must halt."""
     now = now or datetime.now(timezone.utc)
     inflight = inflight if inflight is not None else {}
@@ -506,8 +533,10 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
                     if t.task_id == a.task_id and t.get("Status") == "in_progress":
                         state.rework_counts[a.task_id] = state.rework_counts.get(a.task_id, 0) + 1
         elif a.kind == "DISPATCH" and a.unit:
-            proc = launch_shell_bg(dispatch_cmd_for(a.unit, cfg), repo)
-            inflight[a.unit] = (proc, a.task_id or "")
+            command = dispatch_cmd_for(a.unit, cfg)
+            log_line(repo, f"DISPATCH_COMMAND unit={a.unit} task={a.task_id or '—'} command={command}")
+            proc = launch_shell_bg(command, repo)
+            inflight[a.unit] = (proc, a.task_id or "", command)
             state.busy_units[a.unit] = a.task_id or ""
             state.dispatch_log = budget.record_dispatch(state.dispatch_log, now)
         elif a.kind == "TRIAGE_UNBLOCK" and a.task_id:
@@ -527,8 +556,10 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
             # task, re-reads the last Progress_Note, and continues on the
             # existing branch. Resetting here would create the ghost-task
             # failure mode the protocol explicitly warns about.
-            proc = launch_shell_bg(dispatch_cmd_for(a.unit, cfg), repo)
-            inflight[a.unit] = (proc, a.task_id or "")
+            command = dispatch_cmd_for(a.unit, cfg)
+            log_line(repo, f"DISPATCH_COMMAND unit={a.unit} task={a.task_id} command={command}")
+            proc = launch_shell_bg(command, repo)
+            inflight[a.unit] = (proc, a.task_id or "", command)
     return not halt
 
 
@@ -666,20 +697,19 @@ def _dossier_heartbeats(repo: Path) -> dict[str, datetime]:
     return out
 
 
-def _notify_if_builder_unreachable(rc: int, unit: str, task_id: str | None, cfg: dict,
+def _notify_if_builder_unreachable(rc: int, unit: str, task_id: str | None, command: str, cfg: dict,
                                    state: RuntimeState, repo: Path, now: datetime) -> None:
     """Wave B, T1 Watchtower topology: dispatch_cmd may need a builder CLI
     (grok/codex) that only lives on a different machine than the one running
     this supervisor (e.g. clawsrv runs the listener/scheduler; the laptop
-    holds the authenticated CLIs). A nonzero exit here most plausibly means
-    "that machine/CLI is unreachable from this host right now" — per spec,
-    that must surface as a P2 notice, never fail silently and never crash."""
-    if rc == 0:
-        return
-    detail = (f"{task_id or '?'}: dispatch_cmd for {unit} exited {rc} \u2014 builder CLI may be "
-             f"unreachable from this host (T1 Watchtower topology: dispatch/review still run "
-             f"wherever the builder CLIs are authenticated). Check the dispatch host, or "
-             f"redispatch manually once it's back.")
+    holds the authenticated CLIs). That remains one candidate for a nonzero
+    exit, but a local dispatch precondition (for example a stale worktree)
+    is another, so this P2 deliberately does not diagnose either as certain."""
+    detail = (f"{task_id or '?'}: dispatch for {unit} exited {rc}; command: {command}. "
+             f"Candidates: builder CLI may be unreachable from this host (T1 Watchtower topology: "
+             f"dispatch/review run where the builder CLIs are authenticated), or a local dispatch "
+             f"precondition failed (for example a stale worktree directory). Check the dispatch "
+             f"transcript in AUTOPILOT_LOG.md before redispatching.")
     if is_muted(state, now):
         log_line(repo, f"MUTED: suppressed P2 dispatch-unreachable notice \u2014 {detail}")
     else:
@@ -989,7 +1019,7 @@ def main(argv: list[str]) -> int:
     # PLAN.md-based busy check is what actually prevents double-dispatch,
     # not this dict -- it just carries the exit code through to
     # _notify_if_builder_unreachable once a background dispatch finishes.
-    inflight: dict[str, tuple[subprocess.Popen, str]] = {}
+    inflight: dict[str, tuple[subprocess.Popen, str, str]] = {}
     print(f"[supervisor] Autopilot L{cfg['autonomy_level']} — repo {repo} — "
           f"{'DRY RUN' if args.dry_run else 'LIVE'} — {'loop' if args.loop else 'single tick'}")
 
@@ -1063,6 +1093,10 @@ def main(argv: list[str]) -> int:
                                           dossier_heartbeats=dossier_heartbeats,
                                           usage=usage)
             keep_going = execute(actions, cfg, state, repo, args.dry_run, now=now, inflight=inflight)
+            if args.once and not args.dry_run:
+                # A normal loop reaps on its next tick. A single-tick run has
+                # no next tick, so wait briefly for dispatch's fast outcome.
+                reap_inflight(inflight, cfg, state, repo, datetime.now(timezone.utc), wait_seconds=3.0)
             state.save(state_path)
 
             # v4: publish Mission Control board (throttled; a dead board never blocks a wave)

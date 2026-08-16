@@ -2,6 +2,7 @@
   "interval_seconds": 300,
   "stale_minutes": 90,
   "max_rework": 2,
+  "max_dispatch_failures": 2,
   "digest_hours": 4,
   "notify_channels": [
     "console",
