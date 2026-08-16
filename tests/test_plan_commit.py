@@ -18,6 +18,7 @@ a 1:1 mirror and is reviewed by reading.
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -86,6 +87,24 @@ def repo(tmp_path: Path) -> Path:
     git(r, "add", "-A")
     git(r, "commit", "-q", "-m", "seed")
     return r
+
+
+def _bash() -> str:
+    """The bash the PACK targets, not whatever `bash` resolves to first.
+
+    On a Windows dev box `bash` is often WSL bash, which cannot read a
+    worktree created by Windows git: the linked worktree's .git file holds a
+    `C:/...` path that does not exist under WSL, so every git call inside it
+    returns empty and the script under test sees no branch at all. Builders
+    run Git Bash (or PowerShell), so prefer that; on Linux/CI the two are the
+    same binary and this is a no-op.
+    """
+    if os.name == "nt":
+        for cand in (os.path.join("C:", os.sep, "Program Files", "Git", "bin", "bash.exe"),
+                     os.path.join("C:", os.sep, "Program Files", "Git", "usr", "bin", "bash.exe")):
+            if os.path.exists(cand):
+                return cand
+    return shutil.which("bash") or "bash"
 
 
 def run_commit(repo: Path, message: str):
@@ -205,3 +224,52 @@ class TestGuardRails:
         r = run_commit(repo, "chore(plan): TASK-007 progress [S5]")
         assert r.returncode == 1
         assert git(repo, "rev-parse", "HEAD").stdout.strip() == before, "must not have committed"
+
+
+class TestRunsFromALinkedWorktree:
+    """The invocation builders ACTUALLY use — and the one that was broken.
+
+    Builders run `scripts/plan_commit.sh` from their own worktree, exactly as
+    the dispatch prompt instructs. A worktree contains every tracked file,
+    including this script, so location-based root resolution resolved to the
+    WORKTREE — detached HEAD, never the integration branch — and the guard
+    refused every such call with "main checkout is on 'HEAD', expected
+    'main'". Latent for many waves because a builder using the absolute
+    main-checkout path happened to work; CX hit it on 2026-08-16 by following
+    the prompt literally and was blocked before it could even claim.
+    """
+
+    def _worktree(self, repo: Path) -> Path:
+        # core.autocrlf=false so the checked-out shell script keeps LF. The real
+        # pack pins this via .gitattributes (*.sh eol=lf); without it, Windows
+        # git rewrites the script to CRLF on worktree checkout and bash dies on
+        # $'
+        # a stray carriage return before reaching anything this test is about.
+        git(repo, "config", "core.autocrlf", "false")
+        wt = repo.parent / "wt-builder"
+        git(repo, "worktree", "add", "--detach", str(wt), "HEAD")
+        return wt
+
+    def test_commit_from_worktree_lands_on_the_main_checkout(self, repo):
+        wt = self._worktree(repo)
+        (repo / "PLAN.md").write_text(plan(status="claimed", by="GB"),
+                                      encoding="utf-8", newline="\n")
+        r = subprocess.run([_bash(), "scripts/plan_commit.sh", "chore(plan): claim [GB]"],
+                           cwd=wt, capture_output=True, text=True, timeout=60)
+        assert r.returncode == 0, f"stdout={r.stdout} stderr={r.stderr}"
+        # The commit must exist on the MAIN checkout's integration branch...
+        log = git(repo, "log", "--oneline", "-1").stdout
+        assert "claim [GB]" in log
+        assert files_in_head(repo) == {"PLAN.md"}
+        # ...and the worktree must still be detached, untouched.
+        head = git(wt, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+        assert head == "HEAD", "the builder's worktree must not be moved onto a branch"
+
+    def test_worktree_invocation_does_not_report_the_worktree_as_main(self, repo):
+        """The exact symptom: the refusal naming the worktree as the checkout."""
+        wt = self._worktree(repo)
+        (repo / "PLAN.md").write_text(plan(status="claimed"), encoding="utf-8", newline="\n")
+        r = subprocess.run([_bash(), "scripts/plan_commit.sh", "chore(plan): x [GB]"],
+                           cwd=wt, capture_output=True, text=True, timeout=60)
+        assert "expected" not in r.stderr, f"refused from a worktree: {r.stderr}"
+        assert "wt-builder" not in r.stderr

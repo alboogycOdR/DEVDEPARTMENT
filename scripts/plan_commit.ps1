@@ -33,6 +33,23 @@ param(
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
+
+# Resolve the MAIN checkout, not this script's own location (2026-08-16) --
+# mirror of the same fix in plan_commit.sh; see that file's comment for the
+# full account. Short version: builders run this from THEIR OWN WORKTREE, a
+# worktree contains this script too, so $PSScriptRoot resolved to the
+# worktree, whose detached HEAD never equals the integration branch, and the
+# guard below refused every such call. `--git-common-dir` returns the main
+# checkout's .git from a linked worktree; fail-open to the previous behaviour.
+try {
+    $Common = (git -C $RepoRoot rev-parse --git-common-dir 2>$null | Select-Object -First 1)
+    if ($LASTEXITCODE -eq 0 -and $Common) {
+        if (-not [System.IO.Path]::IsPathRooted($Common)) { $Common = Join-Path $RepoRoot $Common }
+        $MainRoot = Split-Path -Parent $Common
+        if ($MainRoot -and (Test-Path (Join-Path $MainRoot "PLAN.md"))) { $RepoRoot = $MainRoot }
+    }
+} catch { }
+
 $Plan = Join-Path $RepoRoot "PLAN.md"
 
 if (-not (Test-Path $Plan)) {

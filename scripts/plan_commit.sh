@@ -39,6 +39,37 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Resolve the MAIN checkout, not this script's own location (2026-08-16).
+#
+# Builders run `scripts/plan_commit.sh` from THEIR OWN WORKTREE — the dispatch
+# prompt instructs exactly that, relatively — and a worktree contains every
+# tracked file, including this script. Location-based resolution therefore
+# resolved REPO_ROOT to the WORKTREE, whose HEAD is detached and so never
+# equals the integration branch: the guard below then refused every such
+# invocation with "main checkout is on 'HEAD', expected 'master'".
+#
+# The header above says PLAN.md "lives in the main checkout, so commit it
+# there" — the intent was always right, the resolution just never found it.
+# Latent for many waves because a builder using the ABSOLUTE main-checkout
+# path happened to work; the failure surfaced the first time a builder
+# followed the prompt literally, blocking it before it could even claim.
+#
+# `--git-common-dir` is the canonical answer: in a linked worktree it returns
+# the MAIN checkout's .git; in the main checkout it returns a plain ".git".
+# Fail-open to the previous behaviour if git cannot answer.
+_COMMON="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null || echo "")"
+if [ -n "$_COMMON" ]; then
+  case "$_COMMON" in
+    /*|[A-Za-z]:/*|[A-Za-z]:\\*) ;;          # already absolute
+    *) _COMMON="$REPO_ROOT/$_COMMON" ;;      # relative (".git" in the main checkout)
+  esac
+  _MAIN_ROOT="$(cd "$_COMMON/.." 2>/dev/null && pwd || echo "")"
+  if [ -n "$_MAIN_ROOT" ] && [ -f "$_MAIN_ROOT/PLAN.md" ]; then
+    REPO_ROOT="$_MAIN_ROOT"
+  fi
+fi
+
 PLAN="$REPO_ROOT/PLAN.md"
 
 if [ ! -f "$PLAN" ]; then
