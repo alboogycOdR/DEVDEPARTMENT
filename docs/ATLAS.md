@@ -98,6 +98,29 @@ Output is plain UTF-8 text with forward-slash paths only. Exit 0 on success
 including empty results; exit 1 on real errors; **never** exit 2 (that code
 means "veto" elsewhere in this pack).
 
+`query` ranks file and episode hits with FTS5 `MATCH` + `bm25` (not
+substring `LIKE`). Multi-word and punctuation-bearing terms are quoted so
+they cannot raise an FTS5 syntax error. Output shape, `FRESH`/`STALE`
+annotation, and exit codes are unchanged.
+
+## Cross-worktree index
+
+ATLAS is built for multi-worktree dispatch: builders run
+`atlas.py query` / `where` / `impact` from inside a linked worktree, but
+`.devteam/` is gitignored, so a per-worktree database would be empty or
+hours stale while only the main checkout is ever scanned.
+
+`db_path()` therefore resolves the **main checkout** from anywhere via
+`git rev-parse --git-common-dir` (that path's parent is the main root) and
+opens `<main>/.devteam/atlas.db`. A query issued in a worktree reads the
+same index `scan` wrote in the main tree.
+
+When git is unavailable, the directory is not a git checkout, or
+`--git-common-dir` cannot be resolved, the function fails open (R4) to
+`repo/.devteam/atlas.db` and does not raise. Identity is explicit: one
+shared index on the main checkout, or the local fallback — never an
+implicit "whichever `.devteam` happens to sit next to cwd".
+
 ## Cards — Layer 1 (`scripts/atlas_cards.py`)
 
 ### What a card is
