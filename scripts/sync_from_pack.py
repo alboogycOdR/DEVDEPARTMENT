@@ -168,40 +168,176 @@ def decide_file(rel: str, pack: Path, project: Path, state: dict,
 #  merge_special strategies
 # --------------------------------------------------------------------------- #
 
-def merge_marker_section(project_file: Path, pack_file: Path, marker: str,
-                         apply: bool, report: Report) -> None:
-    """Replace everything from the marker line to EOF with the pack's content.
-    Everything above the marker is the project's own and is preserved intact.
-    In the pack, the file's DEVDEPARTMENT content IS the whole file (possibly
-    itself starting at the marker); we take from the marker onward if the pack
-    file contains the marker, else the whole pack file."""
+def _heading_level(line: str) -> int:
+    """Number of leading '#' on a markdown heading (0 if not a heading)."""
+    stripped = line.lstrip()
+    return len(stripped) - len(stripped.lstrip("#")) if stripped.startswith("#") else 0
+
+
+def _heading_level_of_pack(pack_text: str, markers: list[str]) -> int:
+    for m in markers:
+        if m in pack_text:
+            return _heading_level(m)
+    return 0
+
+
+def _normalize_section(text: str) -> str:
+    """Section content compared for equality modulo the two things a legal
+    onboarding shape is allowed to differ by: heading level (an appended H2
+    section demotes every subsection) and surrounding whitespace. Anything
+    still different after this is a genuine local edit."""
+    out = []
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or s.startswith(">"):
+            continue
+        out.append(s.lstrip("#").strip() if s.startswith("#") else s)
+    return "\n".join(out)
+
+
+def merge_marker_section(project_file: Path, pack_file: Path, markers: list[str],
+                         apply: bool, report: Report,
+                         preserve_after: list[str] | None = None,
+                         adopt_pack: bool = False, state: dict | None = None) -> None:
+    """Refresh the pack's section inside the project's file, preserving the
+    project's own content on BOTH sides of it.
+
+    Three boundaries, all learned from real onboarded projects (2026-08-15):
+
+    * ``markers`` — onboard.md STEP 4 produces TWO legal shapes. A project with
+      no CLAUDE.md receives the pack's file verbatim, so its marker is the
+      pack's own H1. A project that already had one gets the section APPENDED
+      under an H2 (``## Multi-Agent Orchestration — DEVDEPARTMENT (ORCH)``) —
+      the common case, and the one a single-marker manifest could never sync.
+      Candidates are tried in order; the first found in the project wins.
+    * The project's own marker LINE is kept (not overwritten by the pack's),
+      so an appended H2 stays an H2 and its provenance note survives. For the
+      pack-H1 shape the two strings are identical, so behaviour is unchanged.
+    * ``preserve_after`` — STEP 4 also appends the project's REAL territory map
+      AFTER the pack section. Replacing marker→EOF would silently delete it
+      (oikonomos had a substantial one). Anything from the first sentinel
+      onward is the project's again and is preserved verbatim.
+
+    Residual limit, stated plainly: hand-added trailing content that matches no
+    sentinel is still inside the replaced span. That was true before this fix
+    too; the sentinels close the case the pack itself creates.
+    """
     rel = project_file.name
     if not pack_file.exists():
         report.merge_notes.append(f"{rel}: pack file missing — skipped")
         return
-    pack_text = pack_file.read_text(encoding="utf-8")
-    idx = pack_text.find(marker)
-    pack_section = pack_text[idx:] if idx >= 0 else pack_text
-
     if not project_file.exists():
         report.merge_notes.append(
             f"{rel}: absent in project — this is onboard.md's job, not sync's; skipped")
         return
 
+    pack_text = pack_file.read_text(encoding="utf-8")
     proj_text = project_file.read_text(encoding="utf-8")
-    pidx = proj_text.find(marker)
-    if pidx < 0:
-        report.merge_notes.append(
-            f"{rel}: marker '{marker}' not found in project copy — cannot merge safely; "
-            f"flagged for manual attention (was this project onboarded with a different marker?)")
-        return
 
-    merged = proj_text[:pidx] + pack_section
+    # Which marker does THIS project actually use?
+    marker = next((m for m in markers if m in proj_text), None)
+    if marker is None:
+        report.merge_notes.append(
+            f"{rel}: none of the known markers ({'; '.join(markers)}) found in the project copy — "
+            f"cannot merge safely; flagged for manual attention")
+        return
+    pidx = proj_text.find(marker)
+
+    # Pack side: take its content BELOW its own marker line (the project keeps
+    # its own heading). Fall back to the whole pack file if it has no marker.
+    pack_idx = next((pack_text.find(m) for m in markers if m in pack_text), -1)
+    if pack_idx >= 0:
+        line_end = pack_text.find("\n", pack_idx)
+        pack_body = pack_text[line_end:] if line_end >= 0 else ""
+    else:
+        pack_body = "\n" + pack_text
+
+    # Project tail: everything from the first preserve_after sentinel that
+    # appears AFTER the marker stays exactly as the project wrote it.
+    tail = ""
+    tail_idx = len(proj_text)
+    for sentinel in (preserve_after or []):
+        sidx = proj_text.find(sentinel, pidx)
+        if sidx >= 0:
+            tail = proj_text[sidx:]
+            tail_idx = sidx
+            report.merge_notes.append(
+                f"{rel}: preserving the project's own '{sentinel.lstrip('# ').strip()}' section below the pack content")
+            break
+
+    # The project's current copy of the section, and the note line (if any)
+    # onboarding wrote directly under the marker heading.
+    marker_line_end = proj_text.find("\n", pidx)
+    proj_body = proj_text[marker_line_end:tail_idx] if marker_line_end >= 0 else ""
+    note = ""
+    for line in proj_body.lstrip("\n").splitlines():
+        if line.startswith(">"):
+            note = line
+        break
+
+    # Heading-level adaptation: an appended H2 section demotes the pack's own
+    # H2 subsections to H3 so they nest instead of becoming siblings of the
+    # project's top-level sections. Onboarding does this; a refresh must too,
+    # or every sync flattens the document (observed on oikonomos).
+    demote = "#" * max(0, _heading_level(marker) - _heading_level_of_pack(pack_text, markers))
+    if demote:
+        pack_body = "\n".join(
+            (demote + ln) if ln.startswith("#") else ln for ln in pack_body.splitlines())
+
+    # LOCAL CUSTOMIZATION GUARD. marker_section had no conflict concept — it
+    # simply overwrote — which is safe only while projects never edit inside
+    # the section. oikonomos does, deliberately and valuably (a hard-won
+    # "always run the FULL recursive suite" review rule with its incident
+    # report, and a disambiguated protected-paths heading). Silently
+    # discarding that is worse than never syncing.
+    #
+    # Conflict is judged against the BASELINE — the section as the pack had it
+    # at the last successful merge, kept in sync_state under a synthetic
+    # "<file>#section" key — exactly how decide_file() judges ordinary files.
+    # Comparing against the CURRENT pack instead would call every legitimately
+    # out-of-date project a conflict, which defeats the whole strategy.
+    section_key = f"{rel}#section"
+    baseline = (state or {}).get("files", {}).get(section_key)
+    current = sha256_bytes(_normalize_section(proj_body).encode('utf-8'))
+    if not adopt_pack:
+        if baseline is None:
+            if _normalize_section(proj_body) != _normalize_section(pack_body):
+                report.merge_notes.append(
+                    f"{rel}: section differs from the pack and this project has no section baseline "
+                    f"(never marker-synced), so local edits cannot be told apart from pack drift — "
+                    f"not touching it. Diff it against the pack's {rel}, then re-run with "
+                    f"--adopt-pack once you are satisfied nothing project-specific is lost.")
+                return
+        elif current != baseline:
+            report.merge_notes.append(
+                f"{rel}: the project has LOCAL EDITS inside the pack section since the last sync — "
+                f"not touching it. Reconcile by hand, or re-run with --adopt-pack to discard them.")
+            return
+    elif _normalize_section(proj_body) != _normalize_section(pack_body):
+        report.merge_notes.append(f"{rel}: local edits inside the section DISCARDED (--adopt-pack)")
+
+    # pack_body starts at the newline that ends the pack's marker line, so
+    # splicing it straight after the project's marker preserves the pack's own
+    # spacing (a blank line under the heading). Stripping it instead produced a
+    # one-line diff on every sync — pure churn on a hot-path file.
+    rest = pack_body[1:] if pack_body.startswith("\n") else pack_body
+    merged = (proj_text[:pidx] + marker + "\n"
+              + (note + "\n" if note else "")
+              + rest.rstrip("\n") + "\n"
+              + ("\n" + tail if tail else ""))
+    # Record the section baseline on every clean pass — including the no-op
+    # one, which is how an already-current project acquires a baseline without
+    # ever needing --adopt-pack.
+    new_baseline = sha256_bytes(_normalize_section(pack_body).encode("utf-8"))
     if merged == proj_text:
+        if apply and state is not None:
+            state.setdefault("files", {})[section_key] = new_baseline
         report.merge_notes.append(f"{rel}: marker section already current")
         return
     if apply:
         project_file.write_text(merged, encoding="utf-8", newline="")
+        if state is not None:
+            state.setdefault("files", {})[section_key] = new_baseline
         report.merge_notes.append(f"{rel}: marker section UPDATED from pack")
     else:
         report.merge_notes.append(f"{rel}: marker section would be updated (dry-run)")
@@ -297,8 +433,13 @@ def run_sync(pack: Path, project: Path, apply: bool = False,
     if not only:  # merge-specials run on full syncs only
         spec = ms.get("CLAUDE.md")
         if spec and spec.get("strategy") == "marker_section":
+            # markers[] is the current shape; a bare marker (older manifests,
+            # and projects syncing from a pack older than 2026-08-15) still works.
+            markers = spec.get("markers") or [spec["marker"]]
             merge_marker_section(project / "CLAUDE.md", pack / "CLAUDE.md",
-                                 spec["marker"], apply, report)
+                                 markers, apply, report,
+                                 preserve_after=spec.get("preserve_after"),
+                                 adopt_pack=adopt_pack, state=state)
         spec = ms.get("autopilot.json")
         if spec and spec.get("strategy") == "add_only_keys":
             merge_add_only_keys(project / "autopilot.json", pack / "autopilot.json",

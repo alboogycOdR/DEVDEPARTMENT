@@ -116,7 +116,15 @@
     "CLAUDE.md": {
       "strategy": "marker_section",
       "marker": "# CLAUDE.md \u2014 Orchestrator Briefing (ORCH)",
-      "comment": "Everything above the marker (the project's own preamble -- name, stack, conventions) is preserved; the marker section (the pack's whole CLAUDE.md, which starts AT this line -- no pack-side preamble above it) replaces everything from the marker onward. Verified against the pack's real file, not assumed -- see docs/SYNC.md 'Verifying merge_special markers'."
+      "markers": [
+        "# CLAUDE.md \u2014 Orchestrator Briefing (ORCH)",
+        "## Multi-Agent Orchestration \u2014 DEVDEPARTMENT (ORCH)"
+      ],
+      "preserve_after": [
+        "## Builder territory mapping for THIS project",
+        "### Builder territory mapping for THIS project"
+      ],
+      "comment": "Everything above the project's marker is its own (name, stack, conventions) and is preserved; the pack's content refreshes the section BELOW that heading line; anything from a preserve_after sentinel onward is the project's own again and is preserved. TWO markers because onboarding produces two legal shapes (onboard.md STEP 4): a project with NO CLAUDE.md gets the pack's file verbatim (H1 marker); a project WITH one gets the section appended under the H2 marker -- the common case, which the single-marker version could never sync (found live on oikonomos 2026-08-15). preserve_after exists because STEP 4 also appends the project's REAL territory map AFTER the pack section; without it, the first successful sync would silently delete that map. Verified against both real shapes -- see docs/SYNC.md 'Verifying merge_special markers'."
     },
     "autopilot.json": {
       "strategy": "add_only_keys",

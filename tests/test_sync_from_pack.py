@@ -183,7 +183,7 @@ class TestMarkerSectionMerge:
         proj = make_project(tmp_path, {
             "CLAUDE.md": "# My Project\nproject conventions here\n\n"
                           "## Multi-Agent Orchestration\nOLD RULES v1.0\n"})
-        sfp.run_sync(pack, proj, apply=True)
+        sfp.run_sync(pack, proj, apply=True, adopt_pack=True)
         merged = (proj / "CLAUDE.md").read_text()
         assert merged.startswith("# My Project\nproject conventions here")
         assert "NEW PACK RULES v4.6" in merged
@@ -428,3 +428,156 @@ class TestPackTemplateShipsSafeDefaults:
         if isinstance(builders, dict):
             assert "S5B" not in builders.get("active", []), (
                 "S5B must ship defined-but-inactive until per-machine auth is verified")
+
+
+# ============================================ two onboarding shapes (2026-08-15) ==
+class TestMarkerSectionBothOnboardingShapes:
+    """onboard.md STEP 4 produces two legal CLAUDE.md shapes, and the pack
+    only ever knew one of them.
+
+    A project with NO CLAUDE.md gets the pack's file verbatim (H1 marker).
+    A project that ALREADY has one -- the common case -- gets the section
+    appended under an H2, plus its own territory map appended BELOW the pack
+    content. Found live on oikonomos: its CLAUDE.md could never be synced
+    ('cannot merge safely' forever), and the naive marker fix would then have
+    silently deleted the territory map on the first successful run.
+    """
+
+    MANIFEST = {"manifest_version": 1, "framework_owned": [], "project_owned": [],
+                "merge_special": {"CLAUDE.md": {
+                    "strategy": "marker_section",
+                    "marker": "# CLAUDE.md — Orchestrator Briefing (ORCH)",
+                    "markers": ["# CLAUDE.md — Orchestrator Briefing (ORCH)",
+                                "## Multi-Agent Orchestration — DEVDEPARTMENT (ORCH)"],
+                    "preserve_after": ["### Builder territory mapping for THIS project"]}}}
+
+    PACK_CLAUDE = ("# CLAUDE.md — Orchestrator Briefing (ORCH)\n\n"
+                   "You are ORCH.\n\n## Review standard\nNEW PACK RULE v5.0\n")
+
+    def test_h2_appended_shape_syncs_and_keeps_its_own_heading(self, tmp_path):
+        pack = make_pack(tmp_path, {"CLAUDE.md": self.PACK_CLAUDE}, manifest=self.MANIFEST)
+        proj = make_project(tmp_path, {"CLAUDE.md":
+            "# CLAUDE.md — MYPROJECT\n\nProject non-negotiables.\n\n---\n\n"
+            "## Multi-Agent Orchestration — DEVDEPARTMENT (ORCH)\n"
+            "> Auto-appended by DEVDEPARTMENT onboarding.\n\n"
+            "You are ORCH.\n\n## Review standard\nOLD RULE v1.0\n"})
+        report = sfp.run_sync(pack, proj, apply=True, adopt_pack=True)
+        merged = (proj / "CLAUDE.md").read_text(encoding="utf-8")
+        assert "Project non-negotiables." in merged, "project preamble must survive"
+        assert "## Multi-Agent Orchestration — DEVDEPARTMENT (ORCH)" in merged, \
+            "the project's own H2 heading must be kept, not replaced by the pack's H1"
+        assert "# CLAUDE.md — Orchestrator Briefing (ORCH)" not in merged, \
+            "the pack's H1 must not be spliced into the middle of the project's document"
+        assert "NEW PACK RULE v5.0" in merged and "OLD RULE v1.0" not in merged
+        assert not any("cannot merge safely" in n for n in report.merge_notes)
+
+    def test_project_territory_map_below_the_section_is_preserved(self, tmp_path):
+        pack = make_pack(tmp_path, {"CLAUDE.md": self.PACK_CLAUDE}, manifest=self.MANIFEST)
+        proj = make_project(tmp_path, {"CLAUDE.md":
+            "# CLAUDE.md — MYPROJECT\n\n"
+            "## Multi-Agent Orchestration — DEVDEPARTMENT (ORCH)\n\n"
+            "You are ORCH.\n\n## Review standard\nOLD RULE v1.0\n\n"
+            "### Builder territory mapping for THIS project\n"
+            "- Source root: `packages/`\n- Test root: colocated vitest\n"})
+        sfp.run_sync(pack, proj, apply=True, adopt_pack=True)
+        merged = (proj / "CLAUDE.md").read_text(encoding="utf-8")
+        assert "### Builder territory mapping for THIS project" in merged
+        assert "- Source root: `packages/`" in merged, \
+            "the project's REAL territory map must never be destroyed by a pack refresh"
+        assert "NEW PACK RULE v5.0" in merged and "OLD RULE v1.0" not in merged
+        assert merged.index("NEW PACK RULE v5.0") < merged.index("Builder territory mapping"), \
+            "pack content belongs above the preserved project tail"
+
+    def test_h1_verbatim_shape_still_syncs(self, tmp_path):
+        pack = make_pack(tmp_path, {"CLAUDE.md": self.PACK_CLAUDE}, manifest=self.MANIFEST)
+        proj = make_project(tmp_path, {"CLAUDE.md":
+            "## graphify\nuser preamble\n\n"
+            "# CLAUDE.md — Orchestrator Briefing (ORCH)\n\nYou are ORCH.\n\n"
+            "## Review standard\nOLD RULE v1.0\n"})
+        sfp.run_sync(pack, proj, apply=True, adopt_pack=True)
+        merged = (proj / "CLAUDE.md").read_text(encoding="utf-8")
+        assert merged.startswith("## graphify\nuser preamble")
+        assert "# CLAUDE.md — Orchestrator Briefing (ORCH)" in merged
+        assert "NEW PACK RULE v5.0" in merged and "OLD RULE v1.0" not in merged
+
+    def test_unknown_marker_still_refuses(self, tmp_path):
+        pack = make_pack(tmp_path, {"CLAUDE.md": self.PACK_CLAUDE}, manifest=self.MANIFEST)
+        original = "# Some project file with neither marker\n"
+        proj = make_project(tmp_path, {"CLAUDE.md": original})
+        report = sfp.run_sync(pack, proj, apply=True)
+        assert (proj / "CLAUDE.md").read_text(encoding="utf-8") == original
+        assert any("cannot merge safely" in n for n in report.merge_notes)
+
+    def test_real_manifest_has_at_least_one_marker_in_the_real_pack_file(self):
+        """markers[] legitimately contains project-side shapes the pack itself
+        does not use -- but at least one must match the pack's own file, or the
+        pack side of every merge falls back to the whole file."""
+        m = json.loads((REPO_ROOT / sfp.MANIFEST_NAME).read_text(encoding="utf-8"))
+        for name, spec in m.get("merge_special", {}).items():
+            if spec.get("strategy") != "marker_section":
+                continue
+            text = (REPO_ROOT / name).read_text(encoding="utf-8")
+            markers = spec.get("markers") or [spec["marker"]]
+            assert any(mk in text for mk in markers), (
+                f"{name}: none of {markers!r} appears in the pack's own file")
+
+
+# ==================================== local-edit guard for marker sections ==
+class TestMarkerSectionLocalEditGuard:
+    """marker_section used to overwrite unconditionally — safe only while no
+    project edits inside the section. oikonomos does: a hard-won "always run
+    the FULL recursive suite" review rule with its incident report. Conflict
+    is judged against the section BASELINE (what the pack had at the last
+    merge), never against the current pack — the latter would call every
+    legitimately out-of-date project a conflict and defeat the strategy."""
+
+    MANIFEST = TestMarkerSectionBothOnboardingShapes.MANIFEST
+    PACK_V1 = "# CLAUDE.md \u2014 Orchestrator Briefing (ORCH)\n\n## Review standard\nRULE v1\n"
+    PACK_V2 = "# CLAUDE.md \u2014 Orchestrator Briefing (ORCH)\n\n## Review standard\nRULE v2 IMPROVED\n"
+    PROJ = ("# CLAUDE.md \u2014 MYPROJECT\n\nmine\n\n"
+            "## Multi-Agent Orchestration \u2014 DEVDEPARTMENT (ORCH)\n\n"
+            "### Review standard\nRULE v1\n")
+
+    def test_no_baseline_and_differs_refuses_until_adopted(self, tmp_path):
+        pack = make_pack(tmp_path, {"CLAUDE.md": self.PACK_V2}, manifest=self.MANIFEST)
+        proj = make_project(tmp_path, {"CLAUDE.md": self.PROJ})
+        report = sfp.run_sync(pack, proj, apply=True)
+        assert (proj / "CLAUDE.md").read_text(encoding="utf-8") == self.PROJ
+        assert any("no section baseline" in n for n in report.merge_notes)
+
+    def test_matching_section_records_baseline_then_updates_cleanly(self, tmp_path):
+        pack = make_pack(tmp_path, {"CLAUDE.md": self.PACK_V1}, manifest=self.MANIFEST)
+        proj = make_project(tmp_path, {"CLAUDE.md": self.PROJ})
+        sfp.run_sync(pack, proj, apply=True)
+        assert "CLAUDE.md#section" in sfp.load_state(proj)["files"], \
+            "a clean pass must record the section baseline"
+        (pack / "CLAUDE.md").write_text(self.PACK_V2, encoding="utf-8", newline="\n")
+        report = sfp.run_sync(pack, proj, apply=True)
+        merged = (proj / "CLAUDE.md").read_text(encoding="utf-8")
+        assert "RULE v2 IMPROVED" in merged
+        assert "### Review standard" in merged, "H2 shape keeps subsections demoted to H3"
+        assert not any("LOCAL EDITS" in n for n in report.merge_notes)
+
+    def test_local_edit_after_baseline_is_a_conflict_not_a_clobber(self, tmp_path):
+        pack = make_pack(tmp_path, {"CLAUDE.md": self.PACK_V1}, manifest=self.MANIFEST)
+        proj = make_project(tmp_path, {"CLAUDE.md": self.PROJ})
+        sfp.run_sync(pack, proj, apply=True)
+        customized = self.PROJ.replace("RULE v1", "RULE v1 + ALWAYS run the FULL suite")
+        (proj / "CLAUDE.md").write_text(customized, encoding="utf-8", newline="\n")
+        (pack / "CLAUDE.md").write_text(self.PACK_V2, encoding="utf-8", newline="\n")
+        report = sfp.run_sync(pack, proj, apply=True)
+        assert (proj / "CLAUDE.md").read_text(encoding="utf-8") == customized, \
+            "a project's local rule must never be silently discarded by a pack refresh"
+        assert any("LOCAL EDITS" in n for n in report.merge_notes)
+
+    def test_adopt_pack_overrides_the_guard(self, tmp_path):
+        pack = make_pack(tmp_path, {"CLAUDE.md": self.PACK_V1}, manifest=self.MANIFEST)
+        proj = make_project(tmp_path, {"CLAUDE.md": self.PROJ})
+        sfp.run_sync(pack, proj, apply=True)
+        (proj / "CLAUDE.md").write_text(self.PROJ.replace("RULE v1", "MY EDIT"),
+                                        encoding="utf-8", newline="\n")
+        (pack / "CLAUDE.md").write_text(self.PACK_V2, encoding="utf-8", newline="\n")
+        report = sfp.run_sync(pack, proj, apply=True, adopt_pack=True)
+        merged = (proj / "CLAUDE.md").read_text(encoding="utf-8")
+        assert "RULE v2 IMPROVED" in merged and "MY EDIT" not in merged
+        assert any("DISCARDED" in n for n in report.merge_notes)
