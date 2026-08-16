@@ -267,10 +267,13 @@ def apply_control_file(repo: Path, control_json_path: Path, ts: str) -> tuple[bo
         return False, result.detail
 
     plan_path.write_text(result.text, encoding="utf-8")
-    committed = tgc.git_commit_and_push(
+    committed, pushed, note = tgc.git_commit_and_push_detailed(
         repo, f"chore(plan): {result.detail} [SV origin={unit}]")
     if not committed:
-        return True, result.detail + " (applied locally; git commit/push failed — check repo)"
+        return True, result.detail + f" (PLAN.md written but NOT committed — {note})"
+    if not pushed:
+        # Benign in the common case (no remote); surfaced, not alarming.
+        return True, result.detail + f" ({note})"
     return True, result.detail
 
 

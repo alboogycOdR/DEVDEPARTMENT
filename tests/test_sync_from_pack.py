@@ -6,6 +6,7 @@ byte-level filesystem behavior, so that's what gets tested.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -16,6 +17,37 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import sync_from_pack as sfp  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _is_pack_repo() -> bool:
+    """True when this checkout is the DEVDEPARTMENT pack itself, false when it
+    is a project that vendored the pack.
+
+    A consuming project has `.devteam/sync_state.json` — written by
+    onboarding's baseline step and by every sync since. The pack is the source
+    and never syncs into itself, so it has none. `DEVTEAM_PACK_SELF_TESTS=1`
+    forces the pack answer for CI that runs from an unusual layout.
+
+    Why this exists (oikonomos, 2026-08-16): the self-check tests below assert
+    properties of the PACK'S OWN template — atlas disabled, control.mode
+    legacy, manifest markers present in the pack's CLAUDE.md. Shipped into an
+    onboarded project they assert those things of the PROJECT, where diverging
+    from the template is the entire POINT of onboard.md STEP 4's
+    ask-don't-auto-flip questions. On a project that correctly answered
+    `atlas.enabled: true` / `control.mode: strict` and whose CLAUDE.md uses the
+    appended-H2 marker, all three failed permanently — breaking the
+    full-suites-green gate every builder must pass to reach needs_review, for
+    a configuration that was exactly right.
+    """
+    if os.environ.get("DEVTEAM_PACK_SELF_TESTS") == "1":
+        return True
+    return not (REPO_ROOT / ".devteam" / "sync_state.json").exists()
+
+
+pack_self_test = pytest.mark.skipif(
+    not _is_pack_repo(),
+    reason="pack self-check: asserts properties of the pack's own template, which a "
+           "project is expected to diverge from once it has onboarded (see _is_pack_repo)")
 
 
 def make_pack(tmp_path: Path, files: dict[str, str],
@@ -302,6 +334,7 @@ class TestStateAndCli:
 
 
 # =================================================== self-check on the REAL pack ==
+@pack_self_test
 class TestManifestMarkersMatchRealFiles:
     """v4.8 regression: sync-manifest.json's CLAUDE.md marker was
     "## Multi-Agent Orchestration" -- a string that existed in NEITHER the
@@ -325,8 +358,14 @@ class TestManifestMarkersMatchRealFiles:
             target = REPO_ROOT / name
             assert target.exists(), f"{name}: file listed in merge_special does not exist in the pack"
             text = target.read_text(encoding="utf-8")
-            assert spec["marker"] in text, (
-                f"{name}: configured marker {spec['marker']!r} does not appear in the pack's own "
+            # Plural markers[] is what merge_marker_section() actually consumes
+            # (spec.get("markers") or [spec["marker"]]); at least one must match
+            # the pack's own file or the pack side of every merge falls back to
+            # the whole file. Checking only the singular field guarded the wrong
+            # thing once the H2 shape was added (oikonomos, 2026-08-16).
+            markers = spec.get("markers") or [spec["marker"]]
+            assert any(mk in text for mk in markers), (
+                f"{name}: none of the configured markers {markers!r} appears in the pack's own "
                 f"file -- every project's merge would silently fail with 'cannot merge safely' "
                 f"forever. This is exactly the bug that shipped once already.")
 
@@ -394,6 +433,7 @@ class TestManifestPathsAreLiteral:
             f"{sorted(on_disk - registered)}")
 
 
+@pack_self_test
 class TestPackTemplateShipsSafeDefaults:
     """The pack's own autopilot.json is a TEMPLATE that every onboarded
     project inherits (new keys arrive via sync's add_only_keys merge), so a
@@ -508,6 +548,7 @@ class TestMarkerSectionBothOnboardingShapes:
         assert (proj / "CLAUDE.md").read_text(encoding="utf-8") == original
         assert any("cannot merge safely" in n for n in report.merge_notes)
 
+    @pack_self_test
     def test_real_manifest_has_at_least_one_marker_in_the_real_pack_file(self):
         """markers[] legitimately contains project-side shapes the pack itself
         does not use -- but at least one must match the pack's own file, or the

@@ -716,9 +716,11 @@ def _process_tg_answer_or_rework(item: dict, repo: Path, cfg: dict, ts: str, tok
         return
 
     plan_path.write_text(result.text, encoding="utf-8")
-    committed = tgc.git_commit_and_push(repo, f"chore(plan): {result.detail} [TG]")
+    committed, pushed, note = tgc.git_commit_and_push_detailed(
+        repo, f"chore(plan): {result.detail} [TG]")
     if committed:
-        tgc.send_reply(token, chat_id, f"✅ {result.detail}")
+        tgc.send_reply(token, chat_id,
+                       f"✅ {result.detail}" if pushed else f"✅ {result.detail} — {note}")
     else:
         tgc.send_reply(token, chat_id,
                        f"⚠️ {result.detail} — applied locally, but git commit/push failed "

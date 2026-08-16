@@ -394,17 +394,75 @@ def git_pull(repo: Path) -> bool:
         return False
 
 
-def git_commit_and_push(repo: Path, message: str) -> bool:
-    """Stage+commit+push ONLY PLAN.md. Never touches any other file."""
+def git_commit_and_push_detailed(repo: Path, message: str) -> tuple[bool, bool, str]:
+    """Stage+commit+push ONLY PLAN.md. Never touches any other file.
+
+    Returns (committed, pushed, note). The two outcomes are reported
+    SEPARATELY because collapsing them is actively misleading: on a repo with
+    no remote configured — the normal state of a project for most of its
+    early life — the commit always succeeds and only the push fails, and a
+    single boolean rendered that as "git commit/push failed". Every control
+    drain printed it, reading as "your PLAN.md edit may not have committed"
+    when it always had. Reported by oikonomos 2026-08-16 after it sent review
+    effort chasing a phantom failure more than once.
+
+    "Committed locally, no remote configured" is benign; "the commit itself
+    failed" is serious. Callers must be able to tell them apart.
+    """
     try:
-        subprocess.run(["git", "add", "PLAN.md"], cwd=repo, capture_output=True, encoding="utf-8", errors="replace", timeout=30)
-        r = subprocess.run(["git", "commit", "-m", message], cwd=repo, capture_output=True, encoding="utf-8", errors="replace", timeout=30)
+        # FAIL CLOSED if `repo` is not itself a git work tree. git walks UP
+        # from cwd, so pointing this at a non-repo silently commits into
+        # whatever ancestor repo exists — and on a machine where the user's
+        # HOME is a git repo (observed 2026-08-16), that means every stray
+        # invocation lands a commit in the user's home history. Same class as
+        # the wrong-checkout incident the worktree rule exists to prevent:
+        # "which repo am I actually writing to?" must never be implicit.
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=repo,
+                             capture_output=True, encoding="utf-8", errors="replace", timeout=30)
+        resolved = (top.stdout or "").strip()
+        if top.returncode != 0 or not resolved:
+            return False, False, f"{repo} is not a git work tree — refusing to commit"
+        if Path(resolved).resolve() != Path(repo).resolve():
+            return False, False, (
+                f"{repo} is not the root of its git work tree (git resolves to {resolved}) — "
+                f"refusing to commit into an ancestor repository")
+        subprocess.run(["git", "add", "PLAN.md"], cwd=repo, capture_output=True,
+                       encoding="utf-8", errors="replace", timeout=30)
+        r = subprocess.run(["git", "commit", "-m", message], cwd=repo, capture_output=True,
+                           encoding="utf-8", errors="replace", timeout=30)
         if r.returncode != 0:
-            return False
-        r2 = subprocess.run(["git", "push"], cwd=repo, capture_output=True, encoding="utf-8", errors="replace", timeout=30)
-        return r2.returncode == 0
-    except Exception:
-        return False
+            combined = ((r.stdout or "") + (r.stderr or "")).lower()
+            # "nothing to commit" is a benign no-op (the desired state was
+            # already recorded), not a failure — reporting it as one is the
+            # same misleading-message class this function was fixed for.
+            if "nothing to commit" in combined or "no changes added" in combined:
+                return True, False, "nothing to commit (PLAN.md already at the desired state)"
+            detail = (r.stderr or r.stdout or "").strip().splitlines()
+            return False, False, f"commit failed: {detail[-1] if detail else 'unknown error'}"
+        # No remote at all is a configuration fact, not a failure — say so.
+        remotes = subprocess.run(["git", "remote"], cwd=repo, capture_output=True,
+                                 encoding="utf-8", errors="replace", timeout=30)
+        if not (remotes.stdout or "").strip():
+            return True, False, "committed locally (no remote configured — nothing to push)"
+        r2 = subprocess.run(["git", "push"], cwd=repo, capture_output=True,
+                            encoding="utf-8", errors="replace", timeout=30)
+        if r2.returncode != 0:
+            detail = (r2.stderr or r2.stdout or "").strip().splitlines()
+            return True, False, f"committed locally; push failed: {detail[-1] if detail else 'unknown error'}"
+        return True, True, "committed and pushed"
+    except Exception as exc:
+        return False, False, f"git invocation failed: {exc}"
+
+
+def git_commit_and_push(repo: Path, message: str) -> bool:
+    """Back-compat wrapper: True when the commit landed, regardless of push.
+
+    Deliberately keyed on COMMIT, not push: every caller's failure branch says
+    "applied locally but not persisted", and a commit that landed IS persisted
+    locally. Callers wanting the distinction use git_commit_and_push_detailed.
+    """
+    committed, _pushed, _note = git_commit_and_push_detailed(repo, message)
+    return committed
 
 
 # ------------------------------------------------------------ rendering -----

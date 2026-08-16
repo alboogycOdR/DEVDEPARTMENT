@@ -432,17 +432,39 @@ class TestGitPlumbing:
         assert tgc.git_pull(tmp_path) is False
 
     def test_git_commit_and_push_non_repo_fails_gracefully(self, tmp_path):
+        """A non-repo must be REFUSED, not committed into an ancestor.
+
+        This test used to pass for the wrong reason. git walks up from cwd, and
+        on a machine whose HOME is itself a git repo (observed 2026-08-16,
+        1266 pytest-fixture commits deep) the commit SUCCEEDED into that home
+        repo; only the push failed, which the old collapsed boolean rendered as
+        False. The suite was silently writing to the user's personal history on
+        every run. git_commit_and_push_detailed now verifies the toplevel.
+        """
         (tmp_path / "PLAN.md").write_text("x", encoding="utf-8")
+        committed, pushed, note = tgc.git_commit_and_push_detailed(tmp_path, "test")
+        assert committed is False and pushed is False
+        assert "not a git work tree" in note or "ancestor repository" in note
         assert tgc.git_commit_and_push(tmp_path, "test") is False
 
     def test_git_commit_succeeds_in_real_repo_no_remote(self, tmp_path):
         repo = self._init_repo(tmp_path)
         (repo / "PLAN.md").write_text(make_plan(task_block(status="pending")), encoding="utf-8")
-        # No remote configured -> push will fail, but commit itself must succeed;
-        # git_commit_and_push should report False overall since push failed, but
-        # must not raise and must not corrupt the working tree.
-        ok = tgc.git_commit_and_push(repo, "chore(plan): test [TG]")
-        assert ok is False  # push fails (no remote) — reported honestly, no crash
+        # No remote configured: the commit MUST succeed and be reported as
+        # success. The old contract collapsed commit+push into one boolean and
+        # returned False here, which every caller rendered as "git commit/push
+        # failed" — reading as "your PLAN.md edit may not have committed" when
+        # it always had. oikonomos lost review time to that phantom twice
+        # (2026-08-16); "no remote configured" is a config fact, not a failure.
+        committed, pushed, note = tgc.git_commit_and_push_detailed(repo, "chore(plan): test [TG]")
+        assert committed is True, "commit must succeed with no remote configured"
+        assert pushed is False and "no remote configured" in note
+        (repo / "PLAN.md").write_text(make_plan(task_block(status="claimed")), encoding="utf-8")
+        ok = tgc.git_commit_and_push(repo, "chore(plan): test2 [TG]")
+        assert ok is True, "the back-compat wrapper keys on COMMIT, not push"
+        # A genuine no-op is benign, not a failure.
+        again, pushed2, note2 = tgc.git_commit_and_push_detailed(repo, "chore(plan): test3 [TG]")
+        assert again is True and pushed2 is False and "nothing to commit" in note2
         log = subprocess.run(["git", "log", "--oneline"], cwd=repo, capture_output=True, text=True)
         assert "chore(plan): test [TG]" in log.stdout
 
