@@ -194,7 +194,6 @@ const PROTECTED_EXCEPTIONS = [
   // its task reaches done:
   'scripts/atlas_core.py',       // TASK-008 (GB)
   'docs/ATLAS.md',               // TASK-008 (GB)
-  'scripts/atlas_episodes.py',   // TASK-009 (CX)
 ];
 
 /**

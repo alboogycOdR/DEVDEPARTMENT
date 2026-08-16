@@ -208,6 +208,22 @@ def test_incremental_skips_unchanged_sources(repo: Path):
     assert _rows(repo, kind="review")[0]["body_fts"].find("unique-review-finding") >= 0
 
 
+def test_incremental_records_hash_for_zero_episode_source(repo: Path):
+    (repo / "INSTINCTS.md").write_text("# INSTINCTS.md\n", encoding="utf-8")
+
+    assert episodes.index_episodes(repo) == (3, 4, 4)
+    assert _rows(repo, kind="instinct") == []
+
+    con = core.connect(repo)
+    stored = con.execute(
+        "SELECT value FROM meta WHERE key=?",
+        ("episodes_source_hash:instinct:INSTINCTS.md",),
+    ).fetchone()
+    con.close()
+    assert stored is not None
+    assert episodes.index_episodes(repo) == (3, 4, 0)
+
+
 def test_reindex_rebuilds_table(repo: Path):
     episodes.index_episodes(repo)
     con = core.connect(repo)

@@ -1,7 +1,7 @@
 ---
-plan_version: 3.0
-last_updated: 2026-08-16T17:55:49Z
-overall_status: done
+plan_version: 3.1
+last_updated: 2026-08-16T19:05:00Z
+overall_status: in_progress
 orchestrator_notes: "Plan v3.0 — PACK HARDENING wave, and the FIRST L2 (supervised-loop) wave. Source: specs/PACK_HARDENING_2026-08.md, from the oikonomos field report of 2026-08-16 (items 8, 9) plus deferred ORCH review findings. Already fixed upstream and OUT of scope: oikonomos items 1-7 and 10-12 (faa83d6, 328d141, A6/TASK-007). THREE dependency-free tasks with pairwise-disjoint territories — TASK-008 (GB, atlas_core), TASK-009 (CX, atlas_episodes), TASK-010 (S5, .gitattributes) — deliberately concurrent, because exercising concurrent multi-worktree dispatch is this wave second purpose: it is where the atlas.db sqlite contention and the per-worktree index problems live. Firewall grants for scripts/atlas_core.py, docs/ATLAS.md and scripts/atlas_episodes.py are live in hooks/lib.js; DELETE each grant when its task reaches done. Spec item H-E (the CLAUDE.md review-standard full-suite rule) is deliberately ORCH work rather than a builder task — minimal-grant principle on the file that defines ORCH own role. Spec Q1 answered inside TASK-010 (option b, no mass renormalisation). Next ORCH action: hand this wave to the L2 supervisor loop per the runbook."
 ---
 
@@ -278,7 +278,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-008
 **Title:** atlas_core correctness — gitignore semantics, main-checkout index, FTS5 ranking
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/PACK_HARDENING_2026-08.md §1 (H-A), §2 (H-B), §3 C1, §0 (H1/H2/H3), §7
@@ -298,16 +298,21 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Started_At:** 2026-08-16T18:41:07Z
 **Progress_Notes:**
 - [2026-08-16T18:41:07Z] [GB] Claimed TASK-008 on task/TASK-008-gb. Next: preflight_paths, then H-A/H-B/C1 in atlas_core.
+- [2026-08-16T18:43:50Z] [GB] Preflight (c8b9872 filesystem check) — all three paths EXIST:
+  FILE   scripts/atlas_core.py  -> exists, 462 line(s), 21204 bytes
+  FILE   tests/test_atlas_core.py  -> exists, 310 line(s), 11767 bytes
+  FILE   docs/ATLAS.md  -> exists, 298 line(s), 14537 bytes
+  Baseline full scan of this repo (pre-H-A): files scanned: 116. Implementing H-A gitignore semantics, H-B main-checkout db_path, C1 FTS5 MATCH/bm25.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** GB
-**Updated_At:** 2026-08-16T18:41:07Z
+**Updated_At:** 2026-08-16T18:43:50Z
 
 ### TASK-009
 **Title:** Episodic indexer converges — record hashes for zero-episode sources
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/PACK_HARDENING_2026-08.md §3 C2, §0 (H3), §7
@@ -328,10 +333,11 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-16T18:45:00Z] [CX] Implemented metadata-backed source hashes for every scanned source, including zero-episode inputs; committed 0b75073 and submitting for review.
 **Artifacts:** scripts/atlas_episodes.py, tests/test_atlas_episodes.py (commit 0b75073)
 **Test_Evidence:** `python -m pytest tests/test_atlas_episodes.py -q` → 19 passed; `python -m pytest -q` → 698 passed in 116.60s; `node hooks/run-tests.js` → 36 passed, 0 failed. Live two-run CLI second result: `sources changed: 0`; `--reindex`: 11 sources changed.
-**Review_Findings:** —
+**Review_Findings:**
+- [2026-08-16T19:05:00Z] [ORCH] APPROVED (first-pass), merged to master (9db0c72, --no-ff), branch deleted. Territory CLEAN: net diff master...task/TASK-009-cx = exactly the two Owned_Paths (scripts/atlas_episodes.py, tests/test_atlas_episodes.py), single CX commit 0b75073, zero files outside territory; no PLAN.md commit on branch; no frontmatter/other-block edits. Spec verified against §3 C2, §0 H3, §7 — all five ACs map to spec text. C2 fix mechanism sound: a per-source hash is now persisted in the `meta` table under the `episodes_source_hash:` prefix for EVERY scanned source (recorded on both the changed-insert path and the unchanged-skip path), and `_existing_source_hashes` merges those meta rows with the episodes-derived keys — so a present-but-zero-episode source (INSTINCTS.md) now has a persisted key and stops re-counting. `--reindex` clears the meta hashes alongside episodes/episodes_fts, and `_delete_source` deletes the paired meta key, so orphan cleanup stays consistent. The unchanged-path re-record also self-heals pre-fix DBs on first run. EMPIRICALLY verified in the CX worktree: `atlas.py episodes` run twice → second reports `sources changed: 0`; `--reindex` → `sources changed: 11` (full rebuild), then converges to 0 again; exit 0 throughout; §3 output shape ("episodes indexed: N; sources scanned: N; sources changed: N") unchanged. H3 confirmed DISCRIMINATING: swapped master's pre-fix atlas_episodes.py under the branch test → `test_incremental_records_hash_for_zero_episode_source` FAILS (`assert stored is not None` → None, the meta key is never written pre-fix); pins the INSTINCTS.md zero-episode case exactly. Suites re-run by ORCH (subagent, in worktree): `pytest -q` 698 passed / 0 failed, `node hooks/run-tests.js` 36/0 — matches Test_Evidence; the named regression test confirmed run+passed. NON-BLOCKING protocol note: no explicit `ls`/`find` filesystem-check (c8b9872) evidence in commits or Progress_Notes — both Owned_Paths pre-existed (modifications, not net-new), and the 18:38 "Baseline inspected" note shows the file was read before editing, so no clobber risk; reminder to CX to record the preflight explicitly next time. PROTECTED_EXCEPTIONS grant for scripts/atlas_episodes.py (TASK-009) removed from hooks/lib.js in this same [ORCH] commit — 009 is done and no task needs it.
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-08-16T18:45:00Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-16T19:05:00Z
 
 ### TASK-010
 **Title:** Repository line-ending policy — .gitattributes without breaking byte-exact sync
