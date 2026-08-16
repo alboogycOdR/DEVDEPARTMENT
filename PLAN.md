@@ -1,8 +1,8 @@
 ---
-plan_version: 2.7
-last_updated: 2026-08-15T16:24:00Z
+plan_version: 3.0
+last_updated: 2026-08-16T17:55:49Z
 overall_status: done
-orchestrator_notes: "Plan v2.7 — TASK-007 (ATLAS A6, GB) APPROVED first-pass and merged to master (747bd80, --no-ff); branch deleted. A6 mini-wave COMPLETE. Territory clean (exactly 3 Owned_Paths, no touches to atlas.py/atlas_cards.py/atlas_pack.py/dispatch.*/maintenance.py); §9 A6-1/2/3 verified empirically on this repo (delta moves without scan + reconciles after; no-git → n/a at exit 0; cards opt-in hint verbatim); suites 40/687/36 re-run by ORCH, match Test_Evidence. TWO ORCH FOLLOW-UPS (dedicated [ORCH] commits, NOT done in the review commit): (1) remove the TASK-007 onboard.md PROTECTED_EXCEPTIONS grant — 007 merged, no task needs it (mirror the TASK-006 grant-removal follow-up still pending in hooks/lib.js fc27360); (2) sync the pack to oikonomos / orb-jun-26 / rwc-admin-portal — the A6 discoverability fixes are the whole point of this wave; pack is READY. Housekeeping: physical worktree dir C:/CLAUDECODE_kingdom.work/wt-grok-DEVDEPARTMENT is git-de-registered (branch deleted) but the folder is locked by a lingering process — delete manually when free (same as the wt-s5 stale dir from TASK-006). Prior (v2.6): A6 mini-wave from oikonomos field defects; Defect 1 (stale index at dispatch) fixed by scan-before-pack 5af80c7; Defect 2 (Alister): cards stay OPT-IN, visibility fixed via A6."
+orchestrator_notes: "Plan v3.0 — PACK HARDENING wave, and the FIRST L2 (supervised-loop) wave. Source: specs/PACK_HARDENING_2026-08.md, from the oikonomos field report of 2026-08-16 (items 8, 9) plus deferred ORCH review findings. Already fixed upstream and OUT of scope: oikonomos items 1-7 and 10-12 (faa83d6, 328d141, A6/TASK-007). THREE dependency-free tasks with pairwise-disjoint territories — TASK-008 (GB, atlas_core), TASK-009 (CX, atlas_episodes), TASK-010 (S5, .gitattributes) — deliberately concurrent, because exercising concurrent multi-worktree dispatch is this wave second purpose: it is where the atlas.db sqlite contention and the per-worktree index problems live. Firewall grants for scripts/atlas_core.py, docs/ATLAS.md and scripts/atlas_episodes.py are live in hooks/lib.js; DELETE each grant when its task reaches done. Spec item H-E (the CLAUDE.md review-standard full-suite rule) is deliberately ORCH work rather than a builder task — minimal-grant principle on the file that defines ORCH own role. Spec Q1 answered inside TASK-010 (option b, no mass renormalisation). Next ORCH action: hand this wave to the L2 supervisor loop per the runbook."
 ---
 
 # Project Plan
@@ -275,3 +275,81 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-08-15T16:24:00Z
+
+### TASK-008
+**Title:** atlas_core correctness — gitignore semantics, main-checkout index, FTS5 ranking
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** high
+**Spec_References:** specs/PACK_HARDENING_2026-08.md §1 (H-A), §2 (H-B), §3 C1, §0 (H1/H2/H3), §7
+**Owned_Paths:** scripts/atlas_core.py, tests/test_atlas_core.py, docs/ATLAS.md
+**Depends_On:** —
+**Description:** Three confirmed atlas_core defects, all in one file so they ship as one task rather than a needless dependency chain. (H-A) `is_ignored()` tests directory patterns only against the path ROOT, so `node_modules/` excludes the top-level directory while every nested `packages/*/node_modules/` is indexed — implement real gitignore matching per spec §1: no-internal-slash patterns match at any depth, leading-slash anchors to root, internal-slash anchors to root, trailing slash means directory-only. Widening, not a redesign: existing `.git/`, `.devteam/`, atlas.exclude glob and basename behaviour must be preserved. (H-B) `db_path()` returns `repo/.devteam/atlas.db` and `.devteam/` is gitignored, so every worktree has its own unmaintained index while the briefings tell builders to run `atlas.py query/where/impact` from inside one — resolve the main checkout via `git rev-parse --git-common-dir` (its parent is the main root), fail-open to today's behaviour when git is unavailable (R4), and document it in docs/ATLAS.md. (C1) `query` uses SQL LIKE against the FTS5 tables — move ranked paths to FTS5 MATCH with bm25 ordering, preserving output format, FRESH/STALE annotation, exit codes and empty-table behaviour; quote/escape user terms so multi-word and punctuation-bearing queries cannot raise FTS5 syntax errors. Per H3, every fix lands a regression test that fails against current code.
+**Acceptance_Criteria:**
+- [ ] `node_modules/` excludes `packages/a/node_modules/x.js`; `/dist/` does NOT exclude `packages/a/dist/` while `dist/` does; trailing-slash patterns never match a like-named file (§1)
+- [ ] Existing ignore behaviour preserved — the current parametrized ignore cases still pass unchanged (§1)
+- [ ] `db_path()` called from inside a real linked worktree returns the MAIN checkout's path; `atlas.py query` from that worktree returns main-index results (§2)
+- [ ] No-git and non-worktree cases fall back to `repo/.devteam/atlas.db` without raising (§2, R4)
+- [ ] docs/ATLAS.md documents the cross-worktree index behaviour (§2)
+- [ ] `query` uses FTS5 MATCH with bm25 relevance ordering; multi-word and punctuation-bearing queries succeed; §3 CLI contract, FRESH/STALE and exit codes unchanged (§3 C1)
+- [ ] Regression tests for all three fixes, each failing against current code (§0 H3); full Python + Node suites green
+- [ ] A full scan of this repo reports a file count consistent with corrected exclusions, and the delta vs the previous count is stated in Test_Evidence (§7)
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-16T17:55:49Z
+
+### TASK-009
+**Title:** Episodic indexer converges — record hashes for zero-episode sources
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** medium
+**Spec_References:** specs/PACK_HARDENING_2026-08.md §3 C2, §0 (H3), §7
+**Owned_Paths:** scripts/atlas_episodes.py, tests/test_atlas_episodes.py
+**Depends_On:** —
+**Description:** The incremental episode indexer never converges to `sources changed: 0`. A source file that is present but parses to zero episodes — today `INSTINCTS.md` — inserts no rows, so `_existing_source_hashes`, which reads FROM the episodes table, never records a key for it; every subsequent run therefore re-counts it as changed and rebuilds. Record the indexed hash for EVERY source scanned, including zero-episode ones, so the second consecutive run is a genuine no-op. Keep existing `--reindex` semantics (full rebuild) intact, and do not change the §3 CLI contract, output shape or exit codes. Independent of TASK-008: different file, no shared territory, so the two run concurrently — this wave is also a deliberate test of concurrent multi-worktree dispatch.
+**Acceptance_Criteria:**
+- [ ] A source that parses to zero episodes has its hash recorded on the first run (§3 C2)
+- [ ] Two consecutive `atlas.py episodes` runs on this repo: the second reports `sources changed: 0` (§7)
+- [ ] `--reindex` still performs a full rebuild
+- [ ] §3 CLI contract, output shape and exit codes unchanged; forward-slash paths preserved
+- [ ] Regression test pinning the zero-episode source case, failing against current code (§0 H3); full Python + Node suites green
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-16T17:55:49Z
+
+### TASK-010
+**Title:** Repository line-ending policy — .gitattributes without breaking byte-exact sync
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** low
+**Spec_References:** specs/PACK_HARDENING_2026-08.md §4 (H-D), §8 Q1, §7
+**Owned_Paths:** .gitattributes
+**Depends_On:** —
+**Description:** Every PLAN.md write in a session emits `LF will be replaced by CRLF`, and the resulting `git status` noise has repeatedly obscured real changes during review. Add a `.gitattributes` that normalises text to LF, explicitly marks known-binary paths, and — critically — does not disturb what `sync_from_pack.py` compares: its entire conflict model is hash equality over byte-exact reads, so a renormalisation that changes bytes under it would turn every downstream project's clean files into conflicts. ORCH decision on spec §8 Q1: take option (b), `* text=auto` going forward only, WITHOUT a mass renormalisation commit — the lower-risk choice for a pack that other projects sync from byte-exactly. Record that reasoning in the file's own comments, since the next person to touch it needs to know why it is deliberately not a full normalisation.
+**Acceptance_Criteria:**
+- [ ] `.gitattributes` present with `* text=auto`, explicit binary markings, and comments explaining the sync byte-exactness constraint (§4)
+- [ ] Editing PLAN.md no longer produces the CRLF warning (§7)
+- [ ] `python -m pytest tests/test_sync_from_pack.py` green — byte-exactness preserved (§4)
+- [ ] `git diff --stat` shows NO mass renormalisation of existing tracked files (§8 Q1 option b)
+- [ ] Full Python + Node suites green
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-16T17:55:49Z

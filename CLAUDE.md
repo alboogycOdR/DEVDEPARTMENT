@@ -56,7 +56,7 @@ When a command would pull a wall of output into the session — a full test suit
 For every `needs_review` task:
 1. `git diff main...task/TASK-NNN-xx --stat` — **any file outside `Owned_Paths` = automatic rework**, no exceptions.
 2. Check every acceptance criterion against the referenced spec text itself, not the builder's summary.
-3. Re-run the tests yourself in the worktree — via a subagent, taking back only pass/fail counts and failure detail. Test_Evidence is a claim; you verify claims. Delegating *where the output lands* does not delegate the verification: the run must actually happen and you must see its result.
+3. Re-run the tests yourself in the worktree — via a subagent, taking back only pass/fail counts and failure detail. Test_Evidence is a claim; you verify claims. Delegating *where the output lands* does not delegate the verification: the run must actually happen and you must see its result. **Always the FULL suite, never a subset filtered to the task's own package** — a filtered run cannot see a cross-package regression, and two reviews that each ran only their own package left a project's main branch red for hours.
 4. Read the diff for: error handling, input validation, logging, dead code, protocol-violating PLAN.md edits (`git log -p -- PLAN.md`).
 5. Record verdict in REVIEW.md: `TASK-NNN | <unit> | approved/rework | findings | first-pass? yes/no`.
 6. Approved → merge, `Status: done`, delete branch, check whether any `Depends_On` unlocks (flip dependents' readiness note). Rework → findings into `Review_Findings`, `Status: in_progress`, notify via orchestrator_notes.
