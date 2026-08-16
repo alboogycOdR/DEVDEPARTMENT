@@ -333,7 +333,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-010
 **Title:** Repository line-ending policy — .gitattributes without breaking byte-exact sync
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** specs/PACK_HARDENING_2026-08.md §4 (H-D), §8 Q1, §7
@@ -341,18 +341,23 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** —
 **Description:** Every PLAN.md write in a session emits `LF will be replaced by CRLF`, and the resulting `git status` noise has repeatedly obscured real changes during review. Add a `.gitattributes` that normalises text to LF, explicitly marks known-binary paths, and — critically — does not disturb what `sync_from_pack.py` compares: its entire conflict model is hash equality over byte-exact reads, so a renormalisation that changes bytes under it would turn every downstream project's clean files into conflicts. ORCH decision on spec §8 Q1: take option (b), `* text=auto` going forward only, WITHOUT a mass renormalisation commit — the lower-risk choice for a pack that other projects sync from byte-exactly. Record that reasoning in the file's own comments, since the next person to touch it needs to know why it is deliberately not a full normalisation.
 **Acceptance_Criteria:**
-- [ ] `.gitattributes` present with `* text=auto`, explicit binary markings, and comments explaining the sync byte-exactness constraint (§4)
-- [ ] Editing PLAN.md no longer produces the CRLF warning (§7)
-- [ ] `python -m pytest tests/test_sync_from_pack.py` green — byte-exactness preserved (§4)
-- [ ] `git diff --stat` shows NO mass renormalisation of existing tracked files (§8 Q1 option b)
-- [ ] Full Python + Node suites green
+- [x] `.gitattributes` present with `* text=auto`, explicit binary markings, and comments explaining the sync byte-exactness constraint (§4)
+- [x] Editing PLAN.md no longer produces the CRLF warning (§7)
+- [x] `python -m pytest tests/test_sync_from_pack.py` green — byte-exactness preserved (§4)
+- [x] `git diff --stat` shows NO mass renormalisation of existing tracked files (§8 Q1 option b)
+- [x] Full Python + Node suites green
 **Branch:** task/TASK-010-s5
 **Started_At:** 2026-08-16T18:35:14Z
 **Progress_Notes:**
 - [2026-08-16T18:35:14Z] [S5] Claimed TASK-010 on task/TASK-010-s5. Next: preflight_paths, then implement .gitattributes against §4/§8 Q1/§7.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-16T18:40:00Z] [S5] Preflight (c8b9872 filesystem check): FILE .gitattributes -> exists, 12 line(s), 583 bytes (pre-existing rules for *.sh/*.py/*.js eol=lf). Empirically verified via a throwaway /tmp git repo that `* text=auto` alone does NOT stop the CRLF warning on a Windows checkout with core.autocrlf=true (git still converts LF blob -> CRLF working copy on checkout unless eol=lf is explicit); combining `* text=auto` with a targeted `*.md text eol=lf` does stop it. Implemented both plus explicit binary markings (png/jpg/jpeg/gif/ico/pdf/zip/gz/bundle/db/sqlite/sqlite3/woff/woff2/ttf — none currently tracked, pinned proactively) and inline comments recording the §8 Q1 option-(b) reasoning and the sync_from_pack.py byte-exactness interaction, appended after the existing *.sh/*.py/*.js block (widening, not replacing).
+- [2026-08-16T18:41:00Z] [S5] First commit accidentally picked up a stray uncommitted "test" line I'd left in the worktree's PLAN.md from an earlier throwaway CRLF-warning experiment (git checkout -- doesn't unstage an already-`git add`ed file). Caught it via `git show --stat HEAD` showing PLAN.md in a code commit — reset --soft, unstaged/restored PLAN.md to match main's e033385, recommitted with ONLY .gitattributes. Net diff `git diff --stat e033385...task/TASK-010-s5` = exactly `.gitattributes`, confirmed clean. Lesson for future sessions: `git checkout -- <file>` after `git add <file>` restores the STAGED version, not HEAD — use `git restore --staged --worktree` or `git checkout HEAD -- <file>` instead when discarding an already-added throwaway edit.
+- [2026-08-16T18:42:00Z] [S5] Verified all five acceptance criteria on this repo: editing PLAN.md (`echo ... >> PLAN.md && git add PLAN.md`) now produces no CRLF warning (`git check-attr text eol -- PLAN.md` → `text: set`, `eol: lf`); `git add --renormalize .` after the commit staged nothing beyond my own leftover test artifact (which I discarded) — confirming no existing tracked file's bytes change, i.e. no mass renormalisation; full suites green (below). Self-checked all criteria; submitting needs_review.
+**Artifacts:**
+- [2026-08-16T18:42:00Z] [S5] .gitattributes (commit f2d7f9b)
+**Test_Evidence:**
+- [2026-08-16T18:42:00Z] [S5] `python -m pytest tests/test_sync_from_pack.py -q` → 44 passed in 0.63s. `python -m pytest -q` (full suite) → 697 passed in 108.21s. `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff --stat e033385...task/TASK-010-s5` → exactly `.gitattributes` (51 insertions, net-new lines only, matches Owned_Paths). `git add --renormalize .` post-commit staged nothing beyond a manually-introduced throwaway test line (discarded via `git reset --hard HEAD`) — no existing tracked file was renormalised. CRLF-warning check: `echo test >> PLAN.md && git add PLAN.md` → no "LF will be replaced by CRLF" warning printed (previously always printed); `git check-attr text eol -- PLAN.md` → `text: set`, `eol: lf`.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** S5
-**Updated_At:** 2026-08-16T18:35:14Z
+**Updated_At:** 2026-08-16T18:42:00Z
