@@ -308,3 +308,105 @@ def test_onboard_asks_about_cards_when_atlas_enabled():
     assert "max_cards_per_night" in text
     assert "If (and only if) ATLAS is enabled" in text
     assert "Default on silence: neither" in text
+
+
+@pytest.mark.parametrize("path,patterns,expected", [
+    ("packages/a/node_modules/x.js", ["node_modules/"], True),
+    ("node_modules/a.js", ["node_modules/"], True),
+    ("packages/a/dist/out.js", ["/dist/"], False),
+    ("dist/out.js", ["/dist/"], True),
+    ("packages/a/dist/out.js", ["dist/"], True),
+    ("dist/out.js", ["dist/"], True),
+    ("ignored", ["ignored/"], False),
+    ("ignored/x.py", ["ignored/"], True),
+    ("docs/build/out.js", ["docs/build/"], True),
+    ("other/docs/build/out.js", ["docs/build/"], False),
+    ("packages/a/foo.log", ["*.log"], True),
+    ("foo.log", ["*.log"], True),
+])
+def test_gitignore_semantics_any_depth_and_anchoring(path: str, patterns: list[str], expected: bool):
+    assert core.is_ignored(path, patterns) is expected
+
+
+def test_scan_excludes_nested_node_modules(repo: Path):
+    (repo / ".gitignore").write_text("node_modules/\n", encoding="utf-8")
+    nested = repo / "packages" / "a" / "node_modules"
+    nested.mkdir(parents=True)
+    (nested / "x.js").write_text("export const hidden = 1;\n", encoding="utf-8")
+    (repo / "packages" / "a").mkdir(exist_ok=True)
+    (repo / "packages" / "a" / "keep.js").write_text("export const keep = 1;\n", encoding="utf-8")
+    core.scan(repo)
+    con = core.connect(repo)
+    paths = {row[0] for row in con.execute("SELECT path FROM files")}
+    con.close()
+    assert "packages/a/node_modules/x.js" not in paths
+    assert "packages/a/keep.js" in paths
+
+
+def test_db_path_resolves_to_main_checkout_from_linked_worktree(tmp_path: Path):
+    main = tmp_path / "main"
+    main.mkdir()
+    (main / "notes.md").write_text("unique xyzzy token for worktree query\n", encoding="utf-8")
+    _init_git(main)
+    linked = tmp_path / "linked"
+    _git(main, "worktree", "add", str(linked))
+    expected = (main / ".devteam" / "atlas.db").resolve()
+    assert core.db_path(linked).resolve() == expected
+    assert core.db_path(main).resolve() == expected
+    core.scan(main)
+    hits = core.query(linked, "xyzzy", 10)
+    assert hits == ["notes.md:1"]
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "atlas.py"), "query", "xyzzy"],
+        cwd=linked,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert proc.returncode == 0
+    assert "notes.md:1" in proc.stdout
+    assert "\\" not in proc.stdout
+
+
+def test_db_path_falls_back_without_git(repo: Path, monkeypatch: pytest.MonkeyPatch):
+    empty = repo / ".empty_path"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))
+    assert core.db_path(repo) == repo / ".devteam" / "atlas.db"
+    core.scan(repo)
+    assert (repo / ".devteam" / "atlas.db").is_file()
+
+
+def test_db_path_falls_back_outside_a_git_repo(repo: Path):
+    assert core.db_path(repo) == repo / ".devteam" / "atlas.db"
+    core.connect(repo).close()
+    assert (repo / ".devteam" / "atlas.db").is_file()
+
+
+def test_query_file_hits_are_relevance_ordered_not_alphabetical(repo: Path):
+    (repo / "aaa_rare.md").write_text("needle once\n", encoding="utf-8")
+    (repo / "zzz_dense.md").write_text(("needle " * 40).strip() + "\n", encoding="utf-8")
+    core.scan(repo)
+    files = [item.split(":")[0] for item in core.query(repo, "needle", 20)
+             if item.startswith("aaa_rare.md") or item.startswith("zzz_dense.md")]
+    assert files, "expected file hits for needle"
+    assert files[0] == "zzz_dense.md"
+
+
+def test_query_multiword_and_punctuation_do_not_raise(repo: Path):
+    core.scan(repo)
+    for terms in ("findable words", "foo-bar", "a:b", 'foo"bar', "AND OR", "pre*fix"):
+        hits = core.query(repo, terms, 10)
+        assert isinstance(hits, list)
+    assert core.query(repo, "findable words", 10) == ["notes.md:1"]
+
+
+def test_query_preserves_fresh_stale_and_empty_degrade(repo: Path):
+    core.scan(repo)
+    con = core.connect(repo)
+    row = con.execute("select id,content_hash from files where path='notes.md'").fetchone()
+    con.execute("insert into cards values(?,?,?,?,?,?,?,?,?)", (row["id"], row["content_hash"], "now", "test", "", "", "", "", 1))
+    con.commit()
+    con.close()
+    assert "FRESH" in core.query(repo, "findable", 10)[0]
+    assert core.query(repo, "definitely absent", 10) == []

@@ -43,8 +43,37 @@ def now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _main_checkout_root(repo: Path) -> Path | None:
+    """Resolve the main checkout via git-common-dir; None when git cannot say."""
+    out = _run_git(repo, ["rev-parse", "--git-common-dir"])
+    if out is None:
+        return None
+    raw = out.strip()
+    if not raw:
+        return None
+    common = Path(raw)
+    if not common.is_absolute():
+        common = repo / common
+    try:
+        common = common.resolve()
+    except OSError:
+        return None
+    if common.name != ".git" or not common.parent.is_dir():
+        return None
+    return common.parent
+
+
 def db_path(repo: Path) -> Path:
-    return repo / ".devteam" / "atlas.db"
+    """Index lives on the main checkout so every worktree shares one map.
+
+    Linked worktrees resolve via ``git rev-parse --git-common-dir`` (parent of
+    that path is the main root). Fail-open to ``repo/.devteam/atlas.db`` when
+    git is unavailable or the common-dir cannot be resolved (R4).
+    """
+    root = _main_checkout_root(repo)
+    if root is None:
+        return repo / ".devteam" / "atlas.db"
+    return root / ".devteam" / "atlas.db"
 
 
 def connect(repo: Path) -> sqlite3.Connection:
@@ -107,17 +136,39 @@ def _ignore_patterns(repo: Path) -> list[str]:
     return patterns + _atlas_excludes(repo)
 
 
+def _gitignore_match(rel: str, pattern: str) -> bool:
+    """Match one gitignore-subset pattern against a repo-relative file path.
+
+    No-internal-slash patterns match at any depth (directory = path segment,
+    file = basename). A leading slash or an internal slash anchors to the
+    repo root. A trailing slash is directory-only and never matches a file
+    of the same name.
+    """
+    directory = pattern.endswith("/")
+    anchored = pattern.startswith("/")
+    body = pattern.strip("/")
+    if not body:
+        return False
+    root_anchored = anchored or ("/" in body)
+    if directory:
+        if root_anchored:
+            # Prefix only — `rel == body` would be a file of the same name.
+            return rel.startswith(body + "/")
+        # Any-depth directory: match a path *segment*, never the filename.
+        return body in rel.split("/")[:-1]
+    name = rel.rsplit("/", 1)[-1]
+    if root_anchored:
+        return fnmatch.fnmatch(rel, body)
+    return fnmatch.fnmatch(rel, body) or fnmatch.fnmatch(name, body)
+
+
 def is_ignored(rel: str, patterns: list[str]) -> bool:
-    rel = rel.strip("/")
-    for pattern in patterns:
-        pattern = pattern.strip().replace("\\", "/")
+    rel = rel.strip("/").replace("\\", "/")
+    for raw in patterns:
+        pattern = raw.strip().replace("\\", "/")
         if not pattern:
             continue
-        directory = pattern.endswith("/")
-        pattern = pattern.strip("/")
-        if directory and (rel == pattern or rel.startswith(pattern + "/")):
-            return True
-        if fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(Path(rel).name, pattern):
+        if _gitignore_match(rel, pattern):
             return True
     return False
 
@@ -265,12 +316,36 @@ def _annotation(row: sqlite3.Row) -> str:
     return " FRESH" if row["source_hash"] == row["content_hash"] else " STALE (source changed since card generated)"
 
 
+def _fts5_match_query(terms: str) -> str:
+    """Quote each token so FTS5 punctuation cannot become syntax."""
+    parts: list[str] = []
+    for raw in terms.split():
+        parts.append('"' + raw.replace('"', '""') + '"')
+    return " ".join(parts)
+
+
+def _fts_rows(con: sqlite3.Connection, sql: str, match: str, *rest: object) -> list[sqlite3.Row]:
+    try:
+        return con.execute(sql, (match, *rest)).fetchall()
+    except sqlite3.OperationalError:
+        return []
+
+
 def query(repo: Path, terms: str, limit: int) -> list[str]:
     con = connect(repo); init_schema(con)
     token = terms.strip()
     if not token: return []
+    match = _fts5_match_query(token)
     like = f"%{token}%"
-    rows = con.execute("SELECT f.path, 1 AS line, f.content_hash, c.source_hash FROM files f LEFT JOIN cards c ON c.file_id=f.id WHERE f.path LIKE ? OR EXISTS(SELECT 1 FROM files_fts x WHERE x.path=f.path AND x.body LIKE ?) ORDER BY f.path LIMIT ?", (like, like, limit)).fetchall()
+    rows = _fts_rows(
+        con,
+        "SELECT f.path, 1 AS line, f.content_hash, c.source_hash "
+        "FROM files_fts JOIN files f ON f.path = files_fts.path "
+        "LEFT JOIN cards c ON c.file_id = f.id "
+        "WHERE files_fts MATCH ? ORDER BY bm25(files_fts) LIMIT ?",
+        match,
+        limit,
+    )
     results = [f"{r['path']}:{r['line']}{_annotation(r)}" for r in rows]
     remaining = max(0, limit - len(results))
     if remaining:
@@ -278,7 +353,13 @@ def query(repo: Path, terms: str, limit: int) -> list[str]:
             results.append(f"{r['path']}:{r['line_start']} {r['kind']} {r['name']}{_annotation(r)}")
     remaining = max(0, limit - len(results))
     if remaining:
-        for r in con.execute("SELECT ref, 1 AS line FROM episodes WHERE body_fts LIKE ? ORDER BY ref LIMIT ?", (like, remaining)):
+        for r in _fts_rows(
+            con,
+            "SELECT ref, 1 AS line FROM episodes_fts "
+            "WHERE episodes_fts MATCH ? ORDER BY bm25(episodes_fts) LIMIT ?",
+            match,
+            remaining,
+        ):
             results.append(f"{slash(r['ref'])}:{r['line']} episode")
     con.close(); return results
 
