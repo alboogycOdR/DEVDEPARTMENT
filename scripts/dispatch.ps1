@@ -171,12 +171,34 @@ if (Test-Path $Wt) {
     $registeredNorm = $registeredRaw | ForEach-Object { Normalize-WtPath $_ }
     $wtNorm = Normalize-WtPath $Wt
     if ($registeredNorm -notcontains $wtNorm) {
-        Write-Error "[dispatch] $Wt exists but is not a registered worktree of this repo ($RepoRoot)."
-        Write-Error "[dispatch] This usually means a stale or foreign directory occupies the expected worktree path."
-        Write-Error "[dispatch] Inspect it manually, then either remove it or let git reclaim it, and re-run dispatch:"
-        Write-Error "[dispatch]   git worktree list   (from $RepoRoot, to see what git actually knows about)"
-        exit 1
+        # Empty husk (Windows leftover after worktree remove while a handle is
+        # held): nobody's work is here. Reclaim and fall through to create.
+        # Get-ChildItem -Force includes hidden/dotfiles; a dir holding only
+        # .foo is NON-empty and is refused. Directory.Delete refuses a
+        # non-empty dir, so this path can never wipe someone's work.
+        $huskEntries = @(Get-ChildItem -LiteralPath $Wt -Force -ErrorAction SilentlyContinue)
+        $reclaimed = $false
+        if ($huskEntries.Count -eq 0) {
+            try {
+                [System.IO.Directory]::Delete($Wt)
+                $reclaimed = $true
+            } catch {
+                $reclaimed = $false
+            }
+        }
+        if ($reclaimed) {
+            Write-Host "[dispatch] Reclaimed empty unregistered directory at $Wt (leftover husk, not a git worktree) - proceeding to create it."
+        } else {
+            Write-Error "[dispatch] $Wt exists but is not a registered worktree of this repo ($RepoRoot)."
+            Write-Error "[dispatch] This usually means a stale or foreign directory occupies the expected worktree path."
+            Write-Error "[dispatch] Inspect it manually, then either remove it or let git reclaim it, and re-run dispatch:"
+            Write-Error "[dispatch]   git worktree list   (from $RepoRoot, to see what git actually knows about)"
+            exit 1
+        }
     }
+}
+
+if (Test-Path $Wt) {
     # Refresh a REUSED worktree to the integration tip.
     #
     # Without this, dispatch only ever set the worktree's commit at creation

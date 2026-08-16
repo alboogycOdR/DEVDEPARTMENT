@@ -18,8 +18,10 @@ and what does it actually do with a pre-existing directory there."
 NOT gated by --dry-run in dispatch.sh (only builder launch and prompt
 display are), so a dry run still exercises every line of the fix.
 """
+import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -35,7 +37,7 @@ def make_project(parent: Path, name: str, repo_root: Path) -> Path:
     (proj / "scripts").mkdir()
     (proj / "briefings").mkdir()
     (proj / "autopilot.json").write_text('{"control": {"mode": "legacy"}}', encoding="utf-8", newline="\n")
-    for fname in ("dispatch.sh", "validate_plan.py", "instincts.py", "builder_registry.py"):
+    for fname in ("dispatch.sh", "dispatch.ps1", "validate_plan.py", "instincts.py", "builder_registry.py"):
         src = repo_root / "scripts" / fname
         if src.exists():
             # Byte-exact copy, NOT read_text()/write_text(). write_text()'s
@@ -67,6 +69,23 @@ def run_dispatch(proj: Path, builder: str = "grok", dry_run: bool = True):
     if dry_run:
         args.append("--dry-run")
     return subprocess.run(args, cwd=proj, capture_output=True, text=True, timeout=30)
+
+
+def run_dispatch_ps1(proj: Path, builder: str = "grok", dry_run: bool = True):
+    args = [
+        "powershell",
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", str(proj / "scripts" / "dispatch.ps1"),
+        "-Builder", builder,
+    ]
+    if dry_run:
+        args.append("-DryRun")
+    return subprocess.run(args, cwd=proj, capture_output=True, text=True, timeout=60)
+
+
+def _combined(result):
+    return (result.stdout or "") + (result.stderr or "")
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -106,8 +125,11 @@ class TestForeignDirectorySafetyNet:
         result = run_dispatch(proj, dry_run=False)
         assert result.returncode == 1
         assert "not a registered worktree" in result.stderr
+        assert "Inspect it manually" in result.stderr
+        assert "git worktree list" in result.stderr
         # Must not have deleted or modified the foreign directory.
         assert (foreign / "not_a_worktree.txt").exists()
+        assert "Reclaimed" not in _combined(result)
 
     def test_legitimate_registered_worktree_is_reused_without_error(self, tmp_path):
         proj = make_project(tmp_path, "projectD", REPO_ROOT)
@@ -119,6 +141,152 @@ class TestForeignDirectorySafetyNet:
         second = run_dispatch(proj)
         assert second.returncode == 0, second.stderr
         assert "ERROR" not in second.stderr
+
+
+class TestEmptyHuskReclaim:
+    """R-A (specs/L2_DISPATCH_RESILIENCE.md §2): an empty unregistered
+    directory at the worktree path is a leftover husk, not someone's work.
+    These cases fail against pre-fix dispatch (it refuses the empty dir)."""
+
+    REFUSAL_MARKERS = (
+        "not a registered worktree",
+        "Inspect it manually",
+        "git worktree list",
+    )
+
+    def test_empty_unregistered_directory_is_reclaimed(self, tmp_path):
+        proj = make_project(tmp_path, "projectHusk", REPO_ROOT)
+        husk = tmp_path / "wt-grok-projectHusk"
+        husk.mkdir()
+        assert list(husk.iterdir()) == []
+
+        result = run_dispatch(proj)
+        combined = _combined(result)
+        assert result.returncode == 0, combined
+        assert combined.count("Reclaimed empty unregistered directory") == 1
+        assert "leftover husk" in combined
+        assert "Creating worktree" in combined
+        assert "ERROR" not in result.stderr
+        # git worktree add turned the husk into a real linked worktree.
+        assert (husk / ".git").exists()
+
+    def test_directory_with_one_file_keeps_verbatim_refusal(self, tmp_path):
+        proj = make_project(tmp_path, "projectFile", REPO_ROOT)
+        foreign = tmp_path / "wt-grok-projectFile"
+        foreign.mkdir()
+        (foreign / "notes.txt").write_text("keep me", encoding="utf-8", newline="\n")
+
+        result = run_dispatch(proj)
+        combined = _combined(result)
+        assert result.returncode == 1, combined
+        for marker in self.REFUSAL_MARKERS:
+            assert marker in result.stderr
+        assert "Reclaimed" not in combined
+        assert (foreign / "notes.txt").read_text(encoding="utf-8") == "keep me"
+
+    def test_dotfile_only_directory_counts_as_nonempty_and_is_refused(self, tmp_path):
+        proj = make_project(tmp_path, "projectDot", REPO_ROOT)
+        foreign = tmp_path / "wt-grok-projectDot"
+        foreign.mkdir()
+        (foreign / ".keep").write_text("hidden work", encoding="utf-8", newline="\n")
+
+        result = run_dispatch(proj)
+        combined = _combined(result)
+        assert result.returncode == 1, combined
+        for marker in self.REFUSAL_MARKERS:
+            assert marker in result.stderr
+        assert "Reclaimed" not in combined
+        assert (foreign / ".keep").read_text(encoding="utf-8") == "hidden work"
+
+    def test_failed_removal_refuses_cleanly_without_partial_state(self, tmp_path):
+        """§6: show the lock/removal-failure actually occurring, not just
+        the happy path. Windows: a live cwd handle. POSIX: parent not writable."""
+        proj = make_project(tmp_path, "projectLock", REPO_ROOT)
+        husk = tmp_path / "wt-grok-projectLock"
+        husk.mkdir()
+
+        holder = None
+        parent_mode = None
+        try:
+            if os.name == "nt":
+                holder = subprocess.Popen(
+                    [sys.executable, "-c", "import time; time.sleep(120)"],
+                    cwd=str(husk),
+                )
+                time.sleep(0.3)
+            else:
+                parent_mode = tmp_path.stat().st_mode
+                tmp_path.chmod(0o555)
+
+            result = run_dispatch(proj)
+            combined = _combined(result)
+            if result.returncode == 0 and "Reclaimed" in combined:
+                pytest.skip(
+                    "platform allowed rmdir of a held/empty directory; "
+                    "lock-refusal path not exercisable here"
+                )
+            assert result.returncode == 1, combined
+            for marker in self.REFUSAL_MARKERS:
+                assert marker in result.stderr
+            assert "Reclaimed" not in combined
+            assert husk.is_dir()
+            assert list(husk.iterdir()) == []
+        finally:
+            if parent_mode is not None:
+                tmp_path.chmod(parent_mode)
+            if holder is not None:
+                holder.terminate()
+                try:
+                    holder.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    holder.kill()
+                    holder.wait(timeout=5)
+
+    def test_empty_husk_reclaim_is_identical_on_dispatch_ps1(self, tmp_path):
+        proj = make_project(tmp_path, "projectHuskPs", REPO_ROOT)
+        husk = tmp_path / "wt-grok-projectHuskPs"
+        husk.mkdir()
+
+        result = run_dispatch_ps1(proj)
+        combined = _combined(result)
+        assert result.returncode == 0, combined
+        assert combined.count("Reclaimed empty unregistered directory") == 1
+        assert "leftover husk" in combined
+        assert "Creating worktree" in combined
+        assert (husk / ".git").exists()
+
+    def test_dotfile_only_directory_is_refused_by_dispatch_ps1(self, tmp_path):
+        proj = make_project(tmp_path, "projectDotPs", REPO_ROOT)
+        foreign = tmp_path / "wt-grok-projectDotPs"
+        foreign.mkdir()
+        (foreign / ".keep").write_text("hidden work", encoding="utf-8", newline="\n")
+
+        result = run_dispatch_ps1(proj)
+        combined = _combined(result)
+        assert result.returncode != 0, combined
+        assert "not a registered worktree" in combined
+        assert "Reclaimed" not in combined
+        assert (foreign / ".keep").read_text(encoding="utf-8") == "hidden work"
+
+    def test_dispatch_scripts_parse(self):
+        sh = subprocess.run(
+            ["bash", "-n", "scripts/dispatch.sh"],
+            cwd=REPO_ROOT, capture_output=True, text=True, timeout=15,
+        )
+        assert sh.returncode == 0, sh.stderr
+        ps = subprocess.run(
+            [
+                "powershell", "-NoProfile", "-Command",
+                "$errs = $null; "
+                "[void][System.Management.Automation.PSParser]::Tokenize("
+                "(Get-Content -Raw -LiteralPath '"
+                + str(REPO_ROOT / "scripts" / "dispatch.ps1").replace("'", "''")
+                + "'), [ref]$errs); "
+                "if ($errs -and $errs.Count) { $errs | ForEach-Object { $_.Message }; exit 1 }",
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert ps.returncode == 0, ps.stdout + ps.stderr
 
 
 class TestLegacyWorktreeWarning:

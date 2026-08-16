@@ -107,13 +107,23 @@ if [[ -d "$WT" ]]; then
   # a foreign/stale directory occupies the expected path for any reason.
   REGISTERED_WORKTREES="$(git -C "$REPO_ROOT" worktree list --porcelain | awk '/^worktree /{ $1=""; sub(/^ /,""); print }')"
   if ! grep -qxF "$WT" <<< "$REGISTERED_WORKTREES"; then
-    echo "[dispatch] ERROR: $WT exists but is not a registered worktree of this repo ($REPO_ROOT)." >&2
-    echo "[dispatch] This usually means a stale or foreign directory occupies the expected worktree path." >&2
-    echo "[dispatch] Inspect it manually, then either remove it or let git reclaim it, and re-run dispatch:" >&2
-    echo "[dispatch]   git worktree list   (from $REPO_ROOT, to see what git actually knows about)" >&2
-    exit 1
+    # Empty husk (Windows leftover after worktree remove while a handle is
+    # held): nobody's work is here. Reclaim and fall through to create.
+    # "Empty" includes dotfiles — a dir holding only .foo is still refused.
+    # rmdir (not rm -rf) so a non-empty dir can never be deleted by this path.
+    if [[ -z "$(ls -A "$WT" 2>/dev/null)" ]] && rmdir "$WT" 2>/dev/null; then
+      echo "[dispatch] Reclaimed empty unregistered directory at $WT (leftover husk, not a git worktree) - proceeding to create it."
+    else
+      echo "[dispatch] ERROR: $WT exists but is not a registered worktree of this repo ($REPO_ROOT)." >&2
+      echo "[dispatch] This usually means a stale or foreign directory occupies the expected worktree path." >&2
+      echo "[dispatch] Inspect it manually, then either remove it or let git reclaim it, and re-run dispatch:" >&2
+      echo "[dispatch]   git worktree list   (from $REPO_ROOT, to see what git actually knows about)" >&2
+      exit 1
+    fi
   fi
-else
+fi
+
+if [[ ! -d "$WT" ]]; then
   echo "[dispatch] Creating worktree at $WT..."
   # Integration branch from autopilot.json (git.base_branch, fail-safe default
   # "main") — hardcoding "main" here broke dispatch on master-based repos.
