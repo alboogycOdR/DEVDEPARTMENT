@@ -1,6 +1,6 @@
 ---
-plan_version: 3.1
-last_updated: 2026-08-16T19:05:00Z
+plan_version: 3.2
+last_updated: 2026-08-16T19:20:00Z
 overall_status: in_progress
 orchestrator_notes: "Plan v3.0 — PACK HARDENING wave, and the FIRST L2 (supervised-loop) wave. Source: specs/PACK_HARDENING_2026-08.md, from the oikonomos field report of 2026-08-16 (items 8, 9) plus deferred ORCH review findings. Already fixed upstream and OUT of scope: oikonomos items 1-7 and 10-12 (faa83d6, 328d141, A6/TASK-007). THREE dependency-free tasks with pairwise-disjoint territories — TASK-008 (GB, atlas_core), TASK-009 (CX, atlas_episodes), TASK-010 (S5, .gitattributes) — deliberately concurrent, because exercising concurrent multi-worktree dispatch is this wave second purpose: it is where the atlas.db sqlite contention and the per-worktree index problems live. Firewall grants for scripts/atlas_core.py, docs/ATLAS.md and scripts/atlas_episodes.py are live in hooks/lib.js; DELETE each grant when its task reaches done. Spec item H-E (the CLAUDE.md review-standard full-suite rule) is deliberately ORCH work rather than a builder task — minimal-grant principle on the file that defines ORCH own role. Spec Q1 answered inside TASK-010 (option b, no mass renormalisation). Next ORCH action: hand this wave to the L2 supervisor loop per the runbook."
 ---
@@ -344,7 +344,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-010
 **Title:** Repository line-ending policy — .gitattributes without breaking byte-exact sync
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** low
 **Spec_References:** specs/PACK_HARDENING_2026-08.md §4 (H-D), §8 Q1, §7
@@ -368,7 +368,8 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-16T18:42:00Z] [S5] .gitattributes (commit f2d7f9b)
 **Test_Evidence:**
 - [2026-08-16T18:42:00Z] [S5] `python -m pytest tests/test_sync_from_pack.py -q` → 44 passed in 0.63s. `python -m pytest -q` (full suite) → 697 passed in 108.21s. `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff --stat e033385...task/TASK-010-s5` → exactly `.gitattributes` (51 insertions, net-new lines only, matches Owned_Paths). `git add --renormalize .` post-commit staged nothing beyond a manually-introduced throwaway test line (discarded via `git reset --hard HEAD`) — no existing tracked file was renormalised. CRLF-warning check: `echo test >> PLAN.md && git add PLAN.md` → no "LF will be replaced by CRLF" warning printed (previously always printed); `git check-attr text eol -- PLAN.md` → `text: set`, `eol: lf`.
-**Review_Findings:** —
+**Review_Findings:**
+- [2026-08-16T19:20:00Z] [ORCH] APPROVED (first-pass), merged to master (b2cf9e1, --no-ff), branch deleted. Territory CLEAN: net diff master...task/TASK-010-s5 = exactly `.gitattributes`, single S5 commit f2d7f9b, zero files outside territory; no PLAN.md commit on branch (the earlier stray-PLAN.md pickup was caught and reset by S5 before submission — verified: the branch's only commit touches just .gitattributes); no frontmatter/other-block edits. c8b9872 filesystem-check evidence present (18:40 preflight: `.gitattributes` exists, 12 lines). Spec verified against §4 (H-D), §8 Q1, §7 — all five ACs map to spec text; ORCH's option-(b) decision (text=auto forward-only, NO mass renormalisation) is implemented and recorded verbatim in the file's own comments, along with the sync_from_pack.py byte-exactness interaction. EMPIRICALLY verified in the S5 worktree: (1) `git add --renormalize .` stages ZERO changes — no existing tracked file's committed bytes change under the new attributes, i.e. no whitespace-only sweep (§8 Q1 option b, byte-exact sync preserved); re-confirmed empty on the integrated master post-merge. (2) `git check-attr text eol` resolves PLAN.md/README.md → text=set, eol=lf (the `*.md text eol=lf` rule, placed after `* text=auto`, wins as the last match and pins the working-tree line ending); dispatch.sh/atlas_core.py/hooks.js → text=auto, eol=lf (the pre-existing eol=lf rules are retained, so shell-script LF correctness is unaffected — the text=set→auto shift changes no bytes since the blobs are already LF). (3) Appending to PLAN.md + `git add` emits NO "LF will be replaced by CRLF" warning (was previously always printed); PLAN.md restored clean. Suites re-run by ORCH (subagent, in worktree): `test_sync_from_pack.py` 44 passed / 0 failed (byte-exactness preserved), full `pytest -q` 697 passed / 0 failed, `node hooks/run-tests.js` 36/0 — matches Test_Evidence (697 here vs 698 on integrated master is expected: the branch predates TASK-009). Merge into current master (which carries TASK-009) applied cleanly with no conflict — disjoint territories confirmed. No PROTECTED_EXCEPTIONS grant to remove: `.gitattributes` is not a firewall-protected path, so TASK-010 never needed one.
 **Blocked_Reason:** —
-**Updated_By:** S5
-**Updated_At:** 2026-08-16T18:42:00Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-16T19:20:00Z
