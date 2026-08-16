@@ -377,7 +377,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-011
 **Title:** Dispatch reclaims an empty, unregistered worktree directory
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/L2_DISPATCH_RESILIENCE.md §2 (R-A), §1 (L1, L4), §5, §6
@@ -391,15 +391,16 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Reclaim emits exactly one explanatory log line; a failed removal refuses cleanly without crashing or leaving partial state (§2)
 - [ ] dispatch.sh and dispatch.ps1 behave identically; `bash -n scripts/dispatch.sh` passes and the PowerShell parser accepts dispatch.ps1 (§2)
 - [ ] Regression tests in tests/test_dispatch_worktree.py that FAIL against current code (§1 L4); full Python + Node suites green
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-011-gb
+**Started_At:** 2026-08-16T21:14:26Z
+**Progress_Notes:**
+- [2026-08-16T21:14:26Z] [GB] Claimed TASK-011 on task/TASK-011-gb. Next: preflight_paths, then add empty-husk reclaim inside the existing unregistered-directory guard in both dispatch scripts.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-16T21:06:13Z
+**Updated_By:** GB
+**Updated_At:** 2026-08-16T21:14:26Z
 
 ### TASK-012
 **Title:** Dispatch-failure ceiling, --once reaping, and an honest failure message
