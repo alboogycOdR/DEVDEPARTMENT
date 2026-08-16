@@ -278,7 +278,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-008
 **Title:** atlas_core correctness — gitignore semantics, main-checkout index, FTS5 ranking
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/PACK_HARDENING_2026-08.md §1 (H-A), §2 (H-B), §3 C1, §0 (H1/H2/H3), §7
@@ -286,14 +286,14 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** —
 **Description:** Three confirmed atlas_core defects, all in one file so they ship as one task rather than a needless dependency chain. (H-A) `is_ignored()` tests directory patterns only against the path ROOT, so `node_modules/` excludes the top-level directory while every nested `packages/*/node_modules/` is indexed — implement real gitignore matching per spec §1: no-internal-slash patterns match at any depth, leading-slash anchors to root, internal-slash anchors to root, trailing slash means directory-only. Widening, not a redesign: existing `.git/`, `.devteam/`, atlas.exclude glob and basename behaviour must be preserved. (H-B) `db_path()` returns `repo/.devteam/atlas.db` and `.devteam/` is gitignored, so every worktree has its own unmaintained index while the briefings tell builders to run `atlas.py query/where/impact` from inside one — resolve the main checkout via `git rev-parse --git-common-dir` (its parent is the main root), fail-open to today's behaviour when git is unavailable (R4), and document it in docs/ATLAS.md. (C1) `query` uses SQL LIKE against the FTS5 tables — move ranked paths to FTS5 MATCH with bm25 ordering, preserving output format, FRESH/STALE annotation, exit codes and empty-table behaviour; quote/escape user terms so multi-word and punctuation-bearing queries cannot raise FTS5 syntax errors. Per H3, every fix lands a regression test that fails against current code.
 **Acceptance_Criteria:**
-- [ ] `node_modules/` excludes `packages/a/node_modules/x.js`; `/dist/` does NOT exclude `packages/a/dist/` while `dist/` does; trailing-slash patterns never match a like-named file (§1)
-- [ ] Existing ignore behaviour preserved — the current parametrized ignore cases still pass unchanged (§1)
-- [ ] `db_path()` called from inside a real linked worktree returns the MAIN checkout's path; `atlas.py query` from that worktree returns main-index results (§2)
-- [ ] No-git and non-worktree cases fall back to `repo/.devteam/atlas.db` without raising (§2, R4)
-- [ ] docs/ATLAS.md documents the cross-worktree index behaviour (§2)
-- [ ] `query` uses FTS5 MATCH with bm25 relevance ordering; multi-word and punctuation-bearing queries succeed; §3 CLI contract, FRESH/STALE and exit codes unchanged (§3 C1)
-- [ ] Regression tests for all three fixes, each failing against current code (§0 H3); full Python + Node suites green
-- [ ] A full scan of this repo reports a file count consistent with corrected exclusions, and the delta vs the previous count is stated in Test_Evidence (§7)
+- [x] `node_modules/` excludes `packages/a/node_modules/x.js`; `/dist/` does NOT exclude `packages/a/dist/` while `dist/` does; trailing-slash patterns never match a like-named file (§1)
+- [x] Existing ignore behaviour preserved — the current parametrized ignore cases still pass unchanged (§1)
+- [x] `db_path()` called from inside a real linked worktree returns the MAIN checkout's path; `atlas.py query` from that worktree returns main-index results (§2)
+- [x] No-git and non-worktree cases fall back to `repo/.devteam/atlas.db` without raising (§2, R4)
+- [x] docs/ATLAS.md documents the cross-worktree index behaviour (§2)
+- [x] `query` uses FTS5 MATCH with bm25 relevance ordering; multi-word and punctuation-bearing queries succeed; §3 CLI contract, FRESH/STALE and exit codes unchanged (§3 C1)
+- [x] Regression tests for all three fixes, each failing against current code (§0 H3); full Python + Node suites green
+- [x] A full scan of this repo reports a file count consistent with corrected exclusions, and the delta vs the previous count is stated in Test_Evidence (§7)
 **Branch:** task/TASK-008-gb
 **Started_At:** 2026-08-16T18:41:07Z
 **Progress_Notes:**
@@ -303,12 +303,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   FILE   tests/test_atlas_core.py  -> exists, 310 line(s), 11767 bytes
   FILE   docs/ATLAS.md  -> exists, 298 line(s), 14537 bytes
   Baseline full scan of this repo (pre-H-A): files scanned: 116. Implementing H-A gitignore semantics, H-B main-checkout db_path, C1 FTS5 MATCH/bm25.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-16T18:51:44Z] [GB] H-A/H-B/C1 committed on task/TASK-008-gb (5166f25); merged master (TASK-009) with no territory overlap. Territory vs master: exactly scripts/atlas_core.py, tests/test_atlas_core.py, docs/ATLAS.md. Submitting needs_review.
+**Artifacts:**
+- [2026-08-16T18:51:44Z] [GB] scripts/atlas_core.py, tests/test_atlas_core.py, docs/ATLAS.md (commit 5166f25)
+**Test_Evidence:**
+- [2026-08-16T18:51:44Z] [GB] `python -m pytest tests/test_atlas_core.py -q` → 59 passed in 7.18s. After merge: `python -m pytest tests/test_atlas_core.py tests/test_atlas_episodes.py -q` → 78 passed in 9.58s. `python -m pytest -q` → 717 passed in 94.13s (697 baseline + 19 new core tests + 1 from merged TASK-009). `node hooks/run-tests.js` → 36 passed, 0 failed. Full scan this repo: before H-A 116 scanned; after H-A 116 scanned (delta 0 — this tree has no nested node_modules/dist hits, so the widening did not drop files). From this linked worktree, `db_path()` resolves to `DEVDEPARTMENT/.devteam/atlas.db` (main checkout); `atlas.py query "atlas_core"` returns main-index hits, `status` shows `files: 116` / in sync. Forward-slash output; empty query degrades to []; punctuation queries do not raise.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** GB
-**Updated_At:** 2026-08-16T18:43:50Z
+**Updated_At:** 2026-08-16T18:51:44Z
 
 ### TASK-009
 **Title:** Episodic indexer converges — record hashes for zero-episode sources
