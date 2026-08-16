@@ -189,13 +189,6 @@ const PROTECTED_EXCEPTIONS = [
   // Example (from the project this came out of, where builders had to fix product
   // CAPS extractors that live alongside dispatch/plan_commit in scripts/):
   //   'scripts/extract_caps_taxonomy*.py',
-  //
-  // L2 dispatch-resilience wave (plan v3.4) — active per-task grants, DELETE
-  // each when its task reaches done:
-  'scripts/dispatch.sh',      // TASK-011 (GB)
-  'scripts/dispatch.ps1',     // TASK-011 (GB)
-  'scripts/supervisor.py',    // TASK-012 (CX)
-  'autopilot.json',           // TASK-012 (CX) — ONE key only: max_dispatch_failures
 ];
 
 /**
