@@ -126,6 +126,15 @@ fi
 for attempt in 1 2 3 4 5; do
   if git -C "$REPO_ROOT" commit -q -m "$MSG" -- PLAN.md 2>/dev/null; then
     echo "[plan_commit] recorded on $BASE_BRANCH: $(git -C "$REPO_ROOT" rev-parse --short HEAD)  $MSG"
+
+    # Fire a Telegram/console ping the instant this commit put any task into
+    # needs_review — fires for every plan_commit caller (manual dispatch or
+    # autopilot), not just the supervisor loop. Never allowed to fail this
+    # script: notify_needs_review.py catches its own errors.
+    if [ -n "$PY_BIN" ] && [ -f "$REPO_ROOT/scripts/notify_needs_review.py" ]; then
+      "$PY_BIN" "$REPO_ROOT/scripts/notify_needs_review.py" "$REPO_ROOT" 2>/dev/null
+    fi
+
     exit 0
   fi
   if [ "$attempt" -lt 5 ]; then
