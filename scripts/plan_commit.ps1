@@ -105,6 +105,21 @@ for ($attempt = 1; $attempt -le 5; $attempt++) {
     if ($LASTEXITCODE -eq 0) {
         $sha = (git -C $RepoRoot rev-parse --short HEAD)
         Write-Host "[plan_commit] recorded on ${BaseBranch}: $sha  $Message" -ForegroundColor Green
+
+        # Fire a Telegram/console ping the instant this commit put any task
+        # into needs_review -- fires for every plan_commit caller (manual
+        # dispatch or autopilot), not just the supervisor loop. Never allowed
+        # to fail this script: notify_needs_review.py catches its own errors.
+        $NotifyHelper = Join-Path $RepoRoot "scripts\notify_needs_review.py"
+        if (Test-Path $NotifyHelper) {
+            foreach ($c in @("python", "python3", "py")) {
+                if (Get-Command $c -ErrorAction SilentlyContinue) {
+                    & $c $NotifyHelper $RepoRoot 2>$null
+                    break
+                }
+            }
+        }
+
         exit 0
     }
     if ($attempt -lt 5) { Start-Sleep -Seconds 2 }
