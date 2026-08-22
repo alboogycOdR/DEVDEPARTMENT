@@ -2,7 +2,7 @@
 
 **Status:** SPEC ONLY — nothing here is built.
 **Baseline:** pack @ `4071a83`. Suites green at time of writing.
-**Decisions locked with Alister (2026-08-16):** Telegram stays the *interrupt* channel (pushes when the system needs a human); Tower is the *pull* surface (where you go to look) — same command vocabulary underneath. Tower runs on **clawsrv** (PM2, Tailscale-only). Tower is **its own repo** (`tower`), deployed once; the DEVDEPARTMENT pack gains exactly **two integration points** and nothing else. Workshop view confirmed as T2.5. Flutter companion app confirmed as T5, built *by* DEVDEPARTMENT as its own onboarded project once Tower's API is stable.
+**Decisions locked with Alister (2026-08-16):** **Slack** is the primary interrupt and command channel (see `specs/DEVDEPARTMENT_SLACK_SPEC.md`); Tower is the *pull* surface (where you go to look). Telegram is demoted to a redundant fallback — kept, never primary. Tower runs on **clawsrv** (PM2, Tailscale-only). Tower is **its own repo** (`tower`), deployed once; the DEVDEPARTMENT pack gains exactly **two integration points** and nothing else. Workshop view confirmed as T2.5. Flutter companion app confirmed as T5, built *by* DEVDEPARTMENT as its own onboarded project once Tower's API is stable.
 
 **What TOWER answers, in one line:** *"Across every project I run — what is executing, what is waiting on me, and where is it stalling?"* — currently answerable only by opening N sessions one at a time.
 
@@ -10,7 +10,7 @@
 
 ## 0. Hard constraints (violations are automatic rework)
 
-**H1 — Tower is never a second writer.** No Tower code path may modify PLAN.md, task branches, worktrees, or any project state directly. All mutations flow: Tower `/act` → command file in the project's `.devteam/inbox/` → consumed by the supervisor on its next tick, through the **same handler path Telegram commands already use**. Everything this framework's reliability rests on (single-writer discipline, plan_guard, the review gate) assumes mutations flow through the supervisor; a dashboard that writes directly would be a bypass dressed as a feature. Corollary, stated for honesty: **actions have tick latency** (≤ `interval_seconds`). That is the correct trade and the UI must present it truthfully — a clicked action shows as `queued` until a subsequent snapshot confirms the state change, never optimistically as done.
+**H1 — Tower is never a second writer.** No Tower code path may modify PLAN.md, task branches, worktrees, or any project state directly. All mutations flow: Tower `/act` → command file in the project's `.devteam/inbox/` → consumed by the supervisor on its next tick, through the **same handler path `commands.py` (the shared validator, refactored in P1b-2) exposes**. Everything this framework's reliability rests on (single-writer discipline, plan_guard, the review gate) assumes mutations flow through the supervisor; a dashboard that writes directly would be a bypass dressed as a feature. Corollary, stated for honesty: **actions have tick latency** (≤ `interval_seconds`). That is the correct trade and the UI must present it truthfully — a clicked action shows as `queued` until a subsequent snapshot confirms the state change, never optimistically as done.
 
 **H2 — The board renders only true state** (ATLAS R1's sibling). Every pixel derives from a field in an ingested snapshot. A project whose machine is asleep shows **"last seen 2h ago"** with its room lights off — never a stale board pretending to be live. No animation, badge, or metric may exist without a backing datum; if a cute idea has no real signal behind it, the cute idea is cut.
 
@@ -18,7 +18,7 @@
 
 **H4 — Tailscale-only, tokened.** Tower binds to the tailnet interface only, never a public one. Every `/ingest` and `/act` call carries a per-project bearer token (issued at project registration, stored in the project's environment — never in a tracked file, same convention as `DEVTEAM_TG_TOKEN`). The Flutter app (T5) reaches Tower over Tailscale on the phone. Transport note for H1/H3 consistency: since Tower cannot write to project machines, the inbox is delivered by the **project pulling its own queue**: the supervisor tick, immediately after pushing its snapshot, GETs `/queue/<project>` and materializes any pending commands into `.devteam/inbox/` locally, then consumes them. One HTTP round-trip per tick, both directions, always initiated by the project.
 
-**H5 — The pack stays lean.** DEVDEPARTMENT gains exactly two integration points: (1) the snapshot push + queue pull step in the supervisor tick, (2) the inbox consumer. Both fail-open: Tower unreachable → one warning line, tick proceeds normally, Telegram/console channels unaffected. A project never depends on Tower to function — Tower is a window, not a load-bearing wall.
+**H5 — The pack stays lean.** DEVDEPARTMENT gains exactly two integration points: (1) the snapshot push + queue pull step in the supervisor tick, (2) the inbox consumer. Both fail-open: Tower unreachable → one warning line, tick proceeds normally, Slack/console channels unaffected. A project never depends on Tower to function — Tower is a window, not a load-bearing wall.
 
 ---
 
@@ -54,15 +54,15 @@ Everything above is already computed by `decide()`/`board_publisher.py`/`team_st
 
 ### P2 — Inbox consumer (in `supervisor.py`, same tick, before `decide()`)
 
-Command file schema — deliberately identical in vocabulary to `tg_commands.py`:
+Command file schema — identical in vocabulary to `commands.py` (the shared module, P1b-2):
 ```jsonc
 { "id": "uuid", "issued_at": "...", "source": "tower|app", "actor": "alister",
   "command": "approve|rework|answer|stop|resume|wave|dispatch",
   "args": {"task_id": "TASK-114", "text": "optional free text"} }
 ```
-Consumption: parse → validate against the **same** validation the Telegram handlers use (refactor `tg_commands.py`'s per-command validation into a shared module rather than duplicating it — that duplication is exactly the drift-class this pack has been burned by three times) → execute via the existing handler → move file to `.devteam/inbox/done/` with the outcome appended. Malformed file → moved to `inbox/rejected/` with the reason, P2-notified. Unknown command → rejected, never guessed.
+Consumption: parse → validate against **`commands.py`** — the shared command-validation module extracted in P1b-2 from `tg_commands.py`; both Tower and the Slack listener import it, eliminating the duplication that caused three real drift incidents → execute via the existing handler → move file to `.devteam/inbox/done/` with the outcome appended. Malformed file → moved to `inbox/rejected/` with the reason, P2-notified. Unknown command → rejected, never guessed.
 
-**Pack-side tests:** snapshot assembly from fixture state; fail-open on unreachable Tower (tick proceeds, no exception); inbox consumption for every command; malformed/unknown rejection paths; the shared-validation refactor keeps every existing Telegram test green.
+**Pack-side tests:** snapshot assembly from fixture state; fail-open on unreachable Tower (tick proceeds, no exception); inbox consumption for every command; malformed/unknown rejection paths; the shared-validation refactor keeps every existing Telegram AND Slack test green.
 
 ---
 
@@ -89,7 +89,7 @@ Buttons on cards/rows, scoped to what's valid for the state: `approve`/`rework` 
 ### T4 — polish: SSE everywhere, mobile-responsive layout, per-builder analytics page, digest timeline.
 
 ### T5 — Flutter companion app (own repo, **built by DEVDEPARTMENT as an onboarded project**)
-Thin client of Tower's API only — no direct project contact ever. FCM push for P1/P2 escalations (Tower gains one `notify_push` sender fed by the same `notify.py` event that already fans out to Telegram); Android notification **action buttons** (approve/dismiss from the shade; free-text reply opens the app — iOS gets buttons, text-reply in-app, per platform limits); Tailscale on the phone; token + biometric gate on actions. Telegram remains the redundant interrupt channel permanently — two independent "system needs you" paths is a feature, not a transition state.
+Thin client of Tower's API only — no direct project contact ever. FCM push for P1/P2 escalations (Tower gains one `notify_push` sender fed by the same `notify.py` event that already fans out to Telegram); Android notification **action buttons** (approve/dismiss from the shade; free-text reply opens the app — iOS gets buttons, text-reply in-app, per platform limits); Tailscale on the phone; token + biometric gate on actions. Telegram remains as a **redundant P1-only fallback** — projects may set both `slack` and `telegram` in `notify_channels` for stop-the-line events specifically. Two independent interrupt paths for the one event class where missing a notification has the worst consequence.
 
 ---
 
@@ -106,7 +106,7 @@ Thin client of Tower's API only — no direct project contact ever. FCM push for
 | T4 | tower | SSE/mobile/analytics | T2 |
 | T5 | new repo | Flutter app + Tower FCM sender | T3 stable |
 
-P1+P2 are one pack wave (disjoint files). T1–T4 are the `tower` repo's own PLAN.md waves — **onboard `tower` with DEVDEPARTMENT on day one and let the framework build its own mission control**; it appears as a row on the board it is constructing. T5 is a separate onboarded Flutter project later.
+P1+P1b+P2 are one pack wave (P1b disjoint from P1: different scripts; P2 builds on both). T1–T4 are the `tower` repo's own PLAN.md waves — **onboard `tower` with DEVDEPARTMENT on day one and let the framework build its own mission control**; it appears as a row on the board it is constructing. T5 is a separate onboarded Flutter project later.
 
 ## 4. Open items deliberately deferred (BACKLOG discipline — each with its trigger)
 Multi-user/roles (trigger: a second human operator exists) · public/non-Tailscale access (trigger: never, ideally) · Tower-initiated scheduling (trigger: wanting cross-project wave orchestration — a big step; today the supervisor per project stays sovereign) · iOS full text-reply-from-notification (trigger: Apple relaxing category limits).
