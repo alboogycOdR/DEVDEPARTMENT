@@ -19,6 +19,7 @@ NOT gated by --dry-run in dispatch.sh (only builder launch and prompt
 display are), so a dry run still exercises every line of the fix.
 """
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -242,6 +243,8 @@ class TestEmptyHuskReclaim:
                     holder.kill()
                     holder.wait(timeout=5)
 
+    @pytest.mark.skipif(not (shutil.which("powershell") or shutil.which("pwsh")),
+                        reason="powershell not available (Linux sandbox) — .ps1 behavior verified on Windows, mirrored 1:1 by review")
     def test_empty_husk_reclaim_is_identical_on_dispatch_ps1(self, tmp_path):
         proj = make_project(tmp_path, "projectHuskPs", REPO_ROOT)
         husk = tmp_path / "wt-grok-projectHuskPs"
@@ -255,6 +258,8 @@ class TestEmptyHuskReclaim:
         assert "Creating worktree" in combined
         assert (husk / ".git").exists()
 
+    @pytest.mark.skipif(not (shutil.which("powershell") or shutil.which("pwsh")),
+                        reason="powershell not available (Linux sandbox) — .ps1 behavior verified on Windows, mirrored 1:1 by review")
     def test_dotfile_only_directory_is_refused_by_dispatch_ps1(self, tmp_path):
         proj = make_project(tmp_path, "projectDotPs", REPO_ROOT)
         foreign = tmp_path / "wt-grok-projectDotPs"
@@ -274,6 +279,8 @@ class TestEmptyHuskReclaim:
             cwd=REPO_ROOT, capture_output=True, text=True, timeout=15,
         )
         assert sh.returncode == 0, sh.stderr
+        if not (shutil.which("powershell") or shutil.which("pwsh")):
+            pytest.skip("bash parse OK; powershell unavailable here — ps1 parse runs on Windows")
         ps = subprocess.run(
             [
                 "powershell", "-NoProfile", "-Command",
