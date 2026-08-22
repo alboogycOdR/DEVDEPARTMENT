@@ -121,8 +121,14 @@ class TestGetUsage:
 
 # ========================================================== fail-open =====
 class TestFailOpenDegradation:
-    def test_probe_missing_binary_returns_all_none(self, tmp_path):
-        # No claude/codex binary on PATH in the test environment -> fail-open.
+    def test_probe_missing_binary_returns_all_none(self, tmp_path, monkeypatch):
+        # Explicitly simulate no claude/codex binary on PATH, rather than
+        # assuming the test-running machine has none — this machine DOES have
+        # a working, authenticated `claude` CLI (2026-08-17), so the old
+        # unmocked version of this test was silently vacuous here: it always
+        # passed only because the parser itself was broken and returned
+        # all-None regardless of PATH. Fixed alongside the parser fix.
+        monkeypatch.setenv("PATH", str(tmp_path))
         result = up.probe("claude")
         assert result["pct_5h"] is None
         assert result["pct_7d"] is None

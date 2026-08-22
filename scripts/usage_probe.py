@@ -82,6 +82,14 @@ def _now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+def _safe_float(n) -> float | None:
+    try:
+        v = float(n)
+        return None if v != v else v
+    except (TypeError, ValueError):
+        return None
+
+
 def _clamp_pct(n) -> float | None:
     try:
         v = float(n)
@@ -102,9 +110,19 @@ def _first_matching_key(d: dict, keys: tuple[str, ...]):
 def _extract_window_pct(window_obj: dict) -> float | None:
     """Tolerant of several plausible key spellings — normalizeUsageWindow()
     in the reference implementation does the same thing for the same
-    reason: these APIs are not stable across CLI versions."""
+    reason: these APIs are not stable across CLI versions.
+
+    Verified live 2026-08-17 against an installed `claude` CLI
+    (claude_code_version present in the stream's system/init event):
+    the real key is `utilization`, a 0-1 FRACTION, not a 0-100 percent under
+    any of the previously-guessed names (usedPct/used_pct/...). Those guesses
+    are kept as fallbacks in case a future CLI version reintroduces a
+    percent-shaped field, but `utilization` is checked first and explicitly
+    scaled by 100 — every other guessed key is assumed already 0-100."""
     if not isinstance(window_obj, dict):
         return None
+    if "utilization" in window_obj:
+        return _clamp_pct(_safe_float(window_obj["utilization"]) * 100) if _safe_float(window_obj["utilization"]) is not None else None
     raw = _first_matching_key(window_obj, (
         "usedPct", "used_pct", "usedPercent", "used_percent", "used_percentage", "percent",
     ))
@@ -117,6 +135,18 @@ def _extract_window_reset(window_obj: dict) -> str | None:
     raw = _first_matching_key(window_obj, ("resetsAt", "resets_at", "reset"))
     if raw is None:
         return None
+    # Verified live 2026-08-17: resetsAt is a raw Unix epoch SECONDS int
+    # (e.g. 1787572800), not an ISO string as originally assumed — displaying
+    # it bare is useless to a human reading /usage or the board. Format as
+    # UTC when it parses as a plausible epoch; fall back to str(raw) for any
+    # other shape a future CLI version might emit.
+    try:
+        epoch = float(raw)
+        if epoch > 1_000_000_000:  # sanity floor: after ~2001, rules out small ints
+            from datetime import datetime, timezone
+            return datetime.fromtimestamp(epoch, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except (TypeError, ValueError, OverflowError, OSError):
+        pass
     return str(raw)
 
 
@@ -141,14 +171,25 @@ def _parse_claude_stream_line(line: str) -> dict | None:
 
     out: dict = {}
     # Try a flat single-window shape first (rateLimitType tells us which).
+    # Verified live 2026-08-17: real values are "five_hour" / "seven_day"
+    # (snake_case). Explicit membership check rather than substring matching
+    # — the old "day" in kind" substring happened to also match "seven_day"
+    # by luck, but would have wrongly matched a hypothetical "one_day" bucket.
     kind = str(info.get("rateLimitType") or info.get("rate_limit_type") or "").lower()
     pct = _extract_window_pct(info)
     reset = _extract_window_reset(info)
     if pct is not None:
-        if "7d" in kind or "week" in kind or "day" in kind:
+        if kind in ("seven_day", "sevenday", "7d", "weekly", "week"):
             out["pct_7d"], out["reset_7d"] = pct, reset
-        else:  # default bucket: 5h / session-window class
+        elif kind in ("five_hour", "fivehour", "5h", "session"):
             out["pct_5h"], out["reset_5h"] = pct, reset
+        else:
+            # Unknown bucket name: fall back to the old heuristic rather
+            # than silently dropping a value we did manage to parse.
+            if "7" in kind or "week" in kind:
+                out["pct_7d"], out["reset_7d"] = pct, reset
+            else:
+                out["pct_5h"], out["reset_5h"] = pct, reset
         return out or None
 
     # Try a nested {fiveHour: {...}, weekly: {...}} shape (matches usage.mjs's
@@ -253,7 +294,15 @@ def _run_probe_subprocess(cmd: list[str], parse_line) -> dict:
 def _probe_claude() -> dict:
     # A minimal, cheap turn — just enough to provoke a real API response
     # (and therefore a rate_limit_event) without doing real work.
-    cmd = ["claude", "-p", "ok", "--output-format", "stream-json",
+    #
+    # --verbose is REQUIRED here, not optional (verified live 2026-08-17):
+    # `claude -p ... --output-format stream-json` alone emits NOTHING to
+    # stdout — no system/init, no rate_limit_event, no result line. Only
+    # adding --verbose produces the documented stream-json event sequence.
+    # Without it this probe silently returned all-None forever, which is
+    # exactly what shipped and went unnoticed until checked against a real
+    # installed CLI.
+    cmd = ["claude", "-p", "ok", "--output-format", "stream-json", "--verbose",
           "--dangerously-skip-permissions", "--max-turns", "1"]
     return _run_probe_subprocess(cmd, _parse_claude_stream_line)
 
