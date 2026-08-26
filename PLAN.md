@@ -443,7 +443,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-013
 **Title:** commands.py — extract the shared command-validation module; tg_commands becomes a shim
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** specs/DEVDEPARTMENT_SLACK_SPEC.md §5 (commands.py), specs/DEVDEPARTMENT_TOWER_SPEC.md H1, §1 P2
@@ -456,7 +456,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [x] tests/test_tg_commands.py passes UNTOUCHED; control.py and maintenance.py imports still resolve (ATLAS coupling above)
 - [x] tests/test_commands.py covers the validation vocabulary incl. malformed and unknown commands rejected, never guessed (TOWER §1 P2: "unknown → rejected, never guessed")
 - [x] tg_listener.py untouched (SLACK §9)
-- [ ] Full Python + Node suites green
+- [x] Full Python + Node suites green
 **Branch:** task/TASK-013-gb
 **Started_At:** 2026-08-26T04:00:19Z
 **Progress_Notes:**
@@ -470,16 +470,19 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-26T04:29:00Z] [ORCH] UNBLOCKED — correct block, exactly the deferred gap you named. sync-manifest.json updated on master (4f106a3): all five wave modules' scripts+tests registered in framework_owned, including yours. From your worktree: `git merge master -m "merge: master sync-manifest fix into TASK-013 [TASK-013]"` (brings only my ORCH commits forward, no territory risk — verify with git diff master...HEAD --stat afterward, must still show exactly your 3 files), rerun `python -m pytest -q` + `node hooks/run-tests.js`, confirm 0 failures, then submit needs_review.
 - [2026-08-26T04:38:00Z] [GB] Resumed after unblock. Merged master into task/TASK-013-gb (`merge: master sync-manifest fix into TASK-013 [TASK-013]`). `git diff master...HEAD --stat` is still exactly the 3 Owned_Paths. Re-ran suites: Node 36/36 green; Python 794 passed, 1 failed. The previous unregistered-file failure is gone (commands.py + test_commands.py now exist and are listed). Inverse failure from 4f106a3 registering all five wave modules at once: `test_every_framework_owned_path_exists_in_the_pack` wants scripts/{inbox,slack_listener,slack_notify,tower_sync}.py and their four tests, none of which exist on this branch (014/015 live on other worktrees; 016/017 not started). Cannot create those files or edit sync-manifest.json. Re-blocking OWNERSHIP_CONFLICT. Ask: register only the two TASK-013 paths (scripts/commands.py, tests/test_commands.py) until the other modules land on master — then this branch's full suite can go green and I will submit needs_review. Implementation inside territory is unchanged (3ef169b).
 - [2026-08-26T07:05:00Z] [ORCH] UNBLOCKED, and your diagnosis + proposed fix were both exactly right — my earlier all-five-at-once registration was the actual defect, not a config choice you needed to route around. Corrected on master (9f32fa0): sync-manifest.json now lists ONLY scripts/slack_notify.py + tests/test_slack_notify.py (TASK-015, genuinely merged). The other four premature entries are removed. STANDING RULE from here on: each module's manifest entry lands in the SAME commit that merges it — never ahead of time. That means when I review and merge TASK-013, I add scripts/commands.py + tests/test_commands.py to the manifest AS PART OF that merge commit, not before. From your worktree: CORRECTION 07:20Z: my first unblock note above was ALSO wrong — removing your two files from the manifest just recreated your ORIGINAL block, because the guard test scanned the raw filesystem of whatever checkout runs it, so your own committed-but-unmerged test_commands.py tripped it regardless of manifest content. That was a genuine test-code bug, not a data problem; fixed properly on master (36b53de): the guard now compares against what's actually tracked on the INTEGRATION BRANCH TIP (git ls-tree, resolved via autopilot.json's git.base_branch), not the local working tree — so an in-flight sibling's or your own unmerged file never trips it, while a genuinely-merged-but-unregistered one still does. VERIFIED, not just asserted: I merged master into your own worktree myself and ran the full suite there — 881 pytest / 36 node, 0 failures, `git diff master...HEAD --stat` still exactly your 3 files. Merge to your worktree is already done (merge commit present). Just rerun `python -m pytest -q` + `node hooks/run-tests.js` yourself to confirm on your end, then submit needs_review.
+- [2026-08-26T05:34:00Z] [GB] Resumed after 36b53de unblock (merge aa8d617 already on task/TASK-013-gb). Preflight now EXIST for all three Owned_Paths. Independently re-ran full suites after merge: 881 pytest / 36 node, 0 failures. Territory vs master still exactly scripts/commands.py, scripts/tg_commands.py, tests/test_commands.py; tg_listener.py untouched. Implementation unchanged (3ef169b). Submitting needs_review. ORCH: add the two new paths to sync-manifest.json in the merge commit per the standing rule.
 **Artifacts:**
 - [2026-08-26T04:11:37Z] [GB] scripts/commands.py, scripts/tg_commands.py, tests/test_commands.py (commit 3ef169b)
 - [2026-08-26T04:38:00Z] [GB] merge commit on task/TASK-013-gb bringing 4f106a3; territory still the three Owned_Paths only
+- [2026-08-26T05:34:00Z] [GB] merge aa8d617 (master test-guard 36b53de) on task/TASK-013-gb; code still 3ef169b
 **Test_Evidence:**
 - [2026-08-26T04:11:37Z] [GB] `python -m pytest tests/test_commands.py tests/test_tg_commands.py -q` → 141 passed in 1.79s (55 new in test_commands.py; test_tg_commands.py untouched). `python -m pytest tests/test_control.py tests/test_supervisor_telegram.py tests/test_usage.py` green (importers resolve). `python -m pytest -q` → 794 passed, 1 failed: tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered lists tests/test_commands.py as unregistered. `node hooks/run-tests.js` → 36 passed, 0 failed. git diff master...HEAD --name-only = the three Owned_Paths only; tg_listener.py untouched.
 - [2026-08-26T04:38:00Z] [GB] After merge of master (4f106a3): `python -m pytest -q` → 794 passed, 1 failed in 112.03s — `tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_framework_owned_path_exists_in_the_pack` missing `['scripts/inbox.py', 'scripts/slack_listener.py', 'scripts/slack_notify.py', 'scripts/tower_sync.py', 'tests/test_inbox.py', 'tests/test_slack_listener.py', 'tests/test_slack_notify.py', 'tests/test_tower_sync.py']`. `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff master...HEAD --name-only` = scripts/commands.py, scripts/tg_commands.py, tests/test_commands.py.
+- [2026-08-26T05:34:00Z] [GB] After merge aa8d617 (36b53de guard): `python -m pytest tests/test_commands.py tests/test_tg_commands.py tests/test_control.py tests/test_supervisor_telegram.py tests/test_usage.py -q` → 257 passed in 14.34s. `python -m pytest -q` → 881 passed in 132.22s (0 failed). `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff master...HEAD --name-only` = scripts/commands.py, scripts/tg_commands.py, tests/test_commands.py. tg_listener.py not in the diff.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T07:20:00Z
+**Updated_By:** GB
+**Updated_At:** 2026-08-26T05:34:00Z
 
 ### TASK-014
 **Title:** tower_sync.py — snapshot assembly + push, queue pull, inbox materialisation (module only)
