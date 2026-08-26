@@ -1,6 +1,6 @@
 ---
-plan_version: 4.8
-last_updated: 2026-08-26T07:17:58Z
+plan_version: 4.9
+last_updated: 2026-08-26T08:26:00Z
 overall_status: planned
 orchestrator_notes: "Plan v4.7. TASK-013 done (GB 5/5 first-pass) — unlocked TASK-016 (S5, reassigned) + TASK-017 (CX). Grants updated (e7e85d7): 013/015 removed, 016/017 added. CX redispatched onto its own silent TASK-014 (no heartbeat 2h25m; resume-first correctly continued the existing branch, single-process confirmed, no collision) — TASK-017 dispatch to CX waits until 014 reaches needs_review/done, since a unit runs one active task at a time. S5→TASK-016 dispatch BLOCKED by a genuine environmental issue, not a plan/territory problem: wt-s5-DEVDEPARTMENT (de-registered from git, correctly empty per Get-ChildItem) still holds a Windows-level directory lock — Directory.Delete AND Rename-Item both fail "used by another process" after 5 retries + 2s backoff. No owning process found via command-line search; neither this session's Bash nor PowerShell CWD is inside it; no handle.exe available to identify the holder directly. NEW FINDING for the backlog: TASK-011's empty-husk reclaim (content-based emptiness check) does not cover THIS failure mode — a directory that is empty by content but whose directory ENTRY itself is locked by an unidentified handle. Worth a fast-follow: retry-with-longer-backoff and/or a numbered-suffix fallback worktree path so a locked husk can never indefinitely block a unit. For now: not forcing it further; will retry S5→016 shortly, or dispatch to an alternate path manually if it persists. Next ORCH action: watch CX's resumed TASK-014, retry S5 dispatch periodically."STILL LIVE\" was stale prose, corrected here. No active branches/worktrees in use (wt-codex/wt-grok both idle, detached, clean — reuse-ready). CROSS-SESSION ACTIVITY DETECTED since v3.6 (2026-08-16): (1) an external GitHub PR (#3, needs_review Telegram/console notify from plan_commit) merged 2026-08-20 — plan_commit.sh/.ps1 + new scripts/notify_needs_review.py; (2) a SEPARATE ORCH session (author identity \"ORCH <orch@basileia.local>\", Linux sandbox per its own commit evidence) authored three commits 2026-08-22: a new specs/DEVDEPARTMENT_TOWER_SPEC.md (cross-project mission control dashboard, decisions locked with Alister: Slack primary channel replacing Telegram per specs/DEVDEPARTMENT_SLACK_SPEC.md, fork grok-workspace Mission Control rather than build from scratch, clawsrv/PM2/Tailscale hosting, own repo + two pack integration points) plus a portability fix to TASK-011s tests (TestEmptyHuskReclaim now skipif-guards its two powershell-only cases so the suite doesnt fail on a machine without powershell — good fix, correctly scoped, non-territory). TOWER is SPEC ONLY, marked decompose-ready, ZERO PLAN.md tasks exist for it yet — this scan does NOT decompose it (that is a planning decision for Alister, and a second session may already be intending to). Next ORCH action: Alister decides whether to decompose TOWER now or continue other work; if decomposing, confirm no other session is mid-decompose first to avoid a duplicate-plan race."
 ---
@@ -587,7 +587,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-017
 **Title:** inbox.py — Tower inbox consumer module (validate, act-shape, reject)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 P2, H1, H5
@@ -608,6 +608,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-26T07:14:45Z] [CX] Claimed TASK-017 on task/TASK-017-cx. Dependency TASK-013 is done; starting spec and shared-command-contract review before implementing the isolated inbox module.
 - [2026-08-26T07:17:18Z] [CX] Implemented and committed b539726: pure inbox drain validates the exact P2 envelope through commands.py, preserves valid files for caller acknowledgement, moves malformed/unknown commands to rejected/ with reason sidecars, and records acknowledged IDs atomically to reject later duplicates. Focused inbox + command tests: 62 passed; running full regression suites.
 - [2026-08-26T07:20:36Z] [CX] Full verification complete. Follow-up commit ef778a6 makes the validated P2 output directly compatible with the existing Telegram queue item surface (`cmd`, legacy `args`, `chat_id`, `update_id`, `raw`) while retaining P2 metadata and the ack path for TASK-018; no second parsing/validation path exists.
+- [2026-08-26T08:26:00Z] [ORCH] APPROVED (first-pass), merged --no-ff to master (04355ea); branch deleted. CX's 1-failure evidence was stale (predated TASK-014's merge 38c36b8 which registered tower_sync in the manifest). Merged current master into the branch and re-ran a LIVE full suite: python -m pytest 893 passed / 0 failed, the sync-manifest guard now green; node hooks/run-tests.js 36/0. Territory clean: exactly scripts/inbox.py + tests/test_inbox.py across b539726+ef778a6, tower_sync.py zero diff, PLAN.md edits confined to this block. H1 verified empirically — single validation via commands.validate, no second validator; envelope §1 P2 schema enforced, malformed/unknown/duplicate MOVED to rejected/ with .reason sidecar; two-phase list/ack crash-safe (drain leaves file until ack, tested); duplicate-id ledger durable across restart via on-disk .consumed_ids.json (tested); fail-open H5 (per-file error warns+skips, never raises, tested); output shape matches tg queue item (tested). Registered scripts/inbox.py + tests/test_inbox.py in sync-manifest.json framework_owned in the merge commit (merge-time-only rule); post-merge master re-run confirmed green.
 **Artifacts:**
 - [2026-08-26T07:20:36Z] [CX] scripts/inbox.py, tests/test_inbox.py (commits b539726, ef778a6 on task/TASK-017-cx)
 **Test_Evidence:**
@@ -636,10 +637,11 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Regression tests for each wiring incl. fail-open paths; full Python + Node suites green
 **Branch:** —
 **Started_At:** —
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-08-26T08:26:00Z] [ORCH] Dependency status: TASK-013/014/015/017 all done; TASK-018 now awaits ONLY TASK-016 (S5), currently blocked on an unrelated wt-s5-DEVDEPARTMENT worktree directory lock (ORCH environmental issue, not a plan/territory problem). Not yet dispatchable — do not claim until TASK-016 reaches done.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-08-26T01:31:45Z
+**Updated_At:** 2026-08-26T08:26:00Z
