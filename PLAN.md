@@ -1,8 +1,8 @@
 ---
-plan_version: 4.9
-last_updated: 2026-08-26T08:35:00Z
+plan_version: 5.1
+last_updated: 2026-08-26T10:45:00Z
 overall_status: in_progress
-orchestrator_notes: "TOWER wave: TASK-013/014/015/017 done (all first-pass). TASK-018 (single-owner supervisor.py integration) now awaits ONLY TASK-016. TASK-016 (S5, reassigned from GB after GB's weekly rate-limit outage) is BLOCKED — not a plan/territory problem, an environmental one: wt-s5-DEVDEPARTMENT is a de-registered, content-empty husk directory whose ENTRY is Windows-locked (Directory.Delete/Rename-Item both fail 'used by another process' across many retries; no owning process found via command-line search, no handle.exe available, Defender-exclusion attempt failed for lack of admin rights). A SECOND instance of the same lock class has since appeared on wt-codex-DEVDEPARTMENT (also de-registered, also stuck) after CX's TASK-017 review cleaned it up — this is now a recurring pattern, not a one-off, and worth a real fix: TASK-011's content-based empty-husk reclaim doesn't cover a locked directory ENTRY. Backlog: retry-with-longer-backoff and/or a numbered-suffix fallback worktree path in dispatch.ps1. Options put to Alister, no decision yet: (a) Alister investigates locally via Resource Monitor 'Find Handle', (b) wait it out (prior locks this session eventually cleared on their own), (c) ORCH manually dispatches S5 to a one-off alternate path outside dispatch.ps1's fixed logic. Next ORCH action: periodically retry both locks; dispatch S5→TASK-016 the moment wt-s5 clears; GB available again from ~15:00Z but has no pending assignment right now."
+orchestrator_notes: "TOWER wave: TASK-013/014/015/016/017 ALL done (all first-pass). TASK-016 (S5, slack_listener.py) approved + merged --no-ff to master (8328192) 2026-08-26T10:05:00Z — territory clean, live full suite 912/0 + node 36/0 post-merge, spec §5/§1/§8 verified empirically, both ORCH-resolved ambiguities respected. The wt-s5 worktree lock that blocked this task cleared on its own (option (b) held); worktree + branch task/TASK-016-s5 now deleted cleanly. TASK-018 (single-owner supervisor.py integration) is now FULLY UNBLOCKED — all five deps done — and is the next dispatch: assign to S5 (freshest listener/inbox context), Owned_Paths scripts/supervisor.py + tests/test_supervisor.py, disjoint from all other work. BACKLOG (unchanged, still worth a real fix): the recurring locked-worktree-ENTRY class (seen on wt-s5 and wt-codex) that TASK-011's content-based empty-husk reclaim doesn't cover — retry-with-longer-backoff and/or numbered-suffix fallback worktree path in dispatch.ps1. GB available (weekly limit reset ~15:00Z) but has no pending assignment; CX idle. Next ORCH action: dispatch TASK-018 → S5."
 ---
 
 # Project Plan
@@ -561,7 +561,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-016
 **Title:** slack_listener.py — Socket Mode command listener (optional-dependency, fail-open)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** specs/DEVDEPARTMENT_SLACK_SPEC.md §5 (slack_listener.py), §1 (transport note), §8
@@ -594,10 +594,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-26T09:42:00Z] [S5] scripts/slack_listener.py, tests/test_slack_listener.py (commit b1bff54 on task/TASK-016-s5)
 **Test_Evidence:**
 - [2026-08-26T09:42:00Z] [S5] `python -m pytest tests/test_slack_listener.py -q` → 19 passed in 1.19s. `python -m pytest -q` (full suite) → 912 passed, 0 failed in 122.32s. `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff master...HEAD --stat` → exactly scripts/slack_listener.py and tests/test_slack_listener.py. `git diff master...HEAD --check` → clean.
-**Review_Findings:** [2026-08-26T06:20:00Z] [ORCH] Reassigned GB -> S5 before claim (task was still pending, no work started). GB hit its weekly rate limit (Alister, ~15:00Z reset); S5 was otherwise fully idle until TASK-018 (which depends on this task anyway) and just built TASK-015's sibling Slack module, so it carries fresh, directly relevant spec context. Technical brief and both ORCH-resolved ambiguities in the dossier are unit-agnostic and unchanged.
+**Review_Findings:**
+- [2026-08-26T06:20:00Z] [ORCH] Reassigned GB -> S5 before claim (task was still pending, no work started). GB hit its weekly rate limit (Alister, ~15:00Z reset); S5 was otherwise fully idle until TASK-018 (which depends on this task anyway) and just built TASK-015's sibling Slack module, so it carries fresh, directly relevant spec context. Technical brief and both ORCH-resolved ambiguities in the dossier are unit-agnostic and unchanged.
+- [2026-08-26T10:05:00Z] [ORCH] APPROVED (first-pass), merged --no-ff to master (8328192); branch + worktree deleted. Held to the exact GB/CX bar despite same-model authorship — verified empirically, not from Test_Evidence. Territory clean: net diff master...task/TASK-016-s5 = exactly scripts/slack_listener.py + tests/test_slack_listener.py (both net-new, single commit b1bff54); scripts/tg_listener.py ZERO diff; PLAN.md ZERO diff on the branch (S5's status writes were master-side commits, no frontmatter/other-block edits); `git diff --check` clean. c8b9872 filesystem-check evidence present (09:07:00Z preflight, both paths NEW). Evidence was slightly stale (branched from c90b72a, 2 PLAN-only master commits behind) — merged current master in myself and re-ran LIVE: `python -m pytest -q` 912 passed / 0 failed, `node hooks/run-tests.js` 36/0, test_slack_listener.py 19/19 — matches S5's claim exactly. Spec verified against SLACK §5 / §1 / §8, not the summary: (1) SlackListener(threading.Thread), super().__init__(daemon=True), out_queue: queue.Queue, start()/stop() — mirrors TelegramListener's seams (start() is overridden only to add the dependency guard, legitimate). (2) slack_sdk import-guarded at module scope; start() refuses with EXACTLY ONE warning naming `pip install slack_sdk` and spawns no thread — exercised against the REAL absent-dependency env (SLACK_SDK_AVAILABLE is False in this interpreter, asserted, not simulated). (3) Socket Mode connection token is the injected app_token (DEVTEAM_SLACK_APP_TOKEN per §8); NO hardcoded token, NO token read from any tracked file (grep-confirmed: zero env/file reads in the module — env resolution is TASK-018's supervisor job). (4) Queue-contract parity exact: enqueues {cmd, args, chat_id, update_id, raw} — byte-identical key set to tg_listener.py:132; test asserts set-equality, not a superset. (5) Vocabulary neutrality (fable-ratification correction) honored and PROVEN: test_unknown_command_name_is_queued_not_judged shows /frobnicate still enqueued; only transport garbage (non-dict payload, missing/blank command field) is dropped with rejected_count++. (6) Ack-before-process UNCONDITIONAL: _on_socket_request acks the envelope first; ack failure is caught, logged, and processing continues (test_ack_failure_does_not_raise_or_block_processing asserts qsize==1 after a raising ack). (7) Non-slash-command request types (events_api/interactive) acked but NOT enqueued — out of scope per §6 (Tower's territory), asserted. No live network / no real slack_sdk anywhere in tests (FakeClient double + injected client_factory + real-absent-dep path). Both ORCH-resolved ambiguities in the Description (Socket Mode as pre-Tower path; slack_sdk as first optional dep) were respected as binding decisions, not flagged as deviations. Registered scripts/slack_listener.py + tests/test_slack_listener.py in sync-manifest.json framework_owned in the merge commit (merge-time-only rule); post-merge master re-run confirmed green (912/0, node 36/0, manifest guard test_sync_from_pack 49/0). Unblocks TASK-018 — all five deps (013/014/015/016/017) now done.
 **Blocked_Reason:** —
-**Updated_By:** S5
-**Updated_At:** 2026-08-26T09:42:00Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T10:05:00Z
 
 ### TASK-017
 **Title:** inbox.py — Tower inbox consumer module (validate, act-shape, reject)
@@ -653,6 +655,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Started_At:** —
 **Progress_Notes:**
 - [2026-08-26T08:26:00Z] [ORCH] Dependency status: TASK-013/014/015/017 all done; TASK-018 now awaits ONLY TASK-016 (S5), currently blocked on an unrelated wt-s5-DEVDEPARTMENT worktree directory lock (ORCH environmental issue, not a plan/territory problem). Not yet dispatchable — do not claim until TASK-016 reaches done.
+- [2026-08-26T10:05:00Z] [ORCH] FULLY UNBLOCKED. TASK-016 approved + merged (8328192); all five deps (TASK-013/014/015/016/017) are done. This single-owner supervisor.py integration is now dispatchable — assign to S5 (carries the freshest listener/inbox context) via /devteam-dispatch. Owned_Paths (scripts/supervisor.py, tests/test_supervisor.py) are disjoint from all other work; no active tasks contend.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
