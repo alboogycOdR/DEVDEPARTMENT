@@ -469,7 +469,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-014
 **Title:** tower_sync.py — snapshot assembly + push, queue pull, inbox materialisation (module only)
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 P1 (snapshot schema v1), H3, H4, H5
@@ -487,12 +487,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Started_At:** 2026-08-26T03:59:24Z
 **Progress_Notes:**
 - [2026-08-26T03:59:24Z] [CX] Claimed TASK-014 on task/TASK-014-cx. Preflight: scripts/tower_sync.py and tests/test_tower_sync.py are new paths; beginning spec and adjacent-module review.
+- [2026-08-26T04:00:00Z] [CX] Claim published; implementing the isolated snapshot/transport module and its stubbed tests.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-08-26T03:59:24Z
+**Updated_At:** 2026-08-26T04:00:00Z
 
 ### TASK-015
 **Title:** slack_notify.py — Block Kit sender, thread tracking, notify.py slack channel
