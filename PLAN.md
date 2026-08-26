@@ -495,7 +495,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-015
 **Title:** slack_notify.py — Block Kit sender, thread tracking, notify.py slack channel
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_SLACK_SPEC.md §3 (message designs), §5 (slack_notify.py), §2 (channel rule), §9, §10
@@ -511,15 +511,16 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] --test subcommand posts one message per configured channel and reports delivery (§10)
 - [ ] notify.py: "slack" channel registered, lazily imported, degrades cleanly when unconfigured; telegram sender byte-untouched (§9); existing test_notify.py cases green
 - [ ] Full Python + Node suites green
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-015-s5
+**Started_At:** 2026-08-26T04:02:00Z
+**Progress_Notes:**
+- [2026-08-26T04:02:00Z] [S5] Claimed TASK-015. Read dossiers/TASK-015.md (approach fully specced, empty work log). Next: preflight_paths.py TASK-015, then create task/TASK-015-s5 branch and implement scripts/slack_notify.py + notify.py channel registration against SLACK §2/§3/§5/§9/§10.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T01:31:45Z
+**Updated_By:** S5
+**Updated_At:** 2026-08-26T04:02:00Z
 
 ### TASK-016
 **Title:** slack_listener.py — Socket Mode command listener (optional-dependency, fail-open)
