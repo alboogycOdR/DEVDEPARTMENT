@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -15,6 +16,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import sync_from_pack as sfp  # noqa: E402
+import sys as _sys
+sfp_test_module = _sys.modules[__name__]
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -423,13 +426,58 @@ class TestManifestPathsAreLiteral:
                    if not (REPO_ROOT / f).exists()]
         assert not missing, f"manifest lists files absent from the pack: {missing}"
 
+    def _base_branch(self) -> str:
+        try:
+            cfg = json.loads((REPO_ROOT / "autopilot.json").read_text(encoding="utf-8"))
+            return (cfg.get("git") or {}).get("base_branch") or "main"
+        except (OSError, json.JSONDecodeError):
+            return "main"
+
+    def _integration_branch_test_files(self) -> set[str] | None:
+        """Test files as TRACKED ON THE INTEGRATION BRANCH TIP, not whatever
+        happens to sit in the local working tree. None if git/branch is
+        unavailable (caller falls back to the raw-glob behavior).
+
+        Why this matters (found live, 2026-08-26): a builder's own worktree
+        legitimately contains a NEW test file its own task just committed,
+        on its own branch, not yet merged. That file is correctly UNregistered
+        until merge (sync-manifest.json registration happens in the merge
+        commit, never speculatively ahead of it -- see 9f32fa0). Scanning the
+        raw filesystem made every such worktree fail this test for the entire
+        duration of its own task, independent of anything the task did wrong.
+        `git ls-tree <base_branch>` reads what is ACTUALLY on the integration
+        branch from any linked worktree, so an in-flight sibling task's
+        uncommitted-to-master file never appears here -- while a genuinely
+        merged-but-unregistered file on master still correctly fails.
+        """
+        import subprocess
+        branch = self._base_branch()
+        try:
+            r = subprocess.run(
+                ["git", "ls-tree", "-r", "--name-only", branch, "--", "tests/"],
+                cwd=REPO_ROOT, capture_output=True, text=True, timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if r.returncode != 0:
+            return None
+        return {ln.strip() for ln in r.stdout.splitlines()
+                if ln.strip().startswith("tests/test_") and ln.strip().endswith(".py")}
+
     def test_every_shipped_test_file_is_registered(self):
         """A test suite that does not propagate is a test suite that silently
-        stops protecting downstream projects."""
-        on_disk = {f"tests/{p.name}" for p in (REPO_ROOT / "tests").glob("test_*.py")}
+        stops protecting downstream projects.
+
+        Compares against the INTEGRATION BRANCH's tracked tree (see
+        _integration_branch_test_files), not the raw local working directory
+        -- falls back to the raw glob only if git/the branch can't be
+        resolved at all, so the check never goes silent."""
+        on_disk = self._integration_branch_test_files()
+        if on_disk is None:
+            on_disk = {f"tests/{p.name}" for p in (REPO_ROOT / "tests").glob("test_*.py")}
         registered = set(self._manifest()["framework_owned"])
         assert not (on_disk - registered), (
-            f"test files present in the pack but not registered for sync: "
+            f"test files present on {self._base_branch()!r} but not registered for sync: "
             f"{sorted(on_disk - registered)}")
 
 
@@ -668,3 +716,77 @@ class TestMarkerSectionLocalEditGuard:
             "section is identical modulo heading level; the H3 sentinel must be matched "
             f"whole-line, not as a substring. notes={report.merge_notes}")
         assert (proj / "CLAUDE.md").read_text(encoding="utf-8") == proj_text
+
+
+# ============ integration-branch-tree comparison (2026-08-26 field defect) ==
+class TestShippedTestFileRegistrationIsBranchAware:
+    """A builder's own worktree has an uncommitted-to-master new test file
+    for the ENTIRE duration of its task -- that must never fail this guard,
+    while a genuinely merged-but-unregistered file on the integration branch
+    still must. Found live: TASK-013 (GB) hit exactly this after ORCH's own
+    manifest fix, re-blocking on the identical symptom the fix was meant to
+    resolve, because the check scanned the raw worktree instead of what was
+    actually on master.
+
+    Tests the real TestManifestPathsAreLiteral methods against a temp repo by
+    monkeypatching this module's REPO_ROOT -- the same constant the class
+    under test reads -- rather than reimplementing the git plumbing here.
+    """
+
+    def _git(self, repo, *args, check=True):
+        return subprocess.run(["git", *args], cwd=repo, capture_output=True,
+                              text=True, check=check)
+
+    def _repo(self, tmp_path, base_branch="master"):
+        r = tmp_path / "repo"
+        (r / "tests").mkdir(parents=True)
+        (r / "tests" / "test_existing.py").write_text("def test_x(): pass\n", encoding="utf-8")
+        (r / sfp.MANIFEST_NAME).write_text(json.dumps({
+            "manifest_version": 1, "project_owned": [], "merge_special": {},
+            "framework_owned": ["tests/test_existing.py"],
+        }), encoding="utf-8")
+        (r / "autopilot.json").write_text(json.dumps({"git": {"base_branch": base_branch}}),
+                                          encoding="utf-8")
+        self._git(r, "init", "-q", "-b", base_branch)
+        self._git(r, "config", "user.email", "t@example.com")
+        self._git(r, "config", "user.name", "T")
+        self._git(r, "add", "-A")
+        self._git(r, "commit", "-q", "-m", "seed")
+        return r
+
+    def test_in_flight_branch_with_uncommitted_to_master_test_file_does_not_fail(self, tmp_path, monkeypatch):
+        repo = self._repo(tmp_path)
+        self._git(repo, "checkout", "-q", "-b", "task/TASK-999-x")
+        (repo / "tests" / "test_new_feature.py").write_text("def test_y(): pass\n", encoding="utf-8")
+        self._git(repo, "add", "-A")
+        self._git(repo, "commit", "-q", "-m", "feat: new module [TASK-999]")
+        monkeypatch.setattr(sfp_test_module, "REPO_ROOT", repo)
+        inst = TestManifestPathsAreLiteral()
+        inst.test_every_shipped_test_file_is_registered()  # must NOT raise
+
+    def test_file_actually_on_master_but_unregistered_still_fails(self, tmp_path, monkeypatch):
+        repo = self._repo(tmp_path)
+        (repo / "tests" / "test_orphan.py").write_text("def test_z(): pass\n", encoding="utf-8")
+        self._git(repo, "add", "-A")
+        self._git(repo, "commit", "-q", "-m", "oops: forgot to register")
+        monkeypatch.setattr(sfp_test_module, "REPO_ROOT", repo)
+        inst = TestManifestPathsAreLiteral()
+        with pytest.raises(AssertionError, match="test_orphan.py"):
+            inst.test_every_shipped_test_file_is_registered()
+
+    def test_falls_back_to_raw_glob_when_git_unavailable(self, tmp_path, monkeypatch):
+        """No .git at all (e.g. a stripped export) -- must not go silent;
+        falls back to the pre-fix raw-directory-scan behavior."""
+        r = tmp_path / "no_git_repo"
+        (r / "tests").mkdir(parents=True)
+        (r / "tests" / "test_a.py").write_text("def test_a(): pass\n", encoding="utf-8")
+        (r / sfp.MANIFEST_NAME).write_text(json.dumps({
+            "manifest_version": 1, "project_owned": [], "merge_special": {},
+            "framework_owned": [],
+        }), encoding="utf-8")
+        monkeypatch.setattr(sfp_test_module, "REPO_ROOT", r)
+        inst = TestManifestPathsAreLiteral()
+        assert inst._integration_branch_test_files() is None
+        with pytest.raises(AssertionError, match="test_a.py"):
+            inst.test_every_shipped_test_file_is_registered()
+
