@@ -636,7 +636,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-018
 **Title:** supervisor.py integration — tower tick wiring, inbox drain, slack listener, unified command queue
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 P1+P2, H1, H4, H5; specs/DEVDEPARTMENT_SLACK_SPEC.md §5 (listener wiring, _drain_command_queue rename), §9
@@ -644,13 +644,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Owned_Paths:** scripts/supervisor.py, tests/test_supervisor.py
 **Description:** The single-owner integration task — the ONLY task that edits supervisor.py, sequenced after every module lands (same proven pattern as ATLAS A5). Four wirings: (1) P1 tick: after the existing snapshot/board work each tick, call tower_sync (push + queue-pull) when tower.enabled — fail-open, ONE warning line on any tower error, tick proceeds, Slack/console unaffected (H5 verbatim); per H4 this runs inside the normal tick, immediately after the push comes the queue pull that materialises .devteam/inbox/. (2) P2: call inbox.drain_inbox BEFORE decide() (spec: "in supervisor.py, before decide()"), feeding validated commands through the SAME handler path the tg queue uses, honouring the two-phase ack contract from TASK-017. (3) Slack listener: start SlackListener alongside TelegramListener when "slack" is in notify_channels and its env vars are set — same fail-open posture as the tg listener (missing env → warning, not started); telegram start logic byte-preserved (§9). (4) The §5 rename: _drain_tg_queue becomes _drain_command_queue, draining BOTH listeners' queues through one path — tg_listener.py itself is out of territory and untouched. Respect the standing supervisor lessons: reuse reap/notify machinery, never rebuild (L2 spec §0 precedent); healthy-tick behaviour with tower/slack/inbox all disabled must be byte-identical to today (assert it — the ATLAS A5 byte-identical-when-disabled criterion is the model). DEFAULT_CONFIG gains the tower/slack keys mirroring the autopilot.json template ORCH committed.
 **Acceptance_Criteria:**
-- [ ] Tick calls tower_sync push+pull when enabled; any tower failure → exactly one warning line, tick completes normally (H5); disabled → zero tower code in the hot path's effects
-- [ ] inbox.drain_inbox runs before decide() and its commands flow through the SAME action-handler path as tg commands (H1); two-phase ack honoured
-- [ ] SlackListener started when configured, with tg-style fail-open on missing env; TelegramListener start logic unchanged (§9)
-- [ ] _drain_tg_queue → _drain_command_queue, one drain path for both queues (§5); tg_listener.py untouched
-- [ ] With tower+slack+inbox all disabled/absent: a tick is behaviourally identical to pre-wave master (tested — the A5 byte-identical discipline)
-- [ ] DEFAULT_CONFIG mirrors the template's tower/slack keys
-- [ ] Regression tests for each wiring incl. fail-open paths; full Python + Node suites green
+- [x] Tick calls tower_sync push+pull when enabled; any tower failure → exactly one warning line, tick completes normally (H5); disabled → zero tower code in the hot path's effects
+- [x] inbox.drain_inbox runs before decide() and its commands flow through the SAME action-handler path as tg commands (H1); two-phase ack honoured
+- [x] SlackListener started when configured, with tg-style fail-open on missing env; TelegramListener start logic unchanged (§9)
+- [x] _drain_tg_queue → _drain_command_queue, one drain path for both queues (§5); tg_listener.py untouched
+- [x] With tower+slack+inbox all disabled/absent: a tick is behaviourally identical to pre-wave master (tested — the A5 byte-identical discipline)
+- [x] DEFAULT_CONFIG mirrors the template's tower/slack keys
+- [x] Regression tests for each wiring incl. fail-open paths; full Python + Node suites green
 **Branch:** task/TASK-018-s5
 **Started_At:** 2026-08-26T08:13:48Z
 **Progress_Notes:**
@@ -665,9 +665,14 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
     FILE   tests/test_supervisor.py  -> exists, 350 line(s), 14598 bytes
   ```
   Both existing as expected. Confirmed scripts/tower_sync.py, scripts/inbox.py, scripts/slack_listener.py, scripts/tg_listener.py all present (upstream, read-only reference). Reading specs/DEVDEPARTMENT_TOWER_SPEC.md §1 P1+P2/H1/H4/H5 and specs/DEVDEPARTMENT_SLACK_SPEC.md §5/§9 next, then supervisor.py's current tick loop, before wiring.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-26T11:10:00Z] [S5] All four wirings implemented and committed (0714195) on task/TASK-018-s5: (1) tower tick — `tower_sync.sync_tick(repo, cfg, state)` called every non-dry-run tick right after the board-publish block, wrapped in a belt-and-braces try/except (one `[tower]` warning line on failure, tick continues; H5). (2) inbox P2 — new `drain_inbox_commands()` drains `.devteam/inbox/` via `inbox.drain_inbox()` (already H1-validated through commands.py) BEFORE `decide()`, through the SAME `_process_tg_command()` handler tg/slack use, `inbox.ack()` called only after a handler returns without raising (two-phase, tested for crash-mid-handling). (3) Slack listener — new `_start_slack_listener(cfg)` starts `SlackListener` when `"slack"` in `notify_channels` and both `DEVTEAM_SLACK_APP_TOKEN`/`DEVTEAM_SLACK_TOKEN` are set; missing env → one stderr warning, not started (tg-style); `_start_tg_listener` byte-unchanged (§9, regression-tested). (4) unified drain — new `drain_command_queue(queues, ...)` drains tg+slack queues through one handler.
+  **Flagging one deliberate deviation from the spec's literal wording (not blocking — functional requirement fully met):** §5 says "`_drain_tg_queue` becomes `_drain_command_queue`" (a rename). The merged reality is the function is named `drain_tg_queue` (public, no leading underscore) and `tests/test_supervisor_telegram.py` — outside my Owned_Paths, cannot be edited by me — imports and calls it directly by that exact name/signature in ~15 places. A literal rename would break that out-of-territory test file with no way for me to fix it. I added `drain_command_queue(queues: list[Queue], ...)` as the real one-path-for-both-queues implementation and kept `drain_tg_queue` as a one-line backward-compatible alias (`drain_command_queue([q], ...)`) so both entry points share one implementation. Ticking AC4 because the functional requirement (one drain path, both queues) is fully met; flagging in case ORCH wants `tests/test_supervisor_telegram.py` retargeted in a follow-up so the old name can be fully retired — that edit is outside my territory either way.
+- [2026-08-26T11:12:00Z] [S5] DEFAULT_CONFIG's new `tower`/`slack` blocks compared field-for-field against autopilot.json's committed template (lines 129-142): identical on every functional key (`enabled`, `url`, `project_id`, `_token_env` / `enabled`, `project_channel`, `ops_channel`, `thread_tracking`); only the doc-only `_comment` field is excluded, consistent with how other DEFAULT_CONFIG blocks already work. Added 19 new tests to tests/test_supervisor.py (47 total, 28 pre-existing + 19 new) covering every wiring incl. fail-open paths and the ATLAS-A5-style byte-identical-when-disabled criterion (tower+slack+inbox all disabled/absent → zero trace of any of the three wirings in a real `main(["--once", ...])` run). `git diff --stat master...HEAD` = exactly scripts/supervisor.py + tests/test_supervisor.py (455 lines changed), nothing else — territory clean. All 7 acceptance criteria self-checked and ticked above. Submitting needs_review.
+**Artifacts:**
+- [2026-08-26T11:12:00Z] [S5] scripts/supervisor.py, tests/test_supervisor.py (commit 0714195 on task/TASK-018-s5); dossiers/TASK-018.md work-log entries (commits 5f23e1a, b2dd14e)
+**Test_Evidence:**
+- [2026-08-26T11:12:00Z] [S5] `python -m pytest tests/test_supervisor.py -q` → 47 passed in 45.04s (28 pre-existing + 19 new, zero regressions). `python -m pytest -q` (full suite) → 931 passed, 0 failed in 146.19s (up from the 912 pre-change baseline; delta matches the 19 new tests exactly). `node C:/CLAUDECODE_kingdom.work/DEVDEPARTMENT/hooks/run-tests.js` → 36 passed, 0 failed. `git diff --stat master...HEAD` → exactly scripts/supervisor.py + tests/test_supervisor.py.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** S5
-**Updated_At:** 2026-08-26T08:13:48Z
+**Updated_At:** 2026-08-26T11:12:00Z
