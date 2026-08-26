@@ -43,6 +43,9 @@ import distiller  # noqa: E402 — Wave C: post-review-batch distillation
 import retro  # noqa: E402 — Wave C: weekly retro drafter
 import control  # noqa: E402 — Wave I (I1): CONTROL-block single-writer blackboard
 import usage_probe  # noqa: E402 — Wave I (I2): live usage-window meters
+import tower_sync  # noqa: E402 — TOWER P1: snapshot push + queue pull (TASK-018 wiring)
+import inbox  # noqa: E402 — TOWER P2: local command inbox consumer (TASK-018 wiring)
+from slack_listener import SlackListener  # noqa: E402 — SLACK P1b-2: socket-mode listener (TASK-018 wiring)
 
 UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -133,6 +136,21 @@ DEFAULT_CONFIG = {
         "cache_ttl_minutes": 15,
         "defer_above_pct": 90,
         "critical_overrides": True,
+    },
+    # TASK-018: tower/slack keys mirror autopilot.json's template blocks
+    # exactly (TOWER §1 P1 / SLACK §5). Ships disabled per the
+    # ask-don't-auto-flip rule — same posture as ATLAS and control.mode.
+    "tower": {
+        "enabled": False,
+        "url": "",
+        "project_id": "",
+        "_token_env": "DEVTEAM_TOWER_TOKEN",
+    },
+    "slack": {
+        "enabled": False,
+        "project_channel": "",
+        "ops_channel": "",
+        "thread_tracking": True,
     },
 }
 
@@ -908,29 +926,87 @@ def _process_tg_command(item: dict, repo: Path, cfg: dict, state: RuntimeState,
         _process_tg_answer_or_rework(item, repo, cfg, ts, token)
         return None
 
-    # cmd == "help" (unrecognised / non-command text) — reply with usage, execute nothing.
+    # cmd == "help" (unrecognised / non-command text; also reached today by
+    # Tower P2's "dispatch" vocabulary word, which has no supervisor handler
+    # yet — see commands.py's comment on why adding one is a separate
+    # behaviour change) — reply with usage where a chat exists, execute
+    # nothing, but still log so an unhandled command never vanishes from the
+    # audit trail without a trace.
+    _tg_log(repo, cmd, None)
     tgc.send_reply(token, chat_id, tgc.HELP_TEXT)
     return None
 
 
+def drain_command_queue(queues: "list[queue.Queue]", repo: Path, cfg: dict, state: RuntimeState,
+                        wave_event: "threading.Event", now: datetime, token: str) -> list[Action]:
+    """Drain every queued command from ALL listener queues (Telegram AND
+    Slack, called once per tick, BEFORE decide(), so /answer / /rework edits
+    are visible to this tick's decision) through the SAME per-item handler.
+    SLACK §5: "the slack_listener's queue is the same queue.Queue already
+    drained by _drain_tg_queue (renamed _drain_command_queue in the
+    shared-validation refactor)". Queues are drained in the order given;
+    each command is individually try/excepted so one failure (e.g. a
+    corrupted PLAN.md breaking /answer) can never block or crash a later
+    command in the same batch or a later queue (e.g. /stop)."""
+    extra_actions: list[Action] = []
+    for q in queues:
+        while True:
+            try:
+                item = q.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                action = _process_tg_command(item, repo, cfg, state, wave_event, now, token)
+                if action is not None:
+                    extra_actions.append(action)
+            except Exception as exc:  # noqa: BLE001 — fail-open: never let one bad command wedge the tick
+                log_line(repo, f"TG_COMMAND unit=TG cmd={item.get('cmd')} task=— ERROR: {exc}")
+    return extra_actions
+
+
 def drain_tg_queue(q: "queue.Queue", repo: Path, cfg: dict, state: RuntimeState,
                    wave_event: "threading.Event", now: datetime, token: str) -> list[Action]:
-    """Drain every queued Telegram command (called once per tick, BEFORE decide(),
-    so /answer / /rework edits are visible to this tick's decision). Each command
-    is individually try/excepted so one failure (e.g. a corrupted PLAN.md breaking
-    /answer) can never block or crash a later command in the same batch (e.g. /stop)."""
+    """Backward-compatible single-queue entry point. Kept byte-identical in
+    name and signature because tests/test_supervisor_telegram.py (outside
+    this task's Owned_Paths, so it cannot be edited here) imports and calls
+    it directly. TASK-018's actual "one drain path for both queues" wiring
+    (SLACK §5) is drain_command_queue above; this is now a thin wrapper over
+    it, so both entry points share one implementation."""
+    return drain_command_queue([q], repo, cfg, state, wave_event, now, token)
+
+
+def drain_inbox_commands(repo: Path, cfg: dict, state: RuntimeState,
+                         wave_event: "threading.Event", now: datetime, token: str) -> list[Action]:
+    """TOWER P2: drain `.devteam/inbox/` — already validated through
+    commands.py by inbox.drain_inbox() itself (H1: "through the same
+    handler path commands.py ... exposes") — through the SAME
+    action-handler function Telegram/Slack commands use
+    (_process_tg_command), so Tower commands are a pass-through onto
+    existing handlers, not a second implementation (dossiers/TASK-018.md).
+
+    Two-phase, per inbox.py's own contract: drain_inbox() never deletes a
+    file; inbox.ack() is called only once that command's handler has run
+    WITHOUT raising, so a crash mid-handling simply leaves the file to be
+    retried next tick rather than silently losing or double-applying it.
+
+    Absent/empty inbox is a pure no-op — inbox.drain_inbox() returns []
+    when .devteam/inbox doesn't exist, so this call has zero effect on a
+    repo that has never enabled Tower (TASK-018's byte-identical-when-
+    disabled criterion)."""
     extra_actions: list[Action] = []
-    while True:
-        try:
-            item = q.get_nowait()
-        except queue.Empty:
-            break
+    try:
+        items = inbox.drain_inbox(repo, cfg)
+    except Exception as exc:  # a broken inbox must never wedge the tick
+        print(f"[inbox] drain failed (non-fatal): {exc}", file=sys.stderr)
+        return extra_actions
+    for item in items:
         try:
             action = _process_tg_command(item, repo, cfg, state, wave_event, now, token)
             if action is not None:
                 extra_actions.append(action)
-        except Exception as exc:  # noqa: BLE001 — fail-open: never let one bad command wedge the tick
-            log_line(repo, f"TG_COMMAND unit=TG cmd={item.get('cmd')} task=— ERROR: {exc}")
+            inbox.ack(repo, item)
+        except Exception as exc:  # noqa: BLE001 — fail-open, mirrors drain_command_queue
+            log_line(repo, f"TG_COMMAND unit=TOWER cmd={item.get('cmd')} task=— ERROR: {exc}")
     return extra_actions
 
 
@@ -947,6 +1023,8 @@ def load_config(repo: Path) -> dict:
     cfg["learning"] = {**DEFAULT_CONFIG["learning"], **cfg.get("learning", {})}
     cfg["control"] = {**DEFAULT_CONFIG["control"], **cfg.get("control", {})}
     cfg["usage"] = {**DEFAULT_CONFIG["usage"], **cfg.get("usage", {})}
+    cfg["tower"] = {**DEFAULT_CONFIG["tower"], **cfg.get("tower", {})}
+    cfg["slack"] = {**DEFAULT_CONFIG["slack"], **cfg.get("slack", {})}
     return cfg
 
 
@@ -983,6 +1061,47 @@ def _start_tg_listener(repo: Path, cfg: dict) -> tuple[TelegramListener | None, 
     return listener, tg_queue, wave_event
 
 
+def _start_slack_listener(cfg: dict) -> tuple["SlackListener | None", "queue.Queue"]:
+    """Start the Slack listener thread if configured — same fail-open
+    posture as _start_tg_listener: 'slack' in notify_channels but missing
+    env vars → one warning, listener NOT started (never read credentials
+    from a file), every other channel unaffected (SLACK §5/§9; §9:
+    "Telegram start logic unchanged"). The slack_sdk-not-installed case is
+    handled inside SlackListener.start() itself (its own import guard), so
+    this function only needs to gate on config + env.
+
+    Unlike _start_tg_listener this does NOT create a second wave_event —
+    main() passes the one wave_event already obtained from the Telegram
+    listener startup to both drains, so /wave behaves identically
+    regardless of which transport it arrived on."""
+    slack_queue: "queue.Queue" = queue.Queue()
+    if "slack" not in cfg.get("notify_channels", []):
+        return None, slack_queue
+
+    app_token = _os.environ.get("DEVTEAM_SLACK_APP_TOKEN", "")
+    bot_token = _os.environ.get("DEVTEAM_SLACK_TOKEN", "")
+    if not app_token or not bot_token:
+        print("[supervisor] 'slack' in notify_channels but DEVTEAM_SLACK_APP_TOKEN/DEVTEAM_SLACK_TOKEN "
+              "env vars are not set — Slack listener NOT started (never read credentials from a file).",
+              file=sys.stderr)
+        return None, slack_queue
+
+    listener = SlackListener(app_token=app_token, bot_token=bot_token, out_queue=slack_queue)
+    listener.start()
+    if listener.available:
+        print("[supervisor] Slack listener started.")
+    else:
+        # SlackListener.start() already refused internally (its own
+        # slack_sdk import guard) and logged via its _log callback, which
+        # defaults to Python `logging` (not necessarily visible on stderr) —
+        # print an explicit stderr line here too so this is never silent to
+        # an operator watching the console, same posture as the missing-env
+        # warning above.
+        print("[supervisor] Slack listener not started — slack_sdk not installed "
+              "(pip install slack_sdk); every other channel is unaffected.", file=sys.stderr)
+    return listener, slack_queue
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="DEVDEPARTMENT autopilot supervisor")
     mode = ap.add_mutually_exclusive_group(required=True)
@@ -1008,6 +1127,7 @@ def main(argv: list[str]) -> int:
     state = RuntimeState.load(state_path)
 
     tg_listener, tg_queue, wave_event = _start_tg_listener(repo, cfg)
+    slack_listener, slack_queue = _start_slack_listener(cfg)
     tg_token = _os.environ.get("DEVTEAM_TG_TOKEN", "")
 
     start = time.monotonic()
@@ -1034,9 +1154,18 @@ def main(argv: list[str]) -> int:
             if not args.dry_run:
                 reap_inflight(inflight, cfg, state, repo, now)
 
-            # Drain Telegram commands BEFORE deciding, so /answer / /rework edits
-            # (and /stop) are visible to this tick's decision and PLAN.md read.
-            tg_actions = drain_tg_queue(tg_queue, repo, cfg, state, wave_event, now, tg_token) if not args.dry_run else []
+            # Drain Telegram + Slack commands BEFORE deciding, so /answer /
+            # /rework edits (and /stop) are visible to this tick's decision
+            # and PLAN.md read (SLACK §5: one drain path for both queues).
+            queue_actions = drain_command_queue([tg_queue, slack_queue], repo, cfg, state, wave_event, now, tg_token) \
+                if not args.dry_run else []
+
+            # TOWER P2: drain .devteam/inbox/ BEFORE decide() too (spec
+            # wording is exact — "in supervisor.py, before decide()"),
+            # through the SAME action-handler path as the queue commands
+            # above. Absent/disabled inbox is a no-op (TASK-018).
+            inbox_actions = drain_inbox_commands(repo, cfg, state, wave_event, now, tg_token) \
+                if not args.dry_run else []
 
             # Wave B: nightly self-maintenance scheduler check. Cheap outer gate
             # here avoids importing/invoking the full audit every 5-minute tick;
@@ -1088,7 +1217,7 @@ def main(argv: list[str]) -> int:
             except Exception as exc:
                 print(f"[usage] skipped this tick (non-fatal): {exc}", file=sys.stderr)
                 usage = {}
-            actions = tg_actions + decide(plan_text, state, cfg, now=now,
+            actions = queue_actions + inbox_actions + decide(plan_text, state, cfg, now=now,
                                           stop_file_exists=(repo / "STOP").exists(),
                                           dossier_heartbeats=dossier_heartbeats,
                                           usage=usage)
@@ -1108,6 +1237,18 @@ def main(argv: list[str]) -> int:
                 except Exception as _be:
                     print(f"[board] skipped (non-fatal): {_be}", file=sys.stderr)
 
+            # TOWER P1 (TASK-018): snapshot push + queue pull, after the
+            # board work above, in the same tick — H4 (one round-trip pair,
+            # always project-initiated) and H5 (fail-open: any tower error
+            # is one warning line, tick proceeds normally). Disabled by
+            # default (tower.enabled=false); sync_tick's own gate makes this
+            # a zero-I/O no-op in that case (byte-identical-when-disabled).
+            if not args.dry_run:
+                try:
+                    tower_sync.sync_tick(repo, cfg, state={"mode": "loop" if args.loop else "once", "tick": ticks})
+                except Exception as exc:  # belt-and-braces — sync_tick already fails open internally
+                    print(f"[tower] skipped this tick (non-fatal): {exc}", file=sys.stderr)
+
             if not keep_going or args.once:
                 break
             if args.max_ticks and ticks >= args.max_ticks:
@@ -1122,6 +1263,8 @@ def main(argv: list[str]) -> int:
     finally:
         if tg_listener is not None:
             tg_listener.stop()
+        if slack_listener is not None:
+            slack_listener.stop()
 
 
     print("[supervisor] Halted.")
