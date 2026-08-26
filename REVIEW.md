@@ -6,7 +6,7 @@
 |---|---|---|---|---|
 | GB | 5 | 5 | 0 | — |
 | CX | 7 | 5 | 1 | §4 truncation-ladder test coverage (rungs 2–3 + episodic content untested) — cleared on re-review |
-| S5 | 6 | 4 | 1 | Corrupt-db escalation unreachable (marker-match on head-truncated atlas.py traceback) — spec §5 safety carve-out unmet; also a prior worktree/main-checkout protocol violation on the same task. Cleared on re-review (direct sqlite probe). |
+| S5 | 7 | 5 | 1 | Corrupt-db escalation unreachable (marker-match on head-truncated atlas.py traceback) — spec §5 safety carve-out unmet; also a prior worktree/main-checkout protocol violation on the same task. Cleared on re-review (direct sqlite probe). |
 
 Evidence here refines assignment heuristics (protocol §8) after ~10 reviews.
 
