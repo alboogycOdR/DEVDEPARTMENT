@@ -1,5 +1,8 @@
 """Tests for the autopilot decision engine (supervisor.decide) and team_stats."""
+import json
+import queue
 import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -348,3 +351,296 @@ def test_once_reaps_forced_dispatch_failure(tmp_path, capsys):
     output = capsys.readouterr().out
     assert "exited 7" in output
     assert command in output
+
+
+# ================================================================ TASK-018 ==
+# supervisor.py integration: tower tick wiring, inbox drain, slack listener,
+# unified command queue. Spec: TOWER §1 P1+P2/H1/H4/H5, SLACK §5/§9.
+
+def test_default_config_has_tower_and_slack_keys():
+    """DEFAULT_CONFIG must mirror autopilot.json's template blocks (§5),
+    ships disabled per the ask-don't-auto-flip rule."""
+    assert DEFAULT_CONFIG["tower"] == {
+        "enabled": False, "url": "", "project_id": "", "_token_env": "DEVTEAM_TOWER_TOKEN",
+    }
+    assert DEFAULT_CONFIG["slack"] == {
+        "enabled": False, "project_channel": "", "ops_channel": "", "thread_tracking": True,
+    }
+
+
+def test_load_config_merges_tower_slack_defaults(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+    cfg = sup.load_config(repo)
+    assert cfg["tower"]["enabled"] is False
+    assert cfg["slack"]["thread_tracking"] is True
+
+
+def test_load_config_preserves_custom_tower_section(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+    custom = dict(DEFAULT_CONFIG)
+    custom["tower"] = {"enabled": True, "url": "https://tower.example", "project_id": "p1",
+                       "_token_env": "DEVTEAM_TOWER_TOKEN"}
+    (repo / "autopilot.json").write_text(json.dumps(custom), encoding="utf-8")
+    cfg = sup.load_config(repo)
+    assert cfg["tower"]["enabled"] is True
+    assert cfg["tower"]["url"] == "https://tower.example"
+
+
+# ------------------------------------------------------- drain_command_queue
+def _q_item(cmd, args="", chat_id="12345"):
+    return {"cmd": cmd, "args": args, "chat_id": chat_id, "update_id": 1, "raw": f"{cmd} {args}"}
+
+
+class TestDrainCommandQueue:
+    def test_drains_both_queues_through_one_handler(self, tmp_path, monkeypatch):
+        """SLACK §5: one drain path for both queues — a command queued on
+        EITHER transport reaches the same handler and has its effect."""
+        import tg_commands as tgc
+        monkeypatch.setattr(tgc, "send_reply", lambda *a, **kw: True)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+        tg_q, slack_q = queue.Queue(), queue.Queue()
+        tg_q.put(_q_item("/mute", "2h"))
+        slack_q.put(_q_item("/wave", ""))
+        wave_event = threading.Event()
+        state = RuntimeState()
+        sup.drain_command_queue([tg_q, slack_q], repo, DEFAULT_CONFIG, state, wave_event, NOW, token="tok")
+        assert state.mute_until != ""          # tg-queue command applied
+        assert wave_event.is_set()              # slack-queue command applied
+
+    def test_bad_command_on_one_queue_does_not_block_the_other(self, tmp_path, monkeypatch):
+        import tg_commands as tgc
+        monkeypatch.setattr(tgc, "send_reply", lambda *a, **kw: True)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+        tg_q, slack_q = queue.Queue(), queue.Queue()
+        tg_q.put({"cmd": "/answer", "args": "TASK-001 x", "chat_id": None, "update_id": 1})
+
+        def boom(*a, **kw):
+            raise RuntimeError("simulated failure")
+        monkeypatch.setattr(tgc, "apply_answer", boom)
+        slack_q.put(_q_item("/wave", ""))
+        wave_event = threading.Event()
+        sup.drain_command_queue([tg_q, slack_q], repo, DEFAULT_CONFIG, RuntimeState(), wave_event, NOW, token="tok")
+        assert wave_event.is_set()
+        log = (repo / "AUTOPILOT_LOG.md").read_text(encoding="utf-8")
+        assert "ERROR" in log
+
+    def test_drain_tg_queue_alias_still_works(self, tmp_path, monkeypatch):
+        """Backward-compat: tests/test_supervisor_telegram.py (outside this
+        task's territory) imports drain_tg_queue directly — it must keep
+        working with its original single-queue signature."""
+        import tg_commands as tgc
+        monkeypatch.setattr(tgc, "send_reply", lambda *a, **kw: True)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+        q = queue.Queue()
+        q.put(_q_item("/wave", ""))
+        wave_event = threading.Event()
+        sup.drain_tg_queue(q, repo, DEFAULT_CONFIG, RuntimeState(), wave_event, NOW, token="tok")
+        assert wave_event.is_set()
+
+
+# ------------------------------------------------------------- inbox (P2) --
+def _inbox_envelope(command, args=None, ident="cmd-1"):
+    return {
+        "id": ident, "issued_at": "2026-08-26T08:00:00Z", "source": "tower",
+        "actor": "alister", "command": command, "args": args or {},
+    }
+
+
+def _write_inbox(repo, envelope):
+    inbox_dir = repo / ".devteam" / "inbox"
+    inbox_dir.mkdir(parents=True, exist_ok=True)
+    (inbox_dir / f"{envelope['id']}.json").write_text(json.dumps(envelope), encoding="utf-8")
+    return inbox_dir
+
+
+class TestInboxDrain:
+    def test_stop_command_applies_and_is_acked(self, tmp_path, monkeypatch):
+        import tg_commands as tgc
+        monkeypatch.setattr(tgc, "send_reply", lambda *a, **kw: True)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+        inbox_dir = _write_inbox(repo, _inbox_envelope("stop"))
+        sup.drain_inbox_commands(repo, DEFAULT_CONFIG, RuntimeState(), threading.Event(), NOW, token="tok")
+        assert (repo / "STOP").exists()
+        # Two-phase ack: the handled command's file is gone, consumed-id ledger written.
+        assert not (inbox_dir / "cmd-1.json").exists()
+        assert (inbox_dir / ".consumed_ids.json").exists()
+
+    def test_approve_returns_review_tg_action(self, tmp_path, monkeypatch):
+        import tg_commands as tgc
+        monkeypatch.setattr(tgc, "send_reply", lambda *a, **kw: True)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+        _write_inbox(repo, _inbox_envelope("approve", {"task_id": "TASK-001"}))
+        actions = sup.drain_inbox_commands(repo, DEFAULT_CONFIG, RuntimeState(), threading.Event(), NOW, token="tok")
+        assert len(actions) == 1
+        assert actions[0].kind == "REVIEW_TG"
+        assert actions[0].task_id == "TASK-001"
+
+    def test_absent_inbox_dir_is_noop(self, tmp_path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+        actions = sup.drain_inbox_commands(repo, DEFAULT_CONFIG, RuntimeState(), threading.Event(), NOW, token="tok")
+        assert actions == []
+
+    def test_drain_inbox_failure_is_fail_open(self, tmp_path, monkeypatch, capsys):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+
+        def boom(repo, cfg=None):
+            raise RuntimeError("simulated inbox corruption")
+        monkeypatch.setattr(sup.inbox, "drain_inbox", boom)
+        actions = sup.drain_inbox_commands(repo, DEFAULT_CONFIG, RuntimeState(), threading.Event(), NOW, token="tok")
+        assert actions == []
+        assert "simulated inbox corruption" in capsys.readouterr().err
+
+    def test_handler_exception_leaves_file_unacked_for_retry(self, tmp_path, monkeypatch):
+        """Two-phase contract: a handler failure must not ack — the file
+        stays so the same command is retried next tick."""
+        import tg_commands as tgc
+        monkeypatch.setattr(tgc, "send_reply", lambda *a, **kw: True)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+        inbox_dir = _write_inbox(repo, _inbox_envelope("answer", {"task_id": "TASK-001", "text": "x"}))
+
+        def boom(*a, **kw):
+            raise RuntimeError("simulated failure")
+        monkeypatch.setattr(tgc, "apply_answer", boom)
+        sup.drain_inbox_commands(repo, DEFAULT_CONFIG, RuntimeState(), threading.Event(), NOW, token="tok")
+        assert (inbox_dir / "cmd-1.json").exists()  # NOT acked
+        log = (repo / "AUTOPILOT_LOG.md").read_text(encoding="utf-8")
+        assert "ERROR" in log
+
+
+# --------------------------------------------------------- tower_sync tick -
+class TestTowerTick:
+    def test_sync_tick_called_with_repo_and_cfg(self, tmp_path, monkeypatch):
+        calls = []
+        monkeypatch.setattr(sup.tower_sync, "sync_tick", lambda repo, cfg, state=None: calls.append((repo, cfg, state)))
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+        (repo / "autopilot.json").write_text(json.dumps({"builders": ["GB"]}), encoding="utf-8")
+        assert sup.main(["--once", "--repo", str(repo)]) == 0
+        assert len(calls) == 1
+        assert calls[0][0] == repo
+        assert calls[0][2]["mode"] == "once"
+
+    def test_sync_tick_failure_is_one_warning_line_tick_continues(self, tmp_path, monkeypatch, capsys):
+        def boom(repo, cfg, state=None):
+            raise RuntimeError("tower unreachable")
+        monkeypatch.setattr(sup.tower_sync, "sync_tick", boom)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+        (repo / "autopilot.json").write_text(json.dumps({"builders": ["GB"]}), encoding="utf-8")
+        assert sup.main(["--once", "--repo", str(repo)]) == 0
+        err = capsys.readouterr().err
+        assert err.count("[tower]") == 1
+        assert "tower unreachable" in err
+
+    def test_disabled_tower_produces_no_tower_output(self, tmp_path, capsys):
+        """Real tower_sync.sync_tick (not mocked) with the default disabled
+        config must be a true no-op — no network, no warning lines."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+        (repo / "autopilot.json").write_text(json.dumps({"builders": ["GB"]}), encoding="utf-8")
+        assert sup.main(["--once", "--repo", str(repo)]) == 0
+        out = capsys.readouterr()
+        assert "[tower]" not in out.out and "[tower]" not in out.err
+
+
+# -------------------------------------------------------- slack listener --
+class _FakeSlackListener:
+    instances = []
+
+    def __init__(self, app_token, bot_token, out_queue, client_factory=None, log_fn=None):
+        self.app_token = app_token
+        self.bot_token = bot_token
+        self.out_queue = out_queue
+        self.available = True
+        self.started = False
+        self.stopped = False
+        _FakeSlackListener.instances.append(self)
+
+    def start(self):
+        self.started = True
+
+    def stop(self):
+        self.stopped = True
+
+
+class TestSlackListenerStartup:
+    def setup_method(self):
+        _FakeSlackListener.instances.clear()
+
+    def test_started_when_configured_and_env_present(self, monkeypatch):
+        monkeypatch.setattr(sup, "SlackListener", _FakeSlackListener)
+        monkeypatch.setenv("DEVTEAM_SLACK_APP_TOKEN", "xapp-1")
+        monkeypatch.setenv("DEVTEAM_SLACK_TOKEN", "xoxb-1")
+        cfg = {**DEFAULT_CONFIG, "notify_channels": ["console", "file", "slack"]}
+        listener, q = sup._start_slack_listener(cfg)
+        assert listener is not None and listener.started
+        assert isinstance(q, queue.Queue)
+
+    def test_not_started_when_slack_not_in_notify_channels(self, monkeypatch):
+        monkeypatch.setattr(sup, "SlackListener", _FakeSlackListener)
+        monkeypatch.setenv("DEVTEAM_SLACK_APP_TOKEN", "xapp-1")
+        monkeypatch.setenv("DEVTEAM_SLACK_TOKEN", "xoxb-1")
+        listener, q = sup._start_slack_listener(DEFAULT_CONFIG)  # default notify_channels has no "slack"
+        assert listener is None
+        assert _FakeSlackListener.instances == []
+
+    def test_not_started_missing_env(self, monkeypatch, capsys):
+        monkeypatch.setattr(sup, "SlackListener", _FakeSlackListener)
+        monkeypatch.delenv("DEVTEAM_SLACK_APP_TOKEN", raising=False)
+        monkeypatch.delenv("DEVTEAM_SLACK_TOKEN", raising=False)
+        cfg = {**DEFAULT_CONFIG, "notify_channels": ["console", "file", "slack"]}
+        listener, q = sup._start_slack_listener(cfg)
+        assert listener is None
+        assert _FakeSlackListener.instances == []
+        assert "DEVTEAM_SLACK_APP_TOKEN" in capsys.readouterr().err
+
+    def test_telegram_start_logic_unchanged_when_slack_also_configured(self, tmp_path, monkeypatch):
+        """§9: Telegram start logic must be byte-preserved regardless of
+        Slack config — both listeners are independent, additive wiring."""
+        monkeypatch.delenv("DEVTEAM_TG_TOKEN", raising=False)
+        monkeypatch.delenv("DEVTEAM_TG_CHAT", raising=False)
+        cfg = {**DEFAULT_CONFIG, "notify_channels": ["console", "file", "telegram"]}
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        listener, q, wave_event = sup._start_tg_listener(repo, cfg)
+        assert listener is None  # missing env, same as before Slack existed
+
+
+# ---------------------------------------------- byte-identical when disabled
+def test_tick_identical_when_tower_slack_inbox_all_disabled(tmp_path, capsys):
+    """The ATLAS-A5-style graded criterion: with tower disabled (default),
+    slack absent from notify_channels (default), and no .devteam/inbox
+    directory, a tick must show zero trace of any of the three new wirings."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+    (repo / "autopilot.json").write_text(json.dumps({"builders": ["GB"]}), encoding="utf-8")
+    assert sup.main(["--once", "--repo", str(repo)]) == 0
+    out = capsys.readouterr()
+    combined = out.out + out.err
+    for marker in ("[tower]", "Slack listener", "TOWER_COMMAND"):
+        assert marker not in combined
+    assert not (repo / ".devteam" / "inbox").exists()
