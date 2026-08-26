@@ -125,5 +125,19 @@
     "max_cards_per_night": 30,
     "exclude": [],
     "_comment": "Ships DISABLED per the ATLAS spec's ask-don't-auto-flip rule (same as control.mode and the builder roster). Enable per project only AFTER running `python scripts/atlas.py scan --full` there -- an empty/absent db makes dispatch skip the section silently, so a true here without a scan is a no-op that merely looks configured. See docs/ATLAS.md."
+  },
+  "tower": {
+    "enabled": false,
+    "url": "",
+    "project_id": "",
+    "_token_env": "DEVTEAM_TOWER_TOKEN",
+    "_comment": "TOWER P1 (specs/DEVDEPARTMENT_TOWER_SPEC.md \u00a71). Ships DISABLED per the ask-don't-auto-flip rule. Enable per project only after Tower is deployed and DEVTEAM_TOWER_TOKEN is set in the supervisor's environment \u2014 never in a tracked file."
+  },
+  "slack": {
+    "enabled": false,
+    "project_channel": "",
+    "ops_channel": "",
+    "thread_tracking": true,
+    "_comment": "Slack primary channel (specs/DEVDEPARTMENT_SLACK_SPEC.md \u00a75). Ships DISABLED; enabling requires the \u00a710 live-verification checklist (app from manifest, bot invited, three env vars, slack_notify.py --test) and adding 'slack' to notify_channels."
   }
 }

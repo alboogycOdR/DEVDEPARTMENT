@@ -1,8 +1,8 @@
 ---
-plan_version: 3.7
-last_updated: 2026-08-25T21:05:00Z
-overall_status: idle
-orchestrator_notes: "Plan v3.7 — status scan. All 11 tasks (002-012) done+merged, both waves (ATLAS A1-A6, PACK HARDENING + L2 DISPATCH RESILIENCE) closed, 9/11 first-pass — full history in REVIEW.md, not repeated here. hooks/lib.js PROTECTED_EXCEPTIONS confirmed EMPTY (verified this scan, not just claimed) — all grants from every prior wave were in fact removed; the v3.6 note claiming grants \"STILL LIVE\" was stale prose, corrected here. No active branches/worktrees in use (wt-codex/wt-grok both idle, detached, clean — reuse-ready). CROSS-SESSION ACTIVITY DETECTED since v3.6 (2026-08-16): (1) an external GitHub PR (#3, needs_review Telegram/console notify from plan_commit) merged 2026-08-20 — plan_commit.sh/.ps1 + new scripts/notify_needs_review.py; (2) a SEPARATE ORCH session (author identity \"ORCH <orch@basileia.local>\", Linux sandbox per its own commit evidence) authored three commits 2026-08-22: a new specs/DEVDEPARTMENT_TOWER_SPEC.md (cross-project mission control dashboard, decisions locked with Alister: Slack primary channel replacing Telegram per specs/DEVDEPARTMENT_SLACK_SPEC.md, fork grok-workspace Mission Control rather than build from scratch, clawsrv/PM2/Tailscale hosting, own repo + two pack integration points) plus a portability fix to TASK-011s tests (TestEmptyHuskReclaim now skipif-guards its two powershell-only cases so the suite doesnt fail on a machine without powershell — good fix, correctly scoped, non-territory). TOWER is SPEC ONLY, marked decompose-ready, ZERO PLAN.md tasks exist for it yet — this scan does NOT decompose it (that is a planning decision for Alister, and a second session may already be intending to). Next ORCH action: Alister decides whether to decompose TOWER now or continue other work; if decomposing, confirm no other session is mid-decompose first to avoid a duplicate-plan race."
+plan_version: 4.0
+last_updated: 2026-08-26T01:31:45Z
+overall_status: planned
+orchestrator_notes: "Plan v4.0 — TOWER PACK WAVE (P1 + P1b + P2): 6 tasks TASK-013..018 from specs/DEVDEPARTMENT_TOWER_SPEC.md + specs/DEVDEPARTMENT_SLACK_SPEC.md. SCOPE: pack-side phases only — Tower service T1-T5 and Slack P1b-3/4 belong to the future tower repo (TOWER §3/§4), NOT this plan. PROVENANCE NOTE: decomposed on claude-sonnet-5 (high effort) by explicit Alister override of the fable-5 model-discipline note (re-invoked after the deviation was flagged). Territory design: five pure-module tasks + ONE integration task (018) owning supervisor.py — the proven ATLAS-A5 pattern; ORCH pre-added the tower/slack autopilot.json blocks + safe-default test pins in the planning commit so NO task touches autopilot.json. ATLAS impact consulted (index rescanned): tg_commands.py is imported by control.py and maintenance.py — recorded in TASK-013 (shim must preserve full API). WAVE A (dispatch now, all dep-free): 013 GB (critical — gates 016/017/018), 014 CX, 015 S5. WAVE B: 016 GB + 017 CX (both after 013). WAVE C: 018 S5 (after all). FIREWALL GRANTS needed at dispatch per task (scripts/** protected): 013 commands.py+tg_commands.py; 014 tower_sync.py; 015 slack_notify.py+notify.py; 016 slack_listener.py; 017 inbox.py; 018 supervisor.py — add to hooks/lib.js PROTECTED_EXCEPTIONS at each dispatch, DELETE at done. sync-manifest.json entries for the five new scripts/tests DEFERRED to a post-wave ORCH commit (pre-adding would spray MISSING_IN_PACK noise on downstream syncs). Spec ambiguities ORCH-resolved and flagged in the report: Socket-Mode-vs-Tower-URLs contradiction (Socket Mode = pre-Tower path); slack_sdk as the pack FIRST optional runtime dep (fail-open, Alister may veto → 016 re-scoped); SLACK §7 tg_listener-shim wording vs §9 preserved-as-is (§9 governs); safe-defaults test class does NOT auto-cover new keys (ORCH pinned tower/slack explicitly). Next ORCH action: dispatch Wave A."STILL LIVE\" was stale prose, corrected here. No active branches/worktrees in use (wt-codex/wt-grok both idle, detached, clean — reuse-ready). CROSS-SESSION ACTIVITY DETECTED since v3.6 (2026-08-16): (1) an external GitHub PR (#3, needs_review Telegram/console notify from plan_commit) merged 2026-08-20 — plan_commit.sh/.ps1 + new scripts/notify_needs_review.py; (2) a SEPARATE ORCH session (author identity \"ORCH <orch@basileia.local>\", Linux sandbox per its own commit evidence) authored three commits 2026-08-22: a new specs/DEVDEPARTMENT_TOWER_SPEC.md (cross-project mission control dashboard, decisions locked with Alister: Slack primary channel replacing Telegram per specs/DEVDEPARTMENT_SLACK_SPEC.md, fork grok-workspace Mission Control rather than build from scratch, clawsrv/PM2/Tailscale hosting, own repo + two pack integration points) plus a portability fix to TASK-011s tests (TestEmptyHuskReclaim now skipif-guards its two powershell-only cases so the suite doesnt fail on a machine without powershell — good fix, correctly scoped, non-territory). TOWER is SPEC ONLY, marked decompose-ready, ZERO PLAN.md tasks exist for it yet — this scan does NOT decompose it (that is a planning decision for Alister, and a second session may already be intending to). Next ORCH action: Alister decides whether to decompose TOWER now or continue other work; if decomposing, confirm no other session is mid-decompose first to avoid a duplicate-plan race."
 ---
 
 # Project Plan
@@ -440,3 +440,163 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-08-16T22:05:00Z
+
+### TASK-013
+**Title:** commands.py — extract the shared command-validation module; tg_commands becomes a shim
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** critical
+**Spec_References:** specs/DEVDEPARTMENT_SLACK_SPEC.md §5 (commands.py), specs/DEVDEPARTMENT_TOWER_SPEC.md H1, §1 P2
+**Owned_Paths:** scripts/commands.py, scripts/tg_commands.py, tests/test_commands.py
+**Depends_On:** —
+**Description:** The structural foundation of the whole wave: every command path (Telegram today; Slack listener, Tower inbox tomorrow) must validate through ONE module — H1 makes this a hard constraint, and the Slack spec calls it "the structural fix for the duplication that has caused three real drift incidents." Extract tg_commands.py's command-validation logic (command names, per-command arg validation, the vocabulary approve/rework/answer/stop/resume/wave/dispatch/status/usage/mute/digest) into a new scripts/commands.py; tg_commands.py becomes a thin shim that re-exports so every existing caller keeps working unchanged. ATLAS-surfaced coupling (recorded per decompose step 4): tg_commands has Python importers BEYOND supervisor.py — scripts/control.py and scripts/maintenance.py import it for git_pull/git_commit_and_push/git_commit_and_push_detailed — so the shim must preserve the ENTIRE public surface (validation + git helpers + render_* functions), not just validation; the git helpers may stay physically in tg_commands (they are not command-validation and do NOT move to commands.py). Spec discrepancy resolved by ORCH: SLACK §7's row says "tg_listener.py becomes a thin shim" but §5 says tg_COMMANDS becomes the shim and §9 says tg_listener.py is "preserved as-is" — §5/§9 govern; do not touch tg_listener.py. Zero behaviour change: this is a refactor task; test_tg_commands.py, control.py, maintenance.py, supervisor.py are all out of territory and must pass untouched.
+**Acceptance_Criteria:**
+- [ ] scripts/commands.py exists and owns the command-validation logic; slack_listener/inbox/Tower can import it as the single validator (SLACK §5: "the shared command-validation module"; TOWER H1: "the same handler path commands.py exposes")
+- [ ] tg_commands.py is a thin shim re-exporting its full previous public surface — validation, git helpers, renderers — with zero signature changes (SLACK §5: "tg_commands.py becomes a thin shim (its tests stay green)")
+- [ ] tests/test_tg_commands.py passes UNTOUCHED; control.py and maintenance.py imports still resolve (ATLAS coupling above)
+- [ ] tests/test_commands.py covers the validation vocabulary incl. malformed and unknown commands rejected, never guessed (TOWER §1 P2: "unknown → rejected, never guessed")
+- [ ] tg_listener.py untouched (SLACK §9)
+- [ ] Full Python + Node suites green
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T01:31:45Z
+
+### TASK-014
+**Title:** tower_sync.py — snapshot assembly + push, queue pull, inbox materialisation (module only)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 P1 (snapshot schema v1), H3, H4, H5
+**Owned_Paths:** scripts/tower_sync.py, tests/test_tower_sync.py
+**Depends_On:** —
+**Description:** Build P1 as a pure module — NO supervisor.py edits (TASK-018 wires the tick; expose clean functions for it, e.g. build_snapshot(repo, cfg, state) -> dict and sync_tick(repo, cfg) -> None performing push+pull). Snapshot schema v1 exactly as specced §1: schema/project_id/ts/pack_version, supervisor{mode,autonomy_level,tick,stop_file}, wave totals, tasks[] (from validate_plan.parse_tasks — never a second parser), builders[], review_queue[], usage (usage_probe.load_cache — the cache-only read path, NEVER probe(), a broken probe must not stall a tick), recent_events[] (AUTOPILOT_LOG.md tail). Spec §1 says "everything above is already computed inside the supervisor — P1 is assembly and transport, not new analysis": where a field is genuinely not derivable module-side (e.g. live tick number, prev_wave_minutes), emit null and document each null in the module docstring — nulls are honest, invented numbers violate H2. Transport per H3/H4: POST {url}/ingest with bearer token from the env var NAMED BY autopilot.json tower._token_env (never a tracked file); then GET {url}/queue/{project_id} and materialise pending commands as individual JSON files into .devteam/inbox/ (the consumer, TASK-017's module, picks them up — filesystem is the interface, no import coupling), then DELETE each acked queue entry. Fail-open per H5: Tower unreachable/timeout/non-200 → one warning line, return cleanly, never raise; tower.enabled false or url empty → silent no-op. stdlib only (urllib); 10s timeout. Config key already added by ORCH in this planning commit — autopilot.json is NOT in your territory.
+**Acceptance_Criteria:**
+- [ ] build_snapshot() emits schema v1 with every §1 field present; underivable fields are null and documented, never invented (H2)
+- [ ] tasks[] built via validate_plan.parse_tasks (no second PLAN.md parser); usage via usage_probe.load_cache only — probe() is never called (H5 posture)
+- [ ] Push carries Authorization: Bearer from the env var named by tower._token_env; token never read from a tracked file (H4)
+- [ ] Queue pull materialises commands into .devteam/inbox/ as one JSON file per command and DELETEs acked entries; one HTTP round-trip pair per invocation, always project-initiated (H4)
+- [ ] tower.enabled=false or url empty → exact no-op; unreachable Tower → ONE warning line, clean return, no exception (H5)
+- [ ] tests cover schema shape, fail-open paths (no network in tests — stub transport), inbox materialisation; full Python + Node suites green
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T01:31:45Z
+
+### TASK-015
+**Title:** slack_notify.py — Block Kit sender, thread tracking, notify.py slack channel
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** specs/DEVDEPARTMENT_SLACK_SPEC.md §3 (message designs), §5 (slack_notify.py), §2 (channel rule), §9, §10
+**Owned_Paths:** scripts/slack_notify.py, scripts/notify.py, tests/test_slack_notify.py, tests/test_notify.py
+**Depends_On:** —
+**Description:** P1b-1 — ships independently: "Slack notifications with thread tracking work the moment the token is set" (§7). New module scripts/slack_notify.py using the Slack WEB API (chat.postMessage with blocks=, plus chat.update and reactions.add) — NOT an incoming webhook (§5 names the Web API as strictly more capable). Block Kit builders for the four §3 designs: P2-BLOCKED (with Approve/Rework/Answer button row), P2-NEEDS-REVIEW, P1-STOP-THE-LINE, P0-WAVE-COMPLETE — button action payloads land at Tower later (P1b-3); in this increment buttons are rendered but their interactive delivery is Tower-side, which is fine: the messages are fully useful as rich notifications now. Channel routing per §2 rule: P0 digests + P1 → ops_channel; P2 + usage/status → project_channel; wave-complete → both. Thread tracking per §5: store ts keyed by task_id in .devteam/slack_threads.json; follow-ups post with thread_ts; done → ✅ reaction; decided alerts get chat.update (not a new message). Rate limits: exponential backoff on 429; unreachable Slack → fail open to the file channel. `python scripts/slack_notify.py --test` posts one smoke message to each configured channel (§10 step 4). Also IN TERRITORY: register the channel in scripts/notify.py — add send_slack to its CHANNELS dict, importing slack_notify lazily so notify.py keeps working when slack config/env is absent; telegram sender preserved as-is (§9: "no code is deleted"). stdlib urllib only (Web API is plain HTTPS+JSON — no SDK needed for sending). Token from DEVTEAM_SLACK_TOKEN env only. Config key already added by ORCH — autopilot.json NOT in your territory. Tests: stub transport, no live Slack; test_notify.py gains the slack-channel routing cases and its existing cases stay green.
+**Acceptance_Criteria:**
+- [ ] Web API sender (chat.postMessage blocks=), not a webhook (§5); token from DEVTEAM_SLACK_TOKEN env only, never a tracked file (§8)
+- [ ] All four §3 Block Kit designs implemented with the specced fields (blocked reason + dossier tail; test counts; violations list; wave stats) and button rows rendered
+- [ ] §2 routing rule exact: P0/P1 → ops_channel, P2/status/usage → project_channel, wave-complete → both
+- [ ] Thread tracking: .devteam/slack_threads.json keyed by task_id; follow-ups as thread_ts replies; ✅ reaction on done; resolved alerts updated in place via chat.update (§5)
+- [ ] 429 → exponential backoff; Slack unreachable → fail open to file channel, never raises (§5)
+- [ ] --test subcommand posts one message per configured channel and reports delivery (§10)
+- [ ] notify.py: "slack" channel registered, lazily imported, degrades cleanly when unconfigured; telegram sender byte-untouched (§9); existing test_notify.py cases green
+- [ ] Full Python + Node suites green
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T01:31:45Z
+
+### TASK-016
+**Title:** slack_listener.py — Socket Mode command listener (optional-dependency, fail-open)
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** medium
+**Spec_References:** specs/DEVDEPARTMENT_SLACK_SPEC.md §5 (slack_listener.py), §1 (transport note), §8
+**Depends_On:** TASK-013
+**Owned_Paths:** scripts/slack_listener.py, tests/test_slack_listener.py
+**Description:** P1b-2's listener half (commands.py was TASK-013). A SlackListener class mirroring TelegramListener's exact interface (daemon thread, queue.Queue of validated commands, start/stop) so TASK-018 can wire it identically. Transport: Slack Socket Mode (apps.connections.open → WebSocket) using DEVTEAM_SLACK_APP_TOKEN (§8). ORCH-RESOLVED SPEC AMBIGUITY, read carefully: the §1 manifest points slash-commands/interactions at Tower's HTTP endpoints, but Socket Mode and request-URLs are mutually exclusive per Slack app — and Tower does not exist yet. Resolution: Socket Mode is the PRE-TOWER command path (P1b can ship before T1, §0 of the TOWER phasing); when Tower's P1b-3 lands, the app flips to request URLs and this listener becomes the no-Tower fallback. Second ORCH-resolved decision: the pack has ZERO third-party runtime dependencies and stdlib has no WebSocket client, so slack_sdk is the pack's first OPTIONAL runtime dependency — import guarded: absent → listener refuses to start with ONE clear warning naming the pip install, and everything else (telegram, console, file, slack sending via urllib) is unaffected. Never a hard requirement; requirements stay out of the pack's install path. Commands received validate through commands.py (TASK-013) — no second validation path. Tests: no live Slack, no slack_sdk requirement in CI — stub the socket layer; test the absent-dependency path explicitly.
+**Acceptance_Criteria:**
+- [ ] SlackListener mirrors TelegramListener's interface (daemon thread + queue.Queue + start/stop) so supervisor wiring is symmetric (§5: "the architecture does not change, only the transport")
+- [ ] Socket Mode via DEVTEAM_SLACK_APP_TOKEN (§5, §8); no public URL required
+- [ ] slack_sdk OPTIONAL: importable-absent → one warning naming the remedy, listener disabled, zero impact on every other channel (pack fail-open discipline)
+- [ ] Every received command validates through scripts/commands.py — no duplicated validation (SLACK §5, TOWER H1)
+- [ ] Malformed/unknown commands rejected, never guessed (TOWER §1 P2 contract)
+- [ ] Tests stub the transport and cover the no-dependency path; full Python + Node suites green
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T01:31:45Z
+
+### TASK-017
+**Title:** inbox.py — Tower inbox consumer module (validate, act-shape, reject)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** high
+**Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 P2, H1, H5
+**Depends_On:** TASK-013
+**Owned_Paths:** scripts/inbox.py, tests/test_inbox.py
+**Description:** P2 as a pure module — NO supervisor.py edits (TASK-018 calls it before decide()). drain_inbox(repo, cfg) -> list of validated command dicts: reads .devteam/inbox/*.json (the files TASK-014's queue pull materialises — the filesystem is the interface between the two modules; neither imports the other), validates each through scripts/commands.py (H1: "through the same handler path commands.py exposes" — building a second validator here is automatic rework), returns validated commands in the same shape the tg queue drain produces so TASK-018 can feed them through the existing action handlers unchanged. Command schema per §1 P2: id/issued_at/source/actor/command/args with the vocabulary approve|rework|answer|stop|resume|wave|dispatch. Malformed JSON or failed validation → file MOVED to .devteam/inbox/rejected/ with a .reason sidecar (never deleted, never guessed — §1 P2); successfully drained files are removed after the caller confirms consumption (design the two-phase contract explicitly: list first, ack(file) after handling, so a crash mid-tick never loses a command). Idempotent and safe on: empty/missing inbox dir, duplicate command ids (second occurrence → rejected/ as duplicate), files appearing mid-drain. Fail-open: any unexpected error → warning line + skip that file, never a raised exception into the tick (H5).
+**Acceptance_Criteria:**
+- [ ] drain_inbox reads .devteam/inbox/*.json and validates EVERY command through scripts/commands.py — no second validation path (H1)
+- [ ] §1 P2 schema enforced: unknown command or malformed payload → inbox/rejected/ with reason, never guessed, never deleted
+- [ ] Two-phase consume: a command survives a crash between drain and handling (list/ack contract, tested)
+- [ ] Duplicate command ids rejected as duplicates (audit honesty — Tower's queued→delivered→done trail depends on it, H1 corollary)
+- [ ] Empty/absent inbox → clean no-op; unexpected per-file errors → warn + skip, never raise (H5)
+- [ ] Output shape matches what the existing tg-queue drain hands the action handlers (verified in tests against the real shape)
+- [ ] Full Python + Node suites green
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T01:31:45Z
+
+### TASK-018
+**Title:** supervisor.py integration — tower tick wiring, inbox drain, slack listener, unified command queue
+**Status:** pending
+**Assigned_To:** S5
+**Priority:** high
+**Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 P1+P2, H1, H4, H5; specs/DEVDEPARTMENT_SLACK_SPEC.md §5 (listener wiring, _drain_command_queue rename), §9
+**Depends_On:** TASK-013, TASK-014, TASK-015, TASK-016, TASK-017
+**Owned_Paths:** scripts/supervisor.py, tests/test_supervisor.py
+**Description:** The single-owner integration task — the ONLY task that edits supervisor.py, sequenced after every module lands (same proven pattern as ATLAS A5). Four wirings: (1) P1 tick: after the existing snapshot/board work each tick, call tower_sync (push + queue-pull) when tower.enabled — fail-open, ONE warning line on any tower error, tick proceeds, Slack/console unaffected (H5 verbatim); per H4 this runs inside the normal tick, immediately after the push comes the queue pull that materialises .devteam/inbox/. (2) P2: call inbox.drain_inbox BEFORE decide() (spec: "in supervisor.py, before decide()"), feeding validated commands through the SAME handler path the tg queue uses, honouring the two-phase ack contract from TASK-017. (3) Slack listener: start SlackListener alongside TelegramListener when "slack" is in notify_channels and its env vars are set — same fail-open posture as the tg listener (missing env → warning, not started); telegram start logic byte-preserved (§9). (4) The §5 rename: _drain_tg_queue becomes _drain_command_queue, draining BOTH listeners' queues through one path — tg_listener.py itself is out of territory and untouched. Respect the standing supervisor lessons: reuse reap/notify machinery, never rebuild (L2 spec §0 precedent); healthy-tick behaviour with tower/slack/inbox all disabled must be byte-identical to today (assert it — the ATLAS A5 byte-identical-when-disabled criterion is the model). DEFAULT_CONFIG gains the tower/slack keys mirroring the autopilot.json template ORCH committed.
+**Acceptance_Criteria:**
+- [ ] Tick calls tower_sync push+pull when enabled; any tower failure → exactly one warning line, tick completes normally (H5); disabled → zero tower code in the hot path's effects
+- [ ] inbox.drain_inbox runs before decide() and its commands flow through the SAME action-handler path as tg commands (H1); two-phase ack honoured
+- [ ] SlackListener started when configured, with tg-style fail-open on missing env; TelegramListener start logic unchanged (§9)
+- [ ] _drain_tg_queue → _drain_command_queue, one drain path for both queues (§5); tg_listener.py untouched
+- [ ] With tower+slack+inbox all disabled/absent: a tick is behaviourally identical to pre-wave master (tested — the A5 byte-identical discipline)
+- [ ] DEFAULT_CONFIG mirrors the template's tower/slack keys
+- [ ] Regression tests for each wiring incl. fail-open paths; full Python + Node suites green
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T01:31:45Z

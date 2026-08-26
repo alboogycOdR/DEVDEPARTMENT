@@ -460,6 +460,22 @@ class TestPackTemplateShipsSafeDefaults:
             "control.mode must ship legacy: strict changes who may write PLAN.md and is "
             "an onboarding question, not a pack default")
 
+    def test_tower_ships_disabled(self):
+        assert self._cfg().get("tower", {}).get("enabled") is False, (
+            "tower.enabled must ship false (TOWER spec H5 + ask-don't-auto-flip): a project "
+            "must never start pushing snapshots to a Tower URL nobody configured")
+
+    def test_slack_ships_disabled_and_not_in_notify_channels(self):
+        # Slack spec §10 claims this class "already covers new ask-don't-auto-flip
+        # keys" — it does not; every safe-default here is pinned per-key. These two
+        # assertions ARE that coverage for the slack key.
+        assert self._cfg().get("slack", {}).get("enabled") is False, (
+            "slack.enabled must ship false; enabling requires the §10 live-verification "
+            "checklist (app, channels, env vars, --test smoke)")
+        assert "slack" not in self._cfg().get("notify_channels", []), (
+            "'slack' must not ship in notify_channels — adding it is the per-project "
+            "enable step, exactly as telegram was")
+
     def test_s5b_ships_defined_but_inactive(self):
         """S5B requires a live CLAUDE_CONFIG_DIR verification on the target
         machine; shipping it active would dispatch to an unauthenticated
