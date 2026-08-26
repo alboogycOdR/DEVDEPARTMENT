@@ -1,12 +1,22 @@
 # TOWER — Cross-Project Mission Control. Build Specification
 
-**Status:** SPEC ONLY — nothing in the Tower service is built. Pack-side
-integration points (P1/P2/P1b) are specced and ready to decompose.
-**Baseline:** pack @ `5cb23a9`. Suites green at time of writing.
-**Last major update:** 2026-08-22 — reference implementation discovered
-(grok-workspace Mission Control, built by GB for Alister); build approach
-changed from build-from-scratch to fork-and-extend. All five hard constraints
-and all five phases unchanged; stack and starting point updated throughout.
+**Status:** Pack-side integration points (P1/P2/P1b) are BUILT and merged
+(TASK-013–018, 2026-08-26, all first-pass, 931/0 + 36/0). The Tower service
+itself (T1–T5) is still SPEC ONLY — nothing in the Tower service is built yet.
+**Baseline:** pack @ `5cb23a9` (spec baseline); pack-side wave landed on
+master through commit `8d9915d`.
+**Last major update:** 2026-08-26 — the grok-workspace fork source (see
+"Starting point" below) was confirmed **permanently deleted** by Alister
+(worktree cleanup, believed temporary at the time). Exhaustive search (this
+machine, GitHub, clawsrv reachability) found no copy. **Decision (Alister,
+2026-08-26): T1 rebuilds the frontend shell from this spec's §2 component
+inventory instead of forking** — the inventory below was written in enough
+detail (every kept/replaced/removed file, the design tokens, the exact stack)
+that this is a clean, well-specified scaffold task, not a guess. Section 2's
+"Why fork, not build from scratch" and "What gets replaced / what gets kept"
+subsections are retained below as the AUTHORITATIVE COMPONENT SPEC for the
+from-scratch build — read them as "build this," not "replace this in the
+fork." All five hard constraints and all five phases unchanged.
 
 ---
 
@@ -20,7 +30,7 @@ and all five phases unchanged; stack and starting point updated throughout.
 | Repo shape | Tower is its **own repo**, deployed once. The pack gains exactly two integration points and nothing else. |
 | Workshop view | Confirmed as **T2.5**. MetroCity 2.0 sprites confirmed as the character set (see assets in session history). |
 | Flutter app | Confirmed as **T5**, built *by* DEVDEPARTMENT as an onboarded project once Tower's API is stable. |
-| **Starting point** | **Fork the grok-workspace Mission Control** (built by GB for Alister, 2026-08). Do not build from scratch. |
+| **Starting point** | ~~Fork the grok-workspace Mission Control~~ **SUPERSEDED 2026-08-26**: source permanently deleted, no copy found anywhere (machine, GitHub, clawsrv). **New decision: build the shell from scratch, to this spec's §2 component inventory exactly** — same design tokens, same stack (Vite + TanStack Router + React 19 + Tailwind v4 + Zustand), same file/component shape, no functional difference in the end state. |
 
 **What TOWER answers, in one line:** *"Across every project I run — what is
 executing, what is waiting on me, and where is it stalling?"* — currently
@@ -115,13 +125,17 @@ Validates through `commands.py` (the shared module from P1b-2). Malformed →
 
 ---
 
-## 2. The Tower service — fork-and-extend approach
+## 2. The Tower service — component spec (originally fork-and-extend; source lost 2026-08-26, see status header — build to this inventory from scratch instead)
 
-### Why fork, not build from scratch
+### Why this design (originally: why fork, not build from scratch)
 
 The grok-workspace Mission Control (built by GB for Alister, discovered
-2026-08-22) is a **production-quality personal dashboard** that already
-implements the visual and structural shell Tower needs:
+2026-08-22, **since permanently deleted — no copy recoverable**) was a
+**production-quality personal dashboard** that already implemented the
+visual and structural shell Tower needs. It is gone, but the description
+below of what it had is detailed enough to serve as the build spec directly —
+read every "keep verbatim" below as "build this component to this
+description," not as an instruction to copy a file that no longer exists:
 
 - **Design system:** Orbitron + Share Tech Mono, full custom token set
   (`--color-cyan: #00f5ff`, `--shadow-glow`, atmospheric orb background,
@@ -148,6 +162,15 @@ cost. Fork it instead.
 
 ### What gets replaced / what gets kept
 
+**Build-from-scratch reading key** (the source no longer exists — build
+straight to the end state each row describes, there is no intermediate
+"first copy, then edit" step): **Keep verbatim** → build this component
+fresh, exactly as described (design tokens, structure, behaviour) — nothing
+to diff against, just build it right the first time. **Keep, adapt** /
+**Extend** / **Replace \*** → build directly in the described end-state
+form; there is no "original" version to start from and modify. **Remove** →
+simply don't build it; it never needs to exist in the new repo.
+
 | Component | Action | Reason |
 |---|---|---|
 | `src/styles.css` — design system | **Keep verbatim** | Best-in-class; matches the aesthetic |
@@ -163,7 +186,7 @@ cost. Fork it instead.
 | YouTube / Memory / Schedule pages | **Remove** | Out of Tower's scope |
 | `src/routes/agents.tsx` | **Becomes the workshop route** | `/workshop/:projectId` |
 
-### Stack (inherited from the fork)
+### Stack (matches the lost reference implementation exactly)
 
 **Vite + TanStack Router + React 19 + Tailwind v4 + Zustand.** FastAPI is
 no longer needed for the UI layer — the fork is already a complete,
@@ -293,7 +316,10 @@ once T3's API is stable — the framework builds its own companion app.
 
 ## 4. Onboarding the Tower repo
 
-Day one: `git clone <grok-workspace>` into a new `tower` repo. Immediately
+Day one: `git init` a new `tower` repo (originally specced as `git clone
+<grok-workspace>` — superseded 2026-08-26, source deleted; scaffold fresh
+instead: `npm create vite@latest . -- --template react-ts` or equivalent,
+then add TanStack Router + Tailwind v4 + Zustand per §2's stack). Immediately
 run `onboard.md` in Claude Code. The repo appears as a row on the board it
 is constructing — DEVDEPARTMENT builds Tower's T1–T4 as a real PLAN.md wave.
 Project ID: `tower`. This is not a meta-joke; it is the most honest
