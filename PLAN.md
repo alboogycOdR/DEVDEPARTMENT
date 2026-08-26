@@ -510,7 +510,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-015
 **Title:** slack_notify.py — Block Kit sender, thread tracking, notify.py slack channel
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_SLACK_SPEC.md §3 (message designs), §5 (slack_notify.py), §2 (channel rule), §9, §10
@@ -545,8 +545,9 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-26T04:35:00Z] [S5] `python -m pytest tests/test_slack_notify.py tests/test_notify.py -q` → 89 passed in 0.42s. `python -m pytest -q` (full suite) → 822 passed, 1 failed in 101.15s — the sole failure is tests/test_sync_from_pack.py::test_every_shipped_test_file_is_registered, the pre-flagged/deferred sync-manifest.json gap described above (not in Owned_Paths, not a regression: introduced only by a new test file existing, no assertion logic touched). `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff local-main/master...HEAD --stat` → 4 files changed (scripts/notify.py, scripts/slack_notify.py, tests/test_notify.py, tests/test_slack_notify.py), matching Owned_Paths exactly.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** S5
-**Updated_At:** 2026-08-26T04:35:00Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T06:45:00Z
+**Review_Note:** [2026-08-26T06:45:00Z] [ORCH] APPROVED (first-pass), merged --no-ff into master. Territory clean (net diff = exactly the 4 Owned_Paths, no PLAN.md/frontmatter edits, c8b9872 preflight present). All 8 ACs verified against SLACK spec text itself: Web API chat.postMessage(blocks=)/chat.update/reactions.add — not a webhook (§5); token DEVTEAM_SLACK_TOKEN env only (§8); all four §3 Block Kit designs with correct button rows; §2 routing exact (P0/P1→ops, P2/status/usage→project, wave_complete→both deduped); thread tracking via .devteam/slack_threads.json (post→thread_ts reply→chat.update in place→✅ reaction, atomic tmp+replace write); 429 exponential backoff honouring Retry-After + fail-open never-raises (§5); --test smoke subcommand (§10); notify.py registers send_slack via lazy import degrading cleanly, fails open to file channel on delivery failure, telegram sender byte-untouched (§9). ORCH re-ran FULL suite in worktree: pytest 822 passed / 1 failed, node 36/0. The single failure (test_sync_from_pack.py::test_every_framework_owned_path_exists_in_the_pack) is NOT a TASK-015 regression: it fails identically on bare master with a SUPERSET list (10 files incl. slack_notify.py + test_slack_notify.py); on this branch those two files EXIST so the branch's missing list is master's-minus-two — TASK-015 partially HEALS the ORCH-attributed manifest state (4f106a3 pre-registered the whole wave's files). Remaining 8 missing belong to future TOWER tasks (016/017/018). Zero TASK-015-attributable failures. Not subject to the full-suite-green merge gate per plan v4.3 orchestrator_notes.
 
 ### TASK-016
 **Title:** slack_listener.py — Socket Mode command listener (optional-dependency, fail-open)
