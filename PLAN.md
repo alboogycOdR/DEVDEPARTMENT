@@ -443,7 +443,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-013
 **Title:** commands.py — extract the shared command-validation module; tg_commands becomes a shim
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** specs/DEVDEPARTMENT_SLACK_SPEC.md §5 (commands.py), specs/DEVDEPARTMENT_TOWER_SPEC.md H1, §1 P2
@@ -479,10 +479,11 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-26T04:11:37Z] [GB] `python -m pytest tests/test_commands.py tests/test_tg_commands.py -q` → 141 passed in 1.79s (55 new in test_commands.py; test_tg_commands.py untouched). `python -m pytest tests/test_control.py tests/test_supervisor_telegram.py tests/test_usage.py` green (importers resolve). `python -m pytest -q` → 794 passed, 1 failed: tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered lists tests/test_commands.py as unregistered. `node hooks/run-tests.js` → 36 passed, 0 failed. git diff master...HEAD --name-only = the three Owned_Paths only; tg_listener.py untouched.
 - [2026-08-26T04:38:00Z] [GB] After merge of master (4f106a3): `python -m pytest -q` → 794 passed, 1 failed in 112.03s — `tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_framework_owned_path_exists_in_the_pack` missing `['scripts/inbox.py', 'scripts/slack_listener.py', 'scripts/slack_notify.py', 'scripts/tower_sync.py', 'tests/test_inbox.py', 'tests/test_slack_listener.py', 'tests/test_slack_notify.py', 'tests/test_tower_sync.py']`. `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff master...HEAD --name-only` = scripts/commands.py, scripts/tg_commands.py, tests/test_commands.py.
 - [2026-08-26T05:34:00Z] [GB] After merge aa8d617 (36b53de guard): `python -m pytest tests/test_commands.py tests/test_tg_commands.py tests/test_control.py tests/test_supervisor_telegram.py tests/test_usage.py -q` → 257 passed in 14.34s. `python -m pytest -q` → 881 passed in 132.22s (0 failed). `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff master...HEAD --name-only` = scripts/commands.py, scripts/tg_commands.py, tests/test_commands.py. tg_listener.py not in the diff.
-**Review_Findings:** —
+**Review_Findings:**
+- [2026-08-26T08:10:00Z] [ORCH] APPROVED, first-pass. Territory clean (net diff master...task/TASK-013-gb = exactly scripts/commands.py, scripts/tg_commands.py, tests/test_commands.py; tg_listener.py not in diff). PLAN.md edits on branch = only ORCH's two master-merge commits (f9c1642, aa8d617); GB feature commit 3ef169b touched zero PLAN.md and no sync-manifest.json. c8b9872 preflight present (04:03:58Z, all three paths). commands.py owns a closed VOCABULARY frozenset + validate() single entry point; unknown → _reject_unknown ("never guessed"), malformed rejected — verified in test_commands.py (test_unknown_tokens_rejected, test_typo_is_not_rewritten_to_nearest_command, per-command malformed/extra-text/wrong-type/unknown-dict-key rejection) satisfying TOWER §1 P2. Shim preserves FULL prior public surface: every tgc.* attribute referenced by control.py/maintenance.py/supervisor.py/test_tg_commands.py resolves (validation parsers re-exported from commands; git_pull/git_commit_and_push/git_commit_and_push_detailed + all render_* stay physically in tg_commands). ORCH re-ran FULL suites in GB's worktree AND on integrated master post-merge: 881 pytest / 36 node, 0 failures both (manifest guard test_sync_from_pack.py 49/0 green post-merge now commands.py is registered AND exists). Merged --no-ff (c3c70b0) with scripts/commands.py + tests/test_commands.py added to sync-manifest.json framework_owned IN THE SAME merge commit (merge-time-only registration, 36b53de/9f32fa0).
 **Blocked_Reason:** —
-**Updated_By:** GB
-**Updated_At:** 2026-08-26T05:34:00Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T08:10:00Z
 
 ### TASK-014
 **Title:** tower_sync.py — snapshot assembly + push, queue pull, inbox materialisation (module only)
