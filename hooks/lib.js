@@ -179,6 +179,13 @@ function pathInAnyException(filePath, globs) {
 }
 
 const PROTECTED_EXCEPTIONS = [
+  // TOWER pack wave (plan v4.1) -- active per-task grants, DELETE each when
+  // its task reaches done:
+  'scripts/commands.py',        // TASK-013 (GB)
+  'scripts/tg_commands.py',     // TASK-013 (GB)
+  'scripts/tower_sync.py',      // TASK-014 (CX)
+  'scripts/slack_notify.py',    // TASK-015 (S5)
+  'scripts/notify.py',          // TASK-015 (S5)
   // EMPTY BY DEFAULT. The pack ships the mechanism, not anyone's carve-outs.
   // Add an entry only when a specific path is (a) matched by a protected glob and
   // (b) genuinely not ORCH machinery -- e.g. product scripts that happen to live in
