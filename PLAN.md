@@ -487,7 +487,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-014
 **Title:** tower_sync.py — snapshot assembly + push, queue pull, inbox materialisation (module only)
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 P1 (snapshot schema v1), H3, H4, H5
@@ -495,24 +495,27 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** —
 **Description:** Build P1 as a pure module — NO supervisor.py edits (TASK-018 wires the tick; expose clean functions for it, e.g. build_snapshot(repo, cfg, state) -> dict and sync_tick(repo, cfg) -> None performing push+pull). Snapshot schema v1 exactly as specced §1: schema/project_id/ts/pack_version, supervisor{mode,autonomy_level,tick,stop_file}, wave totals, tasks[] (from validate_plan.parse_tasks — never a second parser), builders[], review_queue[], usage (usage_probe.load_cache — the cache-only read path, NEVER probe(), a broken probe must not stall a tick), recent_events[] (AUTOPILOT_LOG.md tail). Spec §1 says "everything above is already computed inside the supervisor — P1 is assembly and transport, not new analysis": where a field is genuinely not derivable module-side (e.g. live tick number, prev_wave_minutes), emit null and document each null in the module docstring — nulls are honest, invented numbers violate H2. Transport per H3/H4: POST {url}/ingest with bearer token from the env var NAMED BY autopilot.json tower._token_env (never a tracked file); then GET {url}/queue/{project_id} and materialise pending commands as individual JSON files into .devteam/inbox/ (the consumer, TASK-017's module, picks them up — filesystem is the interface, no import coupling), then DELETE each acked queue entry. Fail-open per H5: Tower unreachable/timeout/non-200 → one warning line, return cleanly, never raise; tower.enabled false or url empty → silent no-op. stdlib only (urllib); 10s timeout. Config key already added by ORCH in this planning commit — autopilot.json is NOT in your territory.
 **Acceptance_Criteria:**
-- [ ] build_snapshot() emits schema v1 with every §1 field present; underivable fields are null and documented, never invented (H2)
-- [ ] tasks[] built via validate_plan.parse_tasks (no second PLAN.md parser); usage via usage_probe.load_cache only — probe() is never called (H5 posture)
-- [ ] Push carries Authorization: Bearer from the env var named by tower._token_env; token never read from a tracked file (H4)
-- [ ] Queue pull materialises commands into .devteam/inbox/ as one JSON file per command and DELETEs acked entries; one HTTP round-trip pair per invocation, always project-initiated (H4)
-- [ ] tower.enabled=false or url empty → exact no-op; unreachable Tower → ONE warning line, clean return, no exception (H5)
-- [ ] tests cover schema shape, fail-open paths (no network in tests — stub transport), inbox materialisation; full Python + Node suites green
+- [x] build_snapshot() emits schema v1 with every §1 field present; underivable fields are null and documented, never invented (H2)
+- [x] tasks[] built via validate_plan.parse_tasks (no second PLAN.md parser); usage via usage_probe.load_cache only — probe() is never called (H5 posture)
+- [x] Push carries Authorization: Bearer from the env var named by tower._token_env; token never read from a tracked file (H4)
+- [x] Queue pull materialises commands into .devteam/inbox/ as one JSON file per command and DELETEs acked entries; one HTTP round-trip pair per invocation, always project-initiated (H4)
+- [x] tower.enabled=false or url empty → exact no-op; unreachable Tower → ONE warning line, clean return, no exception (H5)
+- [x] tests cover schema shape, fail-open paths (no network in tests — stub transport), inbox materialisation; full Python + Node suites green (the sole Python failure is the deferred ORCH-owned sync-manifest registration for this new test file, detailed below)
 **Branch:** task/TASK-014-cx
 **Started_At:** 2026-08-26T03:59:24Z
 **Progress_Notes:**
 - [2026-08-26T03:59:24Z] [CX] Claimed TASK-014 on task/TASK-014-cx. Preflight: scripts/tower_sync.py and tests/test_tower_sync.py are new paths; beginning spec and adjacent-module review.
 - [2026-08-26T04:00:00Z] [CX] Claim published; implementing the isolated snapshot/transport module and its stubbed tests.
 - [2026-08-26T06:25:12Z] [ORCH] Silent session: no heartbeat since 04:00:00Z (2h25m, well past a normal checkpoint). Re-dispatched per protocol §10b resume-first — dispatch.ps1 correctly resumed the existing task/TASK-014-cx branch/worktree rather than reclaiming or reassigning; confirmed only ONE codex.exe process running (no concurrent-session collision from the redispatch). Awaiting CX's next Progress_Note.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-26T06:30:59Z] [CX] Resumed the existing TASK-014 branch. Reviewed the implementation against TOWER §1/H3/H4/H5 and verified it remains isolated: snapshot assembly uses parse_tasks and cache-only usage reads; stdlib transport posts, pulls, atomically materialises inbox files, then acknowledges queue entries; all failures warn once and return. Submitting for review.
+**Artifacts:**
+- [2026-08-26T06:30:59Z] [CX] scripts/tower_sync.py, tests/test_tower_sync.py (commit fca1b3a on task/TASK-014-cx)
+**Test_Evidence:**
+- [2026-08-26T06:30:59Z] [CX] `python -m pytest tests/test_tower_sync.py -q` → 4 passed in 0.17s. Full Python suite run in two bounded batches: batch 1 → 368 passed in 105.04s; batch 2 → 375 passed, 1 failed in 22.54s. Sole failure: `tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered`, which reports only `tests/test_tower_sync.py` absent from ORCH-owned `sync-manifest.json` (outside Owned_Paths; known post-wave manifest registration work). `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff --check sandbox-merge/master...HEAD` → clean; task commit stat is exactly scripts/tower_sync.py and tests/test_tower_sync.py.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-08-26T04:00:00Z
+**Updated_At:** 2026-08-26T06:30:59Z
 
 ### TASK-015
 **Title:** slack_notify.py — Block Kit sender, thread tracking, notify.py slack channel
