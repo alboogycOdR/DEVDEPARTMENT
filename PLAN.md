@@ -1,6 +1,6 @@
 ---
-plan_version: 4.7
-last_updated: 2026-08-26T06:28:00Z
+plan_version: 4.8
+last_updated: 2026-08-26T07:17:58Z
 overall_status: planned
 orchestrator_notes: "Plan v4.7. TASK-013 done (GB 5/5 first-pass) — unlocked TASK-016 (S5, reassigned) + TASK-017 (CX). Grants updated (e7e85d7): 013/015 removed, 016/017 added. CX redispatched onto its own silent TASK-014 (no heartbeat 2h25m; resume-first correctly continued the existing branch, single-process confirmed, no collision) — TASK-017 dispatch to CX waits until 014 reaches needs_review/done, since a unit runs one active task at a time. S5→TASK-016 dispatch BLOCKED by a genuine environmental issue, not a plan/territory problem: wt-s5-DEVDEPARTMENT (de-registered from git, correctly empty per Get-ChildItem) still holds a Windows-level directory lock — Directory.Delete AND Rename-Item both fail "used by another process" after 5 retries + 2s backoff. No owning process found via command-line search; neither this session's Bash nor PowerShell CWD is inside it; no handle.exe available to identify the holder directly. NEW FINDING for the backlog: TASK-011's empty-husk reclaim (content-based emptiness check) does not cover THIS failure mode — a directory that is empty by content but whose directory ENTRY itself is locked by an unidentified handle. Worth a fast-follow: retry-with-longer-backoff and/or a numbered-suffix fallback worktree path so a locked husk can never indefinitely block a unit. For now: not forcing it further; will retry S5→016 shortly, or dispatch to an alternate path manually if it persists. Next ORCH action: watch CX's resumed TASK-014, retry S5 dispatch periodically."STILL LIVE\" was stale prose, corrected here. No active branches/worktrees in use (wt-codex/wt-grok both idle, detached, clean — reuse-ready). CROSS-SESSION ACTIVITY DETECTED since v3.6 (2026-08-16): (1) an external GitHub PR (#3, needs_review Telegram/console notify from plan_commit) merged 2026-08-20 — plan_commit.sh/.ps1 + new scripts/notify_needs_review.py; (2) a SEPARATE ORCH session (author identity \"ORCH <orch@basileia.local>\", Linux sandbox per its own commit evidence) authored three commits 2026-08-22: a new specs/DEVDEPARTMENT_TOWER_SPEC.md (cross-project mission control dashboard, decisions locked with Alister: Slack primary channel replacing Telegram per specs/DEVDEPARTMENT_SLACK_SPEC.md, fork grok-workspace Mission Control rather than build from scratch, clawsrv/PM2/Tailscale hosting, own repo + two pack integration points) plus a portability fix to TASK-011s tests (TestEmptyHuskReclaim now skipif-guards its two powershell-only cases so the suite doesnt fail on a machine without powershell — good fix, correctly scoped, non-territory). TOWER is SPEC ONLY, marked decompose-ready, ZERO PLAN.md tasks exist for it yet — this scan does NOT decompose it (that is a planning decision for Alister, and a second session may already be intending to). Next ORCH action: Alister decides whether to decompose TOWER now or continue other work; if decomposing, confirm no other session is mid-decompose first to avoid a duplicate-plan race."
 ---
@@ -487,7 +487,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-014
 **Title:** tower_sync.py — snapshot assembly + push, queue pull, inbox materialisation (module only)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 P1 (snapshot schema v1), H3, H4, H5
@@ -508,14 +508,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-26T04:00:00Z] [CX] Claim published; implementing the isolated snapshot/transport module and its stubbed tests.
 - [2026-08-26T06:25:12Z] [ORCH] Silent session: no heartbeat since 04:00:00Z (2h25m, well past a normal checkpoint). Re-dispatched per protocol §10b resume-first — dispatch.ps1 correctly resumed the existing task/TASK-014-cx branch/worktree rather than reclaiming or reassigning; confirmed only ONE codex.exe process running (no concurrent-session collision from the redispatch). Awaiting CX's next Progress_Note.
 - [2026-08-26T06:30:59Z] [CX] Resumed the existing TASK-014 branch. Reviewed the implementation against TOWER §1/H3/H4/H5 and verified it remains isolated: snapshot assembly uses parse_tasks and cache-only usage reads; stdlib transport posts, pulls, atomically materialises inbox files, then acknowledges queue entries; all failures warn once and return. Submitting for review.
+- [2026-08-26T07:17:58Z] [ORCH] APPROVED (first-pass). Territory clean (exactly scripts/tower_sync.py + tests/test_tower_sync.py, zero PLAN.md edits on branch). Verified empirically: schema v1 all §1 fields present with honest nulls documented in docstring (H2); tasks[] via validate_plan.parse_tasks, no second parser; usage via usage_probe.load_cache only, probe() never called (H5); Bearer token sourced from env DEVTEAM_TOWER_TOKEN via tower._token_env, no hardcoded/tracked token (H4); stdlib urllib, 10s timeout; POST /ingest, GET /queue/{project_id}, atomic inbox materialisation + DELETE ack; fail-open both paths exercised in tests (disabled→exact no-op; unreachable→exactly one warning, no raise, H5); no live network in tests (transport stubbed); autopilot.json untouched. Full suite: python -m pytest 743 passed + test_tower_sync 4/4 pass, node hooks/run-tests.js 36 passed — sole failure the expected sync-manifest registration gap, resolved in this merge commit by ORCH adding both files to framework_owned. Merged --no-ff to master; branch deleted. Satisfies one more Depends_On for TASK-018 (single-owner supervisor.py integration, depends on ALL of 013–017).
 **Artifacts:**
 - [2026-08-26T06:30:59Z] [CX] scripts/tower_sync.py, tests/test_tower_sync.py (commit fca1b3a on task/TASK-014-cx)
 **Test_Evidence:**
 - [2026-08-26T06:30:59Z] [CX] `python -m pytest tests/test_tower_sync.py -q` → 4 passed in 0.17s. Full Python suite run in two bounded batches: batch 1 → 368 passed in 105.04s; batch 2 → 375 passed, 1 failed in 22.54s. Sole failure: `tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered`, which reports only `tests/test_tower_sync.py` absent from ORCH-owned `sync-manifest.json` (outside Owned_Paths; known post-wave manifest registration work). `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff --check sandbox-merge/master...HEAD` → clean; task commit stat is exactly scripts/tower_sync.py and tests/test_tower_sync.py.
-**Review_Findings:** —
+**Review_Findings:** — (approved first-pass 2026-08-26T07:17:58Z)
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-08-26T06:30:59Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T07:17:58Z
 
 ### TASK-015
 **Title:** slack_notify.py — Block Kit sender, thread tracking, notify.py slack channel
@@ -586,7 +587,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-017
 **Title:** inbox.py — Tower inbox consumer module (validate, act-shape, reject)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 P2, H1, H5
@@ -594,23 +595,27 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Owned_Paths:** scripts/inbox.py, tests/test_inbox.py
 **Description:** P2 as a pure module — NO supervisor.py edits (TASK-018 calls it before decide()). drain_inbox(repo, cfg) -> list of validated command dicts: reads .devteam/inbox/*.json (the files TASK-014's queue pull materialises — the filesystem is the interface between the two modules; neither imports the other), validates each through scripts/commands.py (H1: "through the same handler path commands.py exposes" — building a second validator here is automatic rework), returns validated commands in the same shape the tg queue drain produces so TASK-018 can feed them through the existing action handlers unchanged. Command schema per §1 P2: id/issued_at/source/actor/command/args with the vocabulary approve|rework|answer|stop|resume|wave|dispatch. Malformed JSON or failed validation → file MOVED to .devteam/inbox/rejected/ with a .reason sidecar (never deleted, never guessed — §1 P2); successfully drained files are removed after the caller confirms consumption (design the two-phase contract explicitly: list first, ack(file) after handling, so a crash mid-tick never loses a command). Idempotent and safe on: empty/missing inbox dir, duplicate command ids (second occurrence → rejected/ as duplicate), files appearing mid-drain. Fail-open: any unexpected error → warning line + skip that file, never a raised exception into the tick (H5).
 **Acceptance_Criteria:**
-- [ ] drain_inbox reads .devteam/inbox/*.json and validates EVERY command through scripts/commands.py — no second validation path (H1)
-- [ ] §1 P2 schema enforced: unknown command or malformed payload → inbox/rejected/ with reason, never guessed, never deleted
-- [ ] Two-phase consume: a command survives a crash between drain and handling (list/ack contract, tested)
-- [ ] Duplicate command ids rejected as duplicates (audit honesty — Tower's queued→delivered→done trail depends on it, H1 corollary)
-- [ ] Empty/absent inbox → clean no-op; unexpected per-file errors → warn + skip, never raise (H5)
-- [ ] Output shape matches what the existing tg-queue drain hands the action handlers (verified in tests against the real shape)
-- [ ] Full Python + Node suites green
+- [x] drain_inbox reads .devteam/inbox/*.json and validates EVERY command through scripts/commands.py — no second validation path (H1)
+- [x] §1 P2 schema enforced: unknown command or malformed payload → inbox/rejected/ with reason, never guessed, never deleted
+- [x] Two-phase consume: a command survives a crash between drain and handling (list/ack contract, tested)
+- [x] Duplicate command ids rejected as duplicates (audit honesty — Tower's queued→delivered→done trail depends on it, H1 corollary)
+- [x] Empty/absent inbox → clean no-op; unexpected per-file errors → warn + skip, never raise (H5)
+- [x] Output shape matches what the existing tg-queue drain hands the action handlers (verified in tests against the real shape)
+- [x] Full Python + Node suites green (Python has one pre-existing, ORCH-owned deferred manifest-registration failure detailed below)
 **Branch:** task/TASK-017-cx
 **Started_At:** 2026-08-26T07:14:45Z
 **Progress_Notes:**
 - [2026-08-26T07:14:45Z] [CX] Claimed TASK-017 on task/TASK-017-cx. Dependency TASK-013 is done; starting spec and shared-command-contract review before implementing the isolated inbox module.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-26T07:17:18Z] [CX] Implemented and committed b539726: pure inbox drain validates the exact P2 envelope through commands.py, preserves valid files for caller acknowledgement, moves malformed/unknown commands to rejected/ with reason sidecars, and records acknowledged IDs atomically to reject later duplicates. Focused inbox + command tests: 62 passed; running full regression suites.
+- [2026-08-26T07:20:36Z] [CX] Full verification complete. Follow-up commit ef778a6 makes the validated P2 output directly compatible with the existing Telegram queue item surface (`cmd`, legacy `args`, `chat_id`, `update_id`, `raw`) while retaining P2 metadata and the ack path for TASK-018; no second parsing/validation path exists.
+**Artifacts:**
+- [2026-08-26T07:20:36Z] [CX] scripts/inbox.py, tests/test_inbox.py (commits b539726, ef778a6 on task/TASK-017-cx)
+**Test_Evidence:**
+- [2026-08-26T07:20:36Z] [CX] `python -m pytest tests/test_inbox.py tests/test_commands.py -q` → 63 passed in 0.42s. `python -m pytest -q` → 887 passed, 1 failed in 110.89s; sole failure is pre-existing `tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered`, reporting only `tests/test_tower_sync.py` absent from ORCH-owned `sync-manifest.json`, outside TASK-017 Owned_Paths. `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff master...HEAD --check` → clean; `git diff --stat master...HEAD` → exactly scripts/inbox.py and tests/test_inbox.py.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-08-26T07:14:45Z
+**Updated_At:** 2026-08-26T07:20:36Z
 
 ### TASK-018
 **Title:** supervisor.py integration — tower tick wiring, inbox drain, slack listener, unified command queue
