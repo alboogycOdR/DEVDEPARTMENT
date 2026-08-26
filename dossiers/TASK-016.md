@@ -9,7 +9,7 @@
 
 **Intended approach:**
 - Mirror TelegramListener structurally (read tg_listener.py first — its polling loop, queue contract, and stop event are the template; §5: "the architecture does not change, only the transport").
-- Socket Mode: `apps.connections.open` with `DEVTEAM_SLACK_APP_TOKEN` → WebSocket → envelope ack → payload → validate via `commands.validate` (TASK-013) → enqueue. Unknown/malformed → rejected, never guessed.
+- Socket Mode: `apps.connections.open` with `DEVTEAM_SLACK_APP_TOKEN` → WebSocket → envelope ack → payload → **enqueue the raw command-dict in TelegramListener's exact shape** (read `tg_listener.py:132` — that dict is your contract). FABLE-RATIFICATION CORRECTION (supersedes any validate-then-enqueue wording elsewhere): validation's real locus is the shared DRAIN in supervisor.py (line 916 today; TASK-018 unifies it), which validates both queues once through commands.py. Your listener drops only transport-level garbage (unparseable envelopes) — it never makes command-vocabulary judgments, or validation would run in two places with two failure modes.
 - Reconnect with backoff on socket drop (Slack rotates socket URLs; treat every disconnect as routine).
 
 **Tests:** stub the socket layer entirely — CI has no slack_sdk and no network. Explicitly test: absent-dependency path (warning + disabled), validation routing through commands.py, queue contract parity with TelegramListener.
