@@ -443,7 +443,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-013
 **Title:** commands.py — extract the shared command-validation module; tg_commands becomes a shim
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** specs/DEVDEPARTMENT_SLACK_SPEC.md §5 (commands.py), specs/DEVDEPARTMENT_TOWER_SPEC.md H1, §1 P2
@@ -451,11 +451,11 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** —
 **Description:** The structural foundation of the whole wave: every command path (Telegram today; Slack listener, Tower inbox tomorrow) must validate through ONE module — H1 makes this a hard constraint, and the Slack spec calls it "the structural fix for the duplication that has caused three real drift incidents." Extract tg_commands.py's command-validation logic (command names, per-command arg validation, the vocabulary approve/rework/answer/stop/resume/wave/dispatch/status/usage/mute/digest) into a new scripts/commands.py; tg_commands.py becomes a thin shim that re-exports so every existing caller keeps working unchanged. ATLAS-surfaced coupling (recorded per decompose step 4): tg_commands has Python importers BEYOND supervisor.py — scripts/control.py and scripts/maintenance.py import it for git_pull/git_commit_and_push/git_commit_and_push_detailed — so the shim must preserve the ENTIRE public surface (validation + git helpers + render_* functions), not just validation; the git helpers may stay physically in tg_commands (they are not command-validation and do NOT move to commands.py). Spec discrepancy resolved by ORCH: SLACK §7's row says "tg_listener.py becomes a thin shim" but §5 says tg_COMMANDS becomes the shim and §9 says tg_listener.py is "preserved as-is" — §5/§9 govern; do not touch tg_listener.py. Zero behaviour change: this is a refactor task; test_tg_commands.py, control.py, maintenance.py, supervisor.py are all out of territory and must pass untouched.
 **Acceptance_Criteria:**
-- [ ] scripts/commands.py exists and owns the command-validation logic; slack_listener/inbox/Tower can import it as the single validator (SLACK §5: "the shared command-validation module"; TOWER H1: "the same handler path commands.py exposes")
-- [ ] tg_commands.py is a thin shim re-exporting its full previous public surface — validation, git helpers, renderers — with zero signature changes (SLACK §5: "tg_commands.py becomes a thin shim (its tests stay green)")
-- [ ] tests/test_tg_commands.py passes UNTOUCHED; control.py and maintenance.py imports still resolve (ATLAS coupling above)
-- [ ] tests/test_commands.py covers the validation vocabulary incl. malformed and unknown commands rejected, never guessed (TOWER §1 P2: "unknown → rejected, never guessed")
-- [ ] tg_listener.py untouched (SLACK §9)
+- [x] scripts/commands.py exists and owns the command-validation logic; slack_listener/inbox/Tower can import it as the single validator (SLACK §5: "the shared command-validation module"; TOWER H1: "the same handler path commands.py exposes")
+- [x] tg_commands.py is a thin shim re-exporting its full previous public surface — validation, git helpers, renderers — with zero signature changes (SLACK §5: "tg_commands.py becomes a thin shim (its tests stay green)")
+- [x] tests/test_tg_commands.py passes UNTOUCHED; control.py and maintenance.py imports still resolve (ATLAS coupling above)
+- [x] tests/test_commands.py covers the validation vocabulary incl. malformed and unknown commands rejected, never guessed (TOWER §1 P2: "unknown → rejected, never guessed")
+- [x] tg_listener.py untouched (SLACK §9)
 - [ ] Full Python + Node suites green
 **Branch:** task/TASK-013-gb
 **Started_At:** 2026-08-26T04:00:19Z
@@ -466,12 +466,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   FILE   scripts/tg_commands.py  -> exists, 567 line(s), 26301 bytes
   NEW    tests/test_commands.py  -> does not exist; parent tests/ exists
   Implementing extract: commands.py owns validate() + arg parsers; tg_commands re-exports parsers and keeps git/render/apply.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-26T04:11:37Z] [GB] Extract committed 3ef169b on task/TASK-013-gb (scripts/commands.py + shim tg_commands.py + tests/test_commands.py). Territory vs master: exactly those three Owned_Paths. BLOCKED OWNERSHIP_CONFLICT: full Python suite fails solely because tests/test_commands.py is not listed in out-of-territory sync-manifest.json (test_every_shipped_test_file_is_registered). Also need scripts/commands.py added to framework_owned so the module actually syncs. Same class of grant CX hit on TASK-014; plan v4.1 notes those entries are deferred to a post-wave ORCH commit. After ORCH adds the two paths (or grants sync-manifest.json), re-run pytest -q and flip to needs_review. Implementation is complete; nothing else to write inside territory.
+**Artifacts:**
+- [2026-08-26T04:11:37Z] [GB] scripts/commands.py, scripts/tg_commands.py, tests/test_commands.py (commit 3ef169b)
+**Test_Evidence:**
+- [2026-08-26T04:11:37Z] [GB] `python -m pytest tests/test_commands.py tests/test_tg_commands.py -q` → 141 passed in 1.79s (55 new in test_commands.py; test_tg_commands.py untouched). `python -m pytest tests/test_control.py tests/test_supervisor_telegram.py tests/test_usage.py` green (importers resolve). `python -m pytest -q` → 794 passed, 1 failed: tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered lists tests/test_commands.py as unregistered. `node hooks/run-tests.js` → 36 passed, 0 failed. git diff master...HEAD --name-only = the three Owned_Paths only; tg_listener.py untouched.
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT
 **Updated_By:** GB
-**Updated_At:** 2026-08-26T04:03:58Z
+**Updated_At:** 2026-08-26T04:11:37Z
 
 ### TASK-014
 **Title:** tower_sync.py — snapshot assembly + push, queue pull, inbox materialisation (module only)
