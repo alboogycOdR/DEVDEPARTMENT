@@ -86,13 +86,33 @@ def _validate_envelope(value: Any) -> tuple[dict[str, Any] | None, str | None]:
     if not ok:
         return None, str(normalized)
     assert isinstance(normalized, dict)
+    command = normalized["command"]
+    args = normalized["args"]
+    # Keep the cmd/args surface that supervisor's Telegram queue drain already
+    # accepts.  TASK-018 can therefore put either transport's entries through
+    # one handler without a second validator.  P2 metadata remains available
+    # for auditing and acknowledgement.
+    if command in {"answer", "rework"}:
+        ident = args.get("task_id") or args.get("amend_id")
+        legacy_args = f"{ident} {args['text']}"
+    elif command == "approve":
+        legacy_args = args.get("task_id") or args.get("amend_id") or ""
+    elif command == "dispatch":
+        legacy_args = " ".join(str(args[key]) for key in ("task_id", "text") if args.get(key))
+    else:
+        legacy_args = ""
     return {
         "id": value["id"],
         "issued_at": value["issued_at"],
         "source": value["source"],
         "actor": value["actor"],
-        "command": normalized["command"],
-        "args": normalized["args"],
+        "command": command,
+        "p2_args": args,
+        "cmd": f"/{command}",
+        "args": legacy_args,
+        "chat_id": None,
+        "update_id": None,
+        "raw": f"/{command} {legacy_args}".rstrip(),
     }, None
 
 

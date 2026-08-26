@@ -28,8 +28,9 @@ def test_valid_command_is_normalized_by_the_shared_validator_and_survives_drain(
     path = write(tmp_path, "one.json", envelope("/approve"))
     commands = inbox.drain_inbox(tmp_path, {})
     assert commands == [{"id": "cmd-1", "issued_at": "2026-08-26T07:00:00Z", "source": "tower",
-                         "actor": "alister", "command": "approve", "args": {"task_id": "TASK-017"},
-                         "_inbox_path": str(path)}]
+                         "actor": "alister", "command": "approve", "p2_args": {"task_id": "TASK-017"},
+                         "cmd": "/approve", "args": "TASK-017", "chat_id": None, "update_id": None,
+                         "raw": "/approve TASK-017", "_inbox_path": str(path)}]
     assert path.exists(), "draining is not acknowledgement"
 
 
@@ -82,3 +83,11 @@ def test_unexpected_per_file_error_warns_and_does_not_raise(tmp_path, monkeypatc
 def test_ack_refuses_a_path_outside_the_inbox(tmp_path, capsys):
     assert inbox.ack(tmp_path, {"id": "cmd", "_inbox_path": str(tmp_path / "elsewhere.json")}) is False
     assert "outside the inbox" in capsys.readouterr().err
+
+
+def test_text_command_matches_the_existing_telegram_queue_item_shape(tmp_path):
+    write(tmp_path, "answer.json", envelope("answer", {"task_id": "TASK-017", "text": "ship it"}))
+    item = inbox.drain_inbox(tmp_path, {})[0]
+    assert {"cmd", "args", "chat_id", "update_id", "raw"} <= set(item)
+    assert item["cmd"] == "/answer"
+    assert item["args"] == "TASK-017 ship it"
