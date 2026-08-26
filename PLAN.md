@@ -586,7 +586,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-017
 **Title:** inbox.py — Tower inbox consumer module (validate, act-shape, reject)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 P2, H1, H5
@@ -601,15 +601,16 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Empty/absent inbox → clean no-op; unexpected per-file errors → warn + skip, never raise (H5)
 - [ ] Output shape matches what the existing tg-queue drain hands the action handlers (verified in tests against the real shape)
 - [ ] Full Python + Node suites green
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-017-cx
+**Started_At:** 2026-08-26T07:14:45Z
+**Progress_Notes:**
+- [2026-08-26T07:14:45Z] [CX] Claimed TASK-017 on task/TASK-017-cx. Dependency TASK-013 is done; starting spec and shared-command-contract review before implementing the isolated inbox module.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T01:31:45Z
+**Updated_By:** CX
+**Updated_At:** 2026-08-26T07:14:45Z
 
 ### TASK-018
 **Title:** supervisor.py integration — tower tick wiring, inbox drain, slack listener, unified command queue
