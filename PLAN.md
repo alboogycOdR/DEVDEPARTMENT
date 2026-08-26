@@ -586,7 +586,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-017
 **Title:** inbox.py — Tower inbox consumer module (validate, act-shape, reject)
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 P2, H1, H5
@@ -605,12 +605,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Started_At:** 2026-08-26T07:14:45Z
 **Progress_Notes:**
 - [2026-08-26T07:14:45Z] [CX] Claimed TASK-017 on task/TASK-017-cx. Dependency TASK-013 is done; starting spec and shared-command-contract review before implementing the isolated inbox module.
+- [2026-08-26T07:17:18Z] [CX] Implemented and committed b539726: pure inbox drain validates the exact P2 envelope through commands.py, preserves valid files for caller acknowledgement, moves malformed/unknown commands to rejected/ with reason sidecars, and records acknowledged IDs atomically to reject later duplicates. Focused inbox + command tests: 62 passed; running full regression suites.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-08-26T07:14:45Z
+**Updated_At:** 2026-08-26T07:17:18Z
 
 ### TASK-018
 **Title:** supervisor.py integration — tower tick wiring, inbox drain, slack listener, unified command queue
