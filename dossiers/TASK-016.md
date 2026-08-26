@@ -16,4 +16,6 @@
 
 **Territory note:** Depends on TASK-013 (merged before you start). TASK-017 (CX) runs CONCURRENTLY — your two files only; tg_listener.py is out of territory and untouched.
 
+**Reassignment note (2026-08-26):** originally assigned to GB; reassigned to S5 before claim (GB hit its weekly rate limit, ~15:00Z reset — see orchestrator_notes). Everything above is unit-agnostic and unchanged. You just built TASK-015's slack_notify.py, so the Slack spec context (Block Kit, thread tracking, the four message designs) is fresh — this task's Socket Mode listener is the sibling module on the receiving side of what you already sent.
+
 ## Work Log

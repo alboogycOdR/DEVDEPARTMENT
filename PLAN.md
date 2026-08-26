@@ -1,8 +1,8 @@
 ---
-plan_version: 4.4
-last_updated: 2026-08-26T06:15:00Z
+plan_version: 4.5
+last_updated: 2026-08-26T06:20:00Z
 overall_status: planned
-orchestrator_notes: "Plan v4.4. GB (grok) hit its WEEKLY rate limit — reported by Alister 06:12Z, resets ~15:00Z (17:00 Cape Town). Not visible in GB's own transcript (it finished TASK-013 cleanly first); taken as ground truth from direct observation. IMPACT: TASK-013 already at needs_review, unaffected — GB's job on it is done. TASK-014 (CX) unaffected, different unit. TASK-016 (GB, depends on TASK-013) is the one real casualty — do NOT dispatch GB before ~15:00Z, it will only fail/waste the attempt. DECISION: hold TASK-016 for GB rather than reassign — one task, bounded wait, reassigning has its own cost (CX would carry 016+017 sequentially, no clear net speedup). TASK-013 review in progress now (unaffected by GB's limit — review is ORCH, not GB). Reassign if Alister asks; otherwise wait out the reset. Sync-manifest reminder from GB's own note: add scripts/commands.py + tests/test_commands.py to sync-manifest.json IN THE MERGE COMMIT when TASK-013 is approved (standing rule from 36b53de/9f32fa0 — merge-time-only registration, never speculative)."STILL LIVE\" was stale prose, corrected here. No active branches/worktrees in use (wt-codex/wt-grok both idle, detached, clean — reuse-ready). CROSS-SESSION ACTIVITY DETECTED since v3.6 (2026-08-16): (1) an external GitHub PR (#3, needs_review Telegram/console notify from plan_commit) merged 2026-08-20 — plan_commit.sh/.ps1 + new scripts/notify_needs_review.py; (2) a SEPARATE ORCH session (author identity \"ORCH <orch@basileia.local>\", Linux sandbox per its own commit evidence) authored three commits 2026-08-22: a new specs/DEVDEPARTMENT_TOWER_SPEC.md (cross-project mission control dashboard, decisions locked with Alister: Slack primary channel replacing Telegram per specs/DEVDEPARTMENT_SLACK_SPEC.md, fork grok-workspace Mission Control rather than build from scratch, clawsrv/PM2/Tailscale hosting, own repo + two pack integration points) plus a portability fix to TASK-011s tests (TestEmptyHuskReclaim now skipif-guards its two powershell-only cases so the suite doesnt fail on a machine without powershell — good fix, correctly scoped, non-territory). TOWER is SPEC ONLY, marked decompose-ready, ZERO PLAN.md tasks exist for it yet — this scan does NOT decompose it (that is a planning decision for Alister, and a second session may already be intending to). Next ORCH action: Alister decides whether to decompose TOWER now or continue other work; if decomposing, confirm no other session is mid-decompose first to avoid a duplicate-plan race."
+orchestrator_notes: "Plan v4.5. GB (grok) on weekly-limit outage until ~15:00Z (v4.4). Alister directive 06:20Z: divert work to CX and S5 rather than idle waiting for GB. TASK-016 REASSIGNED GB → S5 (was still pending, no work started — clean reassignment) — S5 was otherwise fully idle until TASK-018 (which depends on this task anyway), and just built TASK-015's sibling Slack module so its spec context is fresh. Effect: once TASK-013 merges, CX → TASK-017 and S5 → TASK-016 both become dispatchable immediately, in parallel — nothing idles waiting for GB. GB resumes on its own reset schedule; no GB task remains pending that isn't already gated behind TASK-013's merge anyway. TASK-013 (GB, needs_review) under opus-4-8 review now — unaffected by GB's limit, review is ORCH's job. Sync-manifest reminder holds: add scripts/commands.py + tests/test_commands.py to framework_owned IN the TASK-013 merge commit (36b53de/9f32fa0 standing rule). Next ORCH action: await TASK-013 verdict, then dispatch CX→017 and S5→016 together."STILL LIVE\" was stale prose, corrected here. No active branches/worktrees in use (wt-codex/wt-grok both idle, detached, clean — reuse-ready). CROSS-SESSION ACTIVITY DETECTED since v3.6 (2026-08-16): (1) an external GitHub PR (#3, needs_review Telegram/console notify from plan_commit) merged 2026-08-20 — plan_commit.sh/.ps1 + new scripts/notify_needs_review.py; (2) a SEPARATE ORCH session (author identity \"ORCH <orch@basileia.local>\", Linux sandbox per its own commit evidence) authored three commits 2026-08-22: a new specs/DEVDEPARTMENT_TOWER_SPEC.md (cross-project mission control dashboard, decisions locked with Alister: Slack primary channel replacing Telegram per specs/DEVDEPARTMENT_SLACK_SPEC.md, fork grok-workspace Mission Control rather than build from scratch, clawsrv/PM2/Tailscale hosting, own repo + two pack integration points) plus a portability fix to TASK-011s tests (TestEmptyHuskReclaim now skipif-guards its two powershell-only cases so the suite doesnt fail on a machine without powershell — good fix, correctly scoped, non-territory). TOWER is SPEC ONLY, marked decompose-ready, ZERO PLAN.md tasks exist for it yet — this scan does NOT decompose it (that is a planning decision for Alister, and a second session may already be intending to). Next ORCH action: Alister decides whether to decompose TOWER now or continue other work; if decomposing, confirm no other session is mid-decompose first to avoid a duplicate-plan race."
 ---
 
 # Project Plan
@@ -556,7 +556,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 ### TASK-016
 **Title:** slack_listener.py — Socket Mode command listener (optional-dependency, fail-open)
 **Status:** pending
-**Assigned_To:** GB
+**Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** specs/DEVDEPARTMENT_SLACK_SPEC.md §5 (slack_listener.py), §1 (transport note), §8
 **Depends_On:** TASK-013
@@ -574,10 +574,10 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
-**Review_Findings:** —
+**Review_Findings:** [2026-08-26T06:20:00Z] [ORCH] Reassigned GB -> S5 before claim (task was still pending, no work started). GB hit its weekly rate limit (Alister, ~15:00Z reset); S5 was otherwise fully idle until TASK-018 (which depends on this task anyway) and just built TASK-015's sibling Slack module, so it carries fresh, directly relevant spec context. Technical brief and both ORCH-resolved ambiguities in the dossier are unit-agnostic and unchanged.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-08-26T01:31:45Z
+**Updated_At:** 2026-08-26T06:20:00Z
 
 ### TASK-017
 **Title:** inbox.py — Tower inbox consumer module (validate, act-shape, reject)
