@@ -561,7 +561,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-016
 **Title:** slack_listener.py — Socket Mode command listener (optional-dependency, fail-open)
-**Status:** pending
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** specs/DEVDEPARTMENT_SLACK_SPEC.md §5 (slack_listener.py), §1 (transport note), §8
@@ -569,21 +569,35 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Owned_Paths:** scripts/slack_listener.py, tests/test_slack_listener.py
 **Description:** P1b-2's listener half (commands.py was TASK-013). A SlackListener class mirroring TelegramListener's exact interface (daemon thread, queue.Queue of validated commands, start/stop) so TASK-018 can wire it identically. Transport: Slack Socket Mode (apps.connections.open → WebSocket) using DEVTEAM_SLACK_APP_TOKEN (§8). ORCH-RESOLVED SPEC AMBIGUITY, read carefully: the §1 manifest points slash-commands/interactions at Tower's HTTP endpoints, but Socket Mode and request-URLs are mutually exclusive per Slack app — and Tower does not exist yet. Resolution: Socket Mode is the PRE-TOWER command path (P1b can ship before T1, §0 of the TOWER phasing); when Tower's P1b-3 lands, the app flips to request URLs and this listener becomes the no-Tower fallback. Second ORCH-resolved decision: the pack has ZERO third-party runtime dependencies and stdlib has no WebSocket client, so slack_sdk is the pack's first OPTIONAL runtime dependency — import guarded: absent → listener refuses to start with ONE clear warning naming the pip install, and everything else (telegram, console, file, slack sending via urllib) is unaffected. Never a hard requirement; requirements stay out of the pack's install path. Queue contract: mirror TelegramListener EXACTLY — enqueue the same raw command-dict shape (tg_listener.py:132), leaving validation to the shared drain (TASK-018) through commands.py; the listener may drop only transport-level garbage (unparseable envelopes), never make command-vocabulary judgments. Tests: no live Slack, no slack_sdk requirement in CI — stub the socket layer; test the absent-dependency path explicitly.
 **Acceptance_Criteria:**
-- [ ] SlackListener mirrors TelegramListener's interface (daemon thread + queue.Queue + start/stop) so supervisor wiring is symmetric (§5: "the architecture does not change, only the transport")
-- [ ] Socket Mode via DEVTEAM_SLACK_APP_TOKEN (§5, §8); no public URL required
-- [ ] slack_sdk OPTIONAL: importable-absent → one warning naming the remedy, listener disabled, zero impact on every other channel (pack fail-open discipline)
-- [ ] Queue-contract parity: SlackListener enqueues the SAME raw command-dict shape TelegramListener does (tg_listener.py:132 is the reference), so the shared drain (TASK-018) validates BOTH queues once, through scripts/commands.py — the listener performs no second validation pass (SLACK §5, TOWER H1; corrected in the fable-5 ratification pass: validation's real locus is the drain, per supervisor.py:916)
-- [ ] Malformed/unknown commands rejected, never guessed (TOWER §1 P2 contract)
-- [ ] Tests stub the transport and cover the no-dependency path; full Python + Node suites green
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+- [x] SlackListener mirrors TelegramListener's interface (daemon thread + queue.Queue + start/stop) so supervisor wiring is symmetric (§5: "the architecture does not change, only the transport")
+- [x] Socket Mode via DEVTEAM_SLACK_APP_TOKEN (§5, §8); no public URL required
+- [x] slack_sdk OPTIONAL: importable-absent → one warning naming the remedy, listener disabled, zero impact on every other channel (pack fail-open discipline)
+- [x] Queue-contract parity: SlackListener enqueues the SAME raw command-dict shape TelegramListener does (tg_listener.py:132 is the reference), so the shared drain (TASK-018) validates BOTH queues once, through scripts/commands.py — the listener performs no second validation pass (SLACK §5, TOWER H1; corrected in the fable-5 ratification pass: validation's real locus is the drain, per supervisor.py:916)
+- [x] Malformed/unknown commands rejected, never guessed (TOWER §1 P2 contract)
+- [x] Tests stub the transport and cover the no-dependency path; full Python + Node suites green
+**Branch:** task/TASK-016-s5
+**Started_At:** 2026-08-26T09:05:00Z
+**Progress_Notes:**
+- [2026-08-26T09:05:00Z] [S5] Claimed TASK-016. wt-s5-DEVDEPARTMENT worktree lock has cleared (session running there now). Read dossier, tg_listener.py, commands.py, slack_notify.py, SLACK spec §1/§5/§8. Beginning implementation.
+- [2026-08-26T09:07:00Z] [S5] Preflight (c8b9872 check): `python scripts/preflight_paths.py TASK-016` →
+  ```
+  [preflight] TASK-016 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-s5-DEVDEPARTMENT
+  [preflight] 2 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    NEW    scripts/slack_listener.py  -> does not exist; parent scripts/ exists
+    NEW    tests/test_slack_listener.py  -> does not exist; parent tests/ exists
+  ```
+  Both files new as expected — matches the task's two-file territory exactly.
+- [2026-08-26T09:35:00Z] [S5] Implemented `scripts/slack_listener.py`: `SlackListener(threading.Thread)` mirrors TelegramListener's constructor/interface shape (daemon thread, `queue.Queue` out_queue, `.start()`/`.stop()`). slack_sdk is import-guarded at module scope (`SLACK_SDK_AVAILABLE`); `start()` is overridden to refuse with exactly one warning naming `pip install slack_sdk` and never spawn a thread when unavailable — every other channel stays untouched. Socket Mode transport uses `SocketModeClient(app_token=..., web_client=WebClient(token=bot_token))` (DEVTEAM_SLACK_APP_TOKEN for the connection per §8; bot token for the WebClient slack_sdk requires internally), with an injectable `client_factory` so tests never touch real slack_sdk or network — same "pure/injectable I/O boundary" convention as tg_listener.py's `fetch`. `_on_socket_request` ACKs every envelope first (Slack retries unacked requests), scopes to `request.type == "slash_commands"` only (interactive/button events are Tower's `/slack/interactions` territory per §6, out of scope here — mirrors TelegramListener ignoring non-text updates), and enqueues the exact tg_listener.py:132 dict shape: `{cmd, args, chat_id, update_id, raw}` (`update_id` is always `None` — Socket Mode has no Telegram-style replay offset). Per the dossier's fable-ratification correction, vocabulary judgment is explicitly NOT made here — unknown command names are queued through untouched for the shared drain (TASK-018) to validate via commands.py; this listener only drops transport-level garbage (unparseable envelope payload, missing/blank `command` field), incrementing `rejected_count` and logging, same posture as TelegramListener's allowlist-rejection counter.
+- [2026-08-26T09:40:00Z] [S5] Wrote `tests/test_slack_listener.py` (19 tests, stubs the socket layer entirely via a `FakeClient` double + injected `client_factory`, no slack_sdk/network needed): dependency-guard tests run against the REAL absent-slack_sdk environment (not simulated) plus `listener.available = True` override for exercising the connect/ack/enqueue path with the injected fake; slash-command enqueue shape + key-set parity with tg_listener; envelope ack-before-process and ack-failure-is-non-fatal; non-slash-command request types acked but not enqueued (out of scope); transport-garbage rejection (unparseable payload, missing/blank command) increments `rejected_count`; explicit test that an *unknown* (but well-formed) command name is still queued, not judged, confirming the drain owns vocabulary; full `run()` lifecycle via injected FakeClient (connect, listener registration, stop/join, close) and a connect-failure/backoff/retry case. All pass locally: `python -m pytest tests/test_slack_listener.py -q` → 19 passed.
+- [2026-08-26T09:42:00Z] [S5] Committed `b1bff54` — exactly the two owned files, `git diff master...HEAD --stat` confirms no drift. Ran full regression: `python -m pytest -q` → 912 passed, 0 failed (122.32s) — the previously-known pre-existing sync-manifest failure from TASK-017's evidence is gone (TASK-014's tower_sync registration already merged to master). `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff master...HEAD --check` → clean (no whitespace errors). Note for ORCH: `sync-manifest.json` registration for `tests/test_slack_listener.py` is intentionally NOT done here — TASK-017's precedent established that's a merge-time-only step (my Owned_Paths doesn't include sync-manifest.json, and the manifest-completeness test compares against the INTEGRATION BRANCH's tracked tree, not my task branch, so it correctly doesn't fire yet). All acceptance criteria ticked. → needs_review.
+**Artifacts:**
+- [2026-08-26T09:42:00Z] [S5] scripts/slack_listener.py, tests/test_slack_listener.py (commit b1bff54 on task/TASK-016-s5)
+**Test_Evidence:**
+- [2026-08-26T09:42:00Z] [S5] `python -m pytest tests/test_slack_listener.py -q` → 19 passed in 1.19s. `python -m pytest -q` (full suite) → 912 passed, 0 failed in 122.32s. `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff master...HEAD --stat` → exactly scripts/slack_listener.py and tests/test_slack_listener.py. `git diff master...HEAD --check` → clean.
 **Review_Findings:** [2026-08-26T06:20:00Z] [ORCH] Reassigned GB -> S5 before claim (task was still pending, no work started). GB hit its weekly rate limit (Alister, ~15:00Z reset); S5 was otherwise fully idle until TASK-018 (which depends on this task anyway) and just built TASK-015's sibling Slack module, so it carries fresh, directly relevant spec context. Technical brief and both ORCH-resolved ambiguities in the dossier are unit-agnostic and unchanged.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T06:20:00Z
+**Updated_By:** S5
+**Updated_At:** 2026-08-26T09:42:00Z
 
 ### TASK-017
 **Title:** inbox.py — Tower inbox consumer module (validate, act-shape, reject)
