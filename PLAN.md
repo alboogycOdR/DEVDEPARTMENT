@@ -1,6 +1,6 @@
 ---
-plan_version: 4.7
-last_updated: 2026-08-26T06:28:00Z
+plan_version: 4.8
+last_updated: 2026-08-26T07:17:58Z
 overall_status: planned
 orchestrator_notes: "Plan v4.7. TASK-013 done (GB 5/5 first-pass) — unlocked TASK-016 (S5, reassigned) + TASK-017 (CX). Grants updated (e7e85d7): 013/015 removed, 016/017 added. CX redispatched onto its own silent TASK-014 (no heartbeat 2h25m; resume-first correctly continued the existing branch, single-process confirmed, no collision) — TASK-017 dispatch to CX waits until 014 reaches needs_review/done, since a unit runs one active task at a time. S5→TASK-016 dispatch BLOCKED by a genuine environmental issue, not a plan/territory problem: wt-s5-DEVDEPARTMENT (de-registered from git, correctly empty per Get-ChildItem) still holds a Windows-level directory lock — Directory.Delete AND Rename-Item both fail "used by another process" after 5 retries + 2s backoff. No owning process found via command-line search; neither this session's Bash nor PowerShell CWD is inside it; no handle.exe available to identify the holder directly. NEW FINDING for the backlog: TASK-011's empty-husk reclaim (content-based emptiness check) does not cover THIS failure mode — a directory that is empty by content but whose directory ENTRY itself is locked by an unidentified handle. Worth a fast-follow: retry-with-longer-backoff and/or a numbered-suffix fallback worktree path so a locked husk can never indefinitely block a unit. For now: not forcing it further; will retry S5→016 shortly, or dispatch to an alternate path manually if it persists. Next ORCH action: watch CX's resumed TASK-014, retry S5 dispatch periodically."STILL LIVE\" was stale prose, corrected here. No active branches/worktrees in use (wt-codex/wt-grok both idle, detached, clean — reuse-ready). CROSS-SESSION ACTIVITY DETECTED since v3.6 (2026-08-16): (1) an external GitHub PR (#3, needs_review Telegram/console notify from plan_commit) merged 2026-08-20 — plan_commit.sh/.ps1 + new scripts/notify_needs_review.py; (2) a SEPARATE ORCH session (author identity \"ORCH <orch@basileia.local>\", Linux sandbox per its own commit evidence) authored three commits 2026-08-22: a new specs/DEVDEPARTMENT_TOWER_SPEC.md (cross-project mission control dashboard, decisions locked with Alister: Slack primary channel replacing Telegram per specs/DEVDEPARTMENT_SLACK_SPEC.md, fork grok-workspace Mission Control rather than build from scratch, clawsrv/PM2/Tailscale hosting, own repo + two pack integration points) plus a portability fix to TASK-011s tests (TestEmptyHuskReclaim now skipif-guards its two powershell-only cases so the suite doesnt fail on a machine without powershell — good fix, correctly scoped, non-territory). TOWER is SPEC ONLY, marked decompose-ready, ZERO PLAN.md tasks exist for it yet — this scan does NOT decompose it (that is a planning decision for Alister, and a second session may already be intending to). Next ORCH action: Alister decides whether to decompose TOWER now or continue other work; if decomposing, confirm no other session is mid-decompose first to avoid a duplicate-plan race."
 ---
@@ -487,7 +487,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-014
 **Title:** tower_sync.py — snapshot assembly + push, queue pull, inbox materialisation (module only)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 P1 (snapshot schema v1), H3, H4, H5
@@ -508,14 +508,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-26T04:00:00Z] [CX] Claim published; implementing the isolated snapshot/transport module and its stubbed tests.
 - [2026-08-26T06:25:12Z] [ORCH] Silent session: no heartbeat since 04:00:00Z (2h25m, well past a normal checkpoint). Re-dispatched per protocol §10b resume-first — dispatch.ps1 correctly resumed the existing task/TASK-014-cx branch/worktree rather than reclaiming or reassigning; confirmed only ONE codex.exe process running (no concurrent-session collision from the redispatch). Awaiting CX's next Progress_Note.
 - [2026-08-26T06:30:59Z] [CX] Resumed the existing TASK-014 branch. Reviewed the implementation against TOWER §1/H3/H4/H5 and verified it remains isolated: snapshot assembly uses parse_tasks and cache-only usage reads; stdlib transport posts, pulls, atomically materialises inbox files, then acknowledges queue entries; all failures warn once and return. Submitting for review.
+- [2026-08-26T07:17:58Z] [ORCH] APPROVED (first-pass). Territory clean (exactly scripts/tower_sync.py + tests/test_tower_sync.py, zero PLAN.md edits on branch). Verified empirically: schema v1 all §1 fields present with honest nulls documented in docstring (H2); tasks[] via validate_plan.parse_tasks, no second parser; usage via usage_probe.load_cache only, probe() never called (H5); Bearer token sourced from env DEVTEAM_TOWER_TOKEN via tower._token_env, no hardcoded/tracked token (H4); stdlib urllib, 10s timeout; POST /ingest, GET /queue/{project_id}, atomic inbox materialisation + DELETE ack; fail-open both paths exercised in tests (disabled→exact no-op; unreachable→exactly one warning, no raise, H5); no live network in tests (transport stubbed); autopilot.json untouched. Full suite: python -m pytest 743 passed + test_tower_sync 4/4 pass, node hooks/run-tests.js 36 passed — sole failure the expected sync-manifest registration gap, resolved in this merge commit by ORCH adding both files to framework_owned. Merged --no-ff to master; branch deleted. Satisfies one more Depends_On for TASK-018 (single-owner supervisor.py integration, depends on ALL of 013–017).
 **Artifacts:**
 - [2026-08-26T06:30:59Z] [CX] scripts/tower_sync.py, tests/test_tower_sync.py (commit fca1b3a on task/TASK-014-cx)
 **Test_Evidence:**
 - [2026-08-26T06:30:59Z] [CX] `python -m pytest tests/test_tower_sync.py -q` → 4 passed in 0.17s. Full Python suite run in two bounded batches: batch 1 → 368 passed in 105.04s; batch 2 → 375 passed, 1 failed in 22.54s. Sole failure: `tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered`, which reports only `tests/test_tower_sync.py` absent from ORCH-owned `sync-manifest.json` (outside Owned_Paths; known post-wave manifest registration work). `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff --check sandbox-merge/master...HEAD` → clean; task commit stat is exactly scripts/tower_sync.py and tests/test_tower_sync.py.
-**Review_Findings:** —
+**Review_Findings:** — (approved first-pass 2026-08-26T07:17:58Z)
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-08-26T06:30:59Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T07:17:58Z
 
 ### TASK-015
 **Title:** slack_notify.py — Block Kit sender, thread tracking, notify.py slack channel
