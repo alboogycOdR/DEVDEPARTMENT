@@ -38,6 +38,21 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from commands import (  # noqa: E402 — shared validator (TASK-013); git/render stay here
+    COMMANDS,
+    VOCABULARY,
+    canonical_name,
+    parse_amend_and_text,
+    parse_amend_args,
+    parse_answer_args,
+    parse_approve_args,
+    parse_dispatch_args,
+    parse_mute_args,
+    parse_rework_args,
+    parse_task_and_text,
+    validate,
+)
+
 # ---------------------------------------------------------------- constants --
 # TASK-\d+ (TASK-001) is the common shape; TASK-[A-Z0-9-]+ also accepts
 # self-generated escalation IDs like TASK-MAINT-2026-07-19 (Wave B) so
@@ -45,11 +60,6 @@ from pathlib import Path
 TASK_HEADER_RE = re.compile(r"^###\s+(TASK-[A-Z0-9-]+)\s*$")
 FIELD_RE = re.compile(r"^\*\*([A-Za-z_]+):\*\*\s*(.*)$")
 EMPTY_VALUES = {"", "\u2014", "-", "--", "n/a", "none"}  # \u2014 = em dash "—", matches validate_plan.py
-
-COMMANDS = {
-    "/status", "/board", "/answer", "/approve", "/rework",
-    "/stop", "/resume", "/wave", "/digest", "/mute", "/usage",
-}
 
 MAX_FREE_TEXT_LEN = 2000
 
@@ -95,22 +105,7 @@ class ApplyResult:
 # or briefings/*.md itself: the actual constitutional edit is always applied
 # by ORCH in a human-supervised session. This is the second lock on the gate
 # (the distiller never writing those files directly is the first).
-AMEND_RE = re.compile(r"^(AMEND-\d+)\s*$")
-_AMEND_AND_TEXT_RE = re.compile(r"^(AMEND-\d+)\s+(.+)$", re.DOTALL)
 AMEND_DIR_REL = Path(".devteam") / "pending_amendments"
-
-
-def parse_amend_args(args: str) -> str | None:
-    m = AMEND_RE.match((args or "").strip())
-    return m.group(1) if m else None
-
-
-def parse_amend_and_text(args: str) -> tuple[str, str] | None:
-    """Parse '<AMEND-NNN> <reason>' for /rework AMEND-NNN <reason>."""
-    m = _AMEND_AND_TEXT_RE.match((args or "").strip())
-    if not m:
-        return None
-    return m.group(1), m.group(2)
 
 
 def amend_path(repo: Path, amend_id: str) -> Path:
@@ -155,46 +150,6 @@ def parse_command(text: str) -> tuple[str, str]:
     if cmd not in COMMANDS:
         return "help", raw
     return cmd, args
-
-
-_TASK_AND_TEXT_RE = re.compile(r"^(TASK-[A-Z0-9-]+)\s+(.+)$", re.DOTALL)
-_TASK_ONLY_RE = re.compile(r"^(TASK-[A-Z0-9-]+)\s*$")
-_DURATION_RE = re.compile(r"^(\d+)\s*([hm])$", re.IGNORECASE)
-
-
-def parse_task_and_text(args: str) -> tuple[str, str] | None:
-    """Parse '<TASK-NNN> <free text...>' shared by /answer and /rework."""
-    m = _TASK_AND_TEXT_RE.match((args or "").strip())
-    if not m:
-        return None
-    return m.group(1), m.group(2)
-
-
-# Kept as distinct names because the grammar table lists them as distinct
-# commands with independently-evolvable argument shapes, even though today
-# both are literally "TASK-NNN <text>".
-def parse_answer_args(args: str) -> tuple[str, str] | None:
-    return parse_task_and_text(args)
-
-
-def parse_rework_args(args: str) -> tuple[str, str] | None:
-    return parse_task_and_text(args)
-
-
-def parse_approve_args(args: str) -> str | None:
-    m = _TASK_ONLY_RE.match((args or "").strip())
-    return m.group(1) if m else None
-
-
-def parse_mute_args(args: str) -> int | None:
-    """'2h' / '30m' -> seconds. Anything else -> None (caller replies usage)."""
-    m = _DURATION_RE.match((args or "").strip())
-    if not m:
-        return None
-    n, unit = int(m.group(1)), m.group(2).lower()
-    if n <= 0:
-        return None
-    return n * 3600 if unit == "h" else n * 60
 
 
 # ------------------------------------------------------------- allowlist ----
