@@ -105,7 +105,8 @@ class TestSendSlack:
         send_slack("P1", "line down")
         assert calls == [("P1", "line down", "xoxb-test")]
 
-    def test_send_slack_never_raises_on_send_failure(self, monkeypatch):
+    def test_send_slack_never_raises_on_send_failure_and_falls_back_to_file(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("DEVTEAM_SLACK_TOKEN", "xoxb-test")
         import slack_notify
         monkeypatch.setattr(slack_notify, "load_config", lambda repo: {"ops_channel": "COPS"})
@@ -114,8 +115,33 @@ class TestSendSlack:
             raise RuntimeError("network exploded")
 
         monkeypatch.setattr(slack_notify, "send_simple", boom)
-        # Must not raise.
+        # Must not raise, and §5's "fail-open to the file channel" must fire.
         send_slack("P0", "digest")
+        err = capsys.readouterr().err
+        assert "falling back to file channel" in err
+        log = (tmp_path / "AUTOPILOT_LOG.md").read_text(encoding="utf-8")
+        assert "digest" in log
+
+    def test_send_slack_delivery_returns_false_falls_back_to_file(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("DEVTEAM_SLACK_TOKEN", "xoxb-test")
+        import slack_notify
+        monkeypatch.setattr(slack_notify, "load_config", lambda repo: {"ops_channel": "COPS"})
+        monkeypatch.setattr(slack_notify, "send_simple", lambda *a, **kw: False)
+        send_slack("P1", "unreachable case")
+        err = capsys.readouterr().err
+        assert "falling back to file channel" in err
+        log = (tmp_path / "AUTOPILOT_LOG.md").read_text(encoding="utf-8")
+        assert "unreachable case" in log
+
+    def test_send_slack_successful_delivery_does_not_touch_file(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("DEVTEAM_SLACK_TOKEN", "xoxb-test")
+        import slack_notify
+        monkeypatch.setattr(slack_notify, "load_config", lambda repo: {"ops_channel": "COPS"})
+        monkeypatch.setattr(slack_notify, "send_simple", lambda *a, **kw: True)
+        send_slack("P1", "delivered fine")
+        assert not (tmp_path / "AUTOPILOT_LOG.md").exists()
 
     def test_main_routes_priority_message_through_slack_channel(self, monkeypatch, capsys):
         monkeypatch.delenv("DEVTEAM_SLACK_TOKEN", raising=False)

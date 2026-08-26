@@ -96,9 +96,13 @@ def send_slack(priority: str, message: str) -> None:
 
     Lazily imports slack_notify so this module — and every OTHER channel —
     keeps working untouched when Slack is unconfigured or slack_notify.py's
-    dependencies are unavailable for any reason. Degrades to a warning line
-    and returns, exactly like send_telegram's missing-env-var path; never
-    raises into the caller.
+    dependencies are unavailable for any reason. Missing token/channels is a
+    configuration gap and just skips with a warning (same posture as
+    send_telegram's missing-env-var path). An actual DELIVERY failure —
+    Slack unreachable, API error — is different: §5 says explicitly "fail-
+    open to the file channel", so that case additionally appends the alert
+    to AUTOPILOT_LOG.md rather than letting it vanish. Never raises into the
+    caller either way.
     """
     try:
         scripts_dir = str(Path(__file__).resolve().parent)
@@ -121,9 +125,15 @@ def send_slack(priority: str, message: str) -> None:
         return
 
     try:
-        slack_notify.send_simple(repo, cfg, token, priority, message)
+        delivered = slack_notify.send_simple(repo, cfg, token, priority, message)
     except Exception as exc:  # network/API failures must never crash the supervisor
-        print(f"[notify] slack send failed: {exc}", file=sys.stderr)
+        print(f"[notify] slack send failed: {exc} — falling back to file channel.", file=sys.stderr)
+        send_file(priority, message)
+        return
+
+    if not delivered:
+        print("[notify] slack channel unreachable — falling back to file channel.", file=sys.stderr)
+        send_file(priority, message)
 
 
 CHANNELS = {"console": send_console, "file": send_file, "telegram": send_telegram, "slack": send_slack}
