@@ -443,7 +443,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-013
 **Title:** commands.py — extract the shared command-validation module; tg_commands becomes a shim
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** specs/DEVDEPARTMENT_SLACK_SPEC.md §5 (commands.py), specs/DEVDEPARTMENT_TOWER_SPEC.md H1, §1 P2
@@ -461,12 +461,17 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Started_At:** 2026-08-26T04:00:19Z
 **Progress_Notes:**
 - [2026-08-26T04:00:19Z] [GB] Claimed TASK-013 on task/TASK-013-gb. Next: preflight_paths, then extract command-validation into scripts/commands.py and shim tg_commands.py.
+- [2026-08-26T04:03:58Z] [GB] Preflight (c8b9872 filesystem check):
+  NEW    scripts/commands.py  -> does not exist; parent scripts/ exists
+  FILE   scripts/tg_commands.py  -> exists, 567 line(s), 26301 bytes
+  NEW    tests/test_commands.py  -> does not exist; parent tests/ exists
+  Implementing extract: commands.py owns validate() + arg parsers; tg_commands re-exports parsers and keeps git/render/apply.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** GB
-**Updated_At:** 2026-08-26T04:00:19Z
+**Updated_At:** 2026-08-26T04:03:58Z
 
 ### TASK-014
 **Title:** tower_sync.py — snapshot assembly + push, queue pull, inbox materialisation (module only)
