@@ -443,7 +443,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-013
 **Title:** commands.py — extract the shared command-validation module; tg_commands becomes a shim
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** specs/DEVDEPARTMENT_SLACK_SPEC.md §5 (commands.py), specs/DEVDEPARTMENT_TOWER_SPEC.md H1, §1 P2
@@ -467,14 +467,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   NEW    tests/test_commands.py  -> does not exist; parent tests/ exists
   Implementing extract: commands.py owns validate() + arg parsers; tg_commands re-exports parsers and keeps git/render/apply.
 - [2026-08-26T04:11:37Z] [GB] Extract committed 3ef169b on task/TASK-013-gb (scripts/commands.py + shim tg_commands.py + tests/test_commands.py). Territory vs master: exactly those three Owned_Paths. BLOCKED OWNERSHIP_CONFLICT: full Python suite fails solely because tests/test_commands.py is not listed in out-of-territory sync-manifest.json (test_every_shipped_test_file_is_registered). Also need scripts/commands.py added to framework_owned so the module actually syncs. Same class of grant CX hit on TASK-014; plan v4.1 notes those entries are deferred to a post-wave ORCH commit. After ORCH adds the two paths (or grants sync-manifest.json), re-run pytest -q and flip to needs_review. Implementation is complete; nothing else to write inside territory.
+- [2026-08-26T04:29:00Z] [ORCH] UNBLOCKED — correct block, exactly the deferred gap you named. sync-manifest.json updated on master (4f106a3): all five wave modules' scripts+tests registered in framework_owned, including yours. From your worktree: `git merge master -m "merge: master sync-manifest fix into TASK-013 [TASK-013]"` (brings only my ORCH commits forward, no territory risk — verify with git diff master...HEAD --stat afterward, must still show exactly your 3 files), rerun `python -m pytest -q` + `node hooks/run-tests.js`, confirm 0 failures, then submit needs_review.
 **Artifacts:**
 - [2026-08-26T04:11:37Z] [GB] scripts/commands.py, scripts/tg_commands.py, tests/test_commands.py (commit 3ef169b)
 **Test_Evidence:**
 - [2026-08-26T04:11:37Z] [GB] `python -m pytest tests/test_commands.py tests/test_tg_commands.py -q` → 141 passed in 1.79s (55 new in test_commands.py; test_tg_commands.py untouched). `python -m pytest tests/test_control.py tests/test_supervisor_telegram.py tests/test_usage.py` green (importers resolve). `python -m pytest -q` → 794 passed, 1 failed: tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered lists tests/test_commands.py as unregistered. `node hooks/run-tests.js` → 36 passed, 0 failed. git diff master...HEAD --name-only = the three Owned_Paths only; tg_listener.py untouched.
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT
-**Updated_By:** GB
-**Updated_At:** 2026-08-26T04:11:37Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T04:29:00Z
 
 ### TASK-014
 **Title:** tower_sync.py — snapshot assembly + push, queue pull, inbox materialisation (module only)
