@@ -587,7 +587,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-017
 **Title:** inbox.py — Tower inbox consumer module (validate, act-shape, reject)
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 P2, H1, H5
@@ -595,24 +595,27 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Owned_Paths:** scripts/inbox.py, tests/test_inbox.py
 **Description:** P2 as a pure module — NO supervisor.py edits (TASK-018 calls it before decide()). drain_inbox(repo, cfg) -> list of validated command dicts: reads .devteam/inbox/*.json (the files TASK-014's queue pull materialises — the filesystem is the interface between the two modules; neither imports the other), validates each through scripts/commands.py (H1: "through the same handler path commands.py exposes" — building a second validator here is automatic rework), returns validated commands in the same shape the tg queue drain produces so TASK-018 can feed them through the existing action handlers unchanged. Command schema per §1 P2: id/issued_at/source/actor/command/args with the vocabulary approve|rework|answer|stop|resume|wave|dispatch. Malformed JSON or failed validation → file MOVED to .devteam/inbox/rejected/ with a .reason sidecar (never deleted, never guessed — §1 P2); successfully drained files are removed after the caller confirms consumption (design the two-phase contract explicitly: list first, ack(file) after handling, so a crash mid-tick never loses a command). Idempotent and safe on: empty/missing inbox dir, duplicate command ids (second occurrence → rejected/ as duplicate), files appearing mid-drain. Fail-open: any unexpected error → warning line + skip that file, never a raised exception into the tick (H5).
 **Acceptance_Criteria:**
-- [ ] drain_inbox reads .devteam/inbox/*.json and validates EVERY command through scripts/commands.py — no second validation path (H1)
-- [ ] §1 P2 schema enforced: unknown command or malformed payload → inbox/rejected/ with reason, never guessed, never deleted
-- [ ] Two-phase consume: a command survives a crash between drain and handling (list/ack contract, tested)
-- [ ] Duplicate command ids rejected as duplicates (audit honesty — Tower's queued→delivered→done trail depends on it, H1 corollary)
-- [ ] Empty/absent inbox → clean no-op; unexpected per-file errors → warn + skip, never raise (H5)
-- [ ] Output shape matches what the existing tg-queue drain hands the action handlers (verified in tests against the real shape)
-- [ ] Full Python + Node suites green
+- [x] drain_inbox reads .devteam/inbox/*.json and validates EVERY command through scripts/commands.py — no second validation path (H1)
+- [x] §1 P2 schema enforced: unknown command or malformed payload → inbox/rejected/ with reason, never guessed, never deleted
+- [x] Two-phase consume: a command survives a crash between drain and handling (list/ack contract, tested)
+- [x] Duplicate command ids rejected as duplicates (audit honesty — Tower's queued→delivered→done trail depends on it, H1 corollary)
+- [x] Empty/absent inbox → clean no-op; unexpected per-file errors → warn + skip, never raise (H5)
+- [x] Output shape matches what the existing tg-queue drain hands the action handlers (verified in tests against the real shape)
+- [x] Full Python + Node suites green (Python has one pre-existing, ORCH-owned deferred manifest-registration failure detailed below)
 **Branch:** task/TASK-017-cx
 **Started_At:** 2026-08-26T07:14:45Z
 **Progress_Notes:**
 - [2026-08-26T07:14:45Z] [CX] Claimed TASK-017 on task/TASK-017-cx. Dependency TASK-013 is done; starting spec and shared-command-contract review before implementing the isolated inbox module.
 - [2026-08-26T07:17:18Z] [CX] Implemented and committed b539726: pure inbox drain validates the exact P2 envelope through commands.py, preserves valid files for caller acknowledgement, moves malformed/unknown commands to rejected/ with reason sidecars, and records acknowledged IDs atomically to reject later duplicates. Focused inbox + command tests: 62 passed; running full regression suites.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-26T07:20:36Z] [CX] Full verification complete. Follow-up commit ef778a6 makes the validated P2 output directly compatible with the existing Telegram queue item surface (`cmd`, legacy `args`, `chat_id`, `update_id`, `raw`) while retaining P2 metadata and the ack path for TASK-018; no second parsing/validation path exists.
+**Artifacts:**
+- [2026-08-26T07:20:36Z] [CX] scripts/inbox.py, tests/test_inbox.py (commits b539726, ef778a6 on task/TASK-017-cx)
+**Test_Evidence:**
+- [2026-08-26T07:20:36Z] [CX] `python -m pytest tests/test_inbox.py tests/test_commands.py -q` → 63 passed in 0.42s. `python -m pytest -q` → 887 passed, 1 failed in 110.89s; sole failure is pre-existing `tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered`, reporting only `tests/test_tower_sync.py` absent from ORCH-owned `sync-manifest.json`, outside TASK-017 Owned_Paths. `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff master...HEAD --check` → clean; `git diff --stat master...HEAD` → exactly scripts/inbox.py and tests/test_inbox.py.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-08-26T07:17:18Z
+**Updated_At:** 2026-08-26T07:20:36Z
 
 ### TASK-018
 **Title:** supervisor.py integration — tower tick wiring, inbox drain, slack listener, unified command queue
