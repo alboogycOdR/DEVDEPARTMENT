@@ -636,7 +636,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-018
 **Title:** supervisor.py integration — tower tick wiring, inbox drain, slack listener, unified command queue
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 P1+P2, H1, H4, H5; specs/DEVDEPARTMENT_SLACK_SPEC.md §5 (listener wiring, _drain_command_queue rename), §9
@@ -651,14 +651,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] With tower+slack+inbox all disabled/absent: a tick is behaviourally identical to pre-wave master (tested — the A5 byte-identical discipline)
 - [ ] DEFAULT_CONFIG mirrors the template's tower/slack keys
 - [ ] Regression tests for each wiring incl. fail-open paths; full Python + Node suites green
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-018-s5
+**Started_At:** 2026-08-26T08:13:48Z
 **Progress_Notes:**
 - [2026-08-26T08:26:00Z] [ORCH] Dependency status: TASK-013/014/015/017 all done; TASK-018 now awaits ONLY TASK-016 (S5), currently blocked on an unrelated wt-s5-DEVDEPARTMENT worktree directory lock (ORCH environmental issue, not a plan/territory problem). Not yet dispatchable — do not claim until TASK-016 reaches done.
 - [2026-08-26T10:05:00Z] [ORCH] FULLY UNBLOCKED. TASK-016 approved + merged (8328192); all five deps (TASK-013/014/015/016/017) are done. This single-owner supervisor.py integration is now dispatchable — assign to S5 (carries the freshest listener/inbox context) via /devteam-dispatch. Owned_Paths (scripts/supervisor.py, tests/test_supervisor.py) are disjoint from all other work; no active tasks contend.
+- [2026-08-26T08:13:48Z] [S5] Claimed TASK-018 on task/TASK-018-s5. Next: preflight_paths.py TASK-018, then read scripts/supervisor.py plus the four upstream modules (tower_sync, inbox, slack_listener, tg_listener queue contract) before wiring.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T08:26:00Z
+**Updated_By:** S5
+**Updated_At:** 2026-08-26T08:13:48Z
