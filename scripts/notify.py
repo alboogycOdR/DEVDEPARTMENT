@@ -6,6 +6,12 @@ Channels:
     file     — append to AUTOPILOT_LOG.md
     telegram — send via Bot API. Credentials come ONLY from environment
                variables (DEVTEAM_TG_TOKEN, DEVTEAM_TG_CHAT). Never hardcode.
+    slack    — send via slack_notify.py's Web API sender (lazily imported so
+               this module keeps working when Slack is unconfigured).
+               Credentials come ONLY from DEVTEAM_SLACK_TOKEN; channel IDs
+               from autopilot.json's "slack" block. See
+               specs/DEVDEPARTMENT_SLACK_SPEC.md §9: Telegram is preserved
+               as-is and stays the always-available fallback.
 
 Usage:
     python scripts/notify.py --priority P1 --message "..." --channels console,file,telegram
@@ -85,7 +91,52 @@ def send_telegram(priority: str, message: str) -> None:
         print(f"[notify] telegram send failed: {exc}", file=sys.stderr)
 
 
-CHANNELS = {"console": send_console, "file": send_file, "telegram": send_telegram}
+def send_slack(priority: str, message: str) -> None:
+    """Slack Web API channel (specs/DEVDEPARTMENT_SLACK_SPEC.md §5, §9).
+
+    Lazily imports slack_notify so this module — and every OTHER channel —
+    keeps working untouched when Slack is unconfigured or slack_notify.py's
+    dependencies are unavailable for any reason. Missing token/channels is a
+    configuration gap and just skips with a warning (same posture as
+    send_telegram's missing-env-var path). An actual DELIVERY failure —
+    Slack unreachable, API error — is different: §5 says explicitly "fail-
+    open to the file channel", so that case additionally appends the alert
+    to AUTOPILOT_LOG.md rather than letting it vanish. Never raises into the
+    caller either way.
+    """
+    try:
+        scripts_dir = str(Path(__file__).resolve().parent)
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        import slack_notify
+    except ImportError as exc:
+        print(f"[notify] slack channel requested but slack_notify.py is unavailable: {exc}", file=sys.stderr)
+        return
+
+    token = slack_notify.get_token()
+    if not token:
+        print("[notify] slack channel requested but DEVTEAM_SLACK_TOKEN is not set — skipping.", file=sys.stderr)
+        return
+
+    repo = Path(__file__).resolve().parent.parent
+    cfg = slack_notify.load_config(repo)
+    if not cfg.get("ops_channel") and not cfg.get("project_channel"):
+        print("[notify] slack channel requested but no channels configured in autopilot.json — skipping.", file=sys.stderr)
+        return
+
+    try:
+        delivered = slack_notify.send_simple(repo, cfg, token, priority, message)
+    except Exception as exc:  # network/API failures must never crash the supervisor
+        print(f"[notify] slack send failed: {exc} — falling back to file channel.", file=sys.stderr)
+        send_file(priority, message)
+        return
+
+    if not delivered:
+        print("[notify] slack channel unreachable — falling back to file channel.", file=sys.stderr)
+        send_file(priority, message)
+
+
+CHANNELS = {"console": send_console, "file": send_file, "telegram": send_telegram, "slack": send_slack}
 
 
 def main(argv: list[str]) -> int:

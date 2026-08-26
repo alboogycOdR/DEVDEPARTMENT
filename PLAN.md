@@ -443,7 +443,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-013
 **Title:** commands.py — extract the shared command-validation module; tg_commands becomes a shim
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** specs/DEVDEPARTMENT_SLACK_SPEC.md §5 (commands.py), specs/DEVDEPARTMENT_TOWER_SPEC.md H1, §1 P2
@@ -468,14 +468,17 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   Implementing extract: commands.py owns validate() + arg parsers; tg_commands re-exports parsers and keeps git/render/apply.
 - [2026-08-26T04:11:37Z] [GB] Extract committed 3ef169b on task/TASK-013-gb (scripts/commands.py + shim tg_commands.py + tests/test_commands.py). Territory vs master: exactly those three Owned_Paths. BLOCKED OWNERSHIP_CONFLICT: full Python suite fails solely because tests/test_commands.py is not listed in out-of-territory sync-manifest.json (test_every_shipped_test_file_is_registered). Also need scripts/commands.py added to framework_owned so the module actually syncs. Same class of grant CX hit on TASK-014; plan v4.1 notes those entries are deferred to a post-wave ORCH commit. After ORCH adds the two paths (or grants sync-manifest.json), re-run pytest -q and flip to needs_review. Implementation is complete; nothing else to write inside territory.
 - [2026-08-26T04:29:00Z] [ORCH] UNBLOCKED — correct block, exactly the deferred gap you named. sync-manifest.json updated on master (4f106a3): all five wave modules' scripts+tests registered in framework_owned, including yours. From your worktree: `git merge master -m "merge: master sync-manifest fix into TASK-013 [TASK-013]"` (brings only my ORCH commits forward, no territory risk — verify with git diff master...HEAD --stat afterward, must still show exactly your 3 files), rerun `python -m pytest -q` + `node hooks/run-tests.js`, confirm 0 failures, then submit needs_review.
+- [2026-08-26T04:38:00Z] [GB] Resumed after unblock. Merged master into task/TASK-013-gb (`merge: master sync-manifest fix into TASK-013 [TASK-013]`). `git diff master...HEAD --stat` is still exactly the 3 Owned_Paths. Re-ran suites: Node 36/36 green; Python 794 passed, 1 failed. The previous unregistered-file failure is gone (commands.py + test_commands.py now exist and are listed). Inverse failure from 4f106a3 registering all five wave modules at once: `test_every_framework_owned_path_exists_in_the_pack` wants scripts/{inbox,slack_listener,slack_notify,tower_sync}.py and their four tests, none of which exist on this branch (014/015 live on other worktrees; 016/017 not started). Cannot create those files or edit sync-manifest.json. Re-blocking OWNERSHIP_CONFLICT. Ask: register only the two TASK-013 paths (scripts/commands.py, tests/test_commands.py) until the other modules land on master — then this branch's full suite can go green and I will submit needs_review. Implementation inside territory is unchanged (3ef169b).
 **Artifacts:**
 - [2026-08-26T04:11:37Z] [GB] scripts/commands.py, scripts/tg_commands.py, tests/test_commands.py (commit 3ef169b)
+- [2026-08-26T04:38:00Z] [GB] merge commit on task/TASK-013-gb bringing 4f106a3; territory still the three Owned_Paths only
 **Test_Evidence:**
 - [2026-08-26T04:11:37Z] [GB] `python -m pytest tests/test_commands.py tests/test_tg_commands.py -q` → 141 passed in 1.79s (55 new in test_commands.py; test_tg_commands.py untouched). `python -m pytest tests/test_control.py tests/test_supervisor_telegram.py tests/test_usage.py` green (importers resolve). `python -m pytest -q` → 794 passed, 1 failed: tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered lists tests/test_commands.py as unregistered. `node hooks/run-tests.js` → 36 passed, 0 failed. git diff master...HEAD --name-only = the three Owned_Paths only; tg_listener.py untouched.
+- [2026-08-26T04:38:00Z] [GB] After merge of master (4f106a3): `python -m pytest -q` → 794 passed, 1 failed in 112.03s — `tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_framework_owned_path_exists_in_the_pack` missing `['scripts/inbox.py', 'scripts/slack_listener.py', 'scripts/slack_notify.py', 'scripts/tower_sync.py', 'tests/test_inbox.py', 'tests/test_slack_listener.py', 'tests/test_slack_notify.py', 'tests/test_tower_sync.py']`. `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff master...HEAD --name-only` = scripts/commands.py, scripts/tg_commands.py, tests/test_commands.py.
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T04:29:00Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT
+**Updated_By:** GB
+**Updated_At:** 2026-08-26T04:38:00Z
 
 ### TASK-014
 **Title:** tower_sync.py — snapshot assembly + push, queue pull, inbox materialisation (module only)
@@ -507,7 +510,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-015
 **Title:** slack_notify.py — Block Kit sender, thread tracking, notify.py slack channel
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_SLACK_SPEC.md §3 (message designs), §5 (slack_notify.py), §2 (channel rule), §9, §10
@@ -542,8 +545,9 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-26T04:35:00Z] [S5] `python -m pytest tests/test_slack_notify.py tests/test_notify.py -q` → 89 passed in 0.42s. `python -m pytest -q` (full suite) → 822 passed, 1 failed in 101.15s — the sole failure is tests/test_sync_from_pack.py::test_every_shipped_test_file_is_registered, the pre-flagged/deferred sync-manifest.json gap described above (not in Owned_Paths, not a regression: introduced only by a new test file existing, no assertion logic touched). `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff local-main/master...HEAD --stat` → 4 files changed (scripts/notify.py, scripts/slack_notify.py, tests/test_notify.py, tests/test_slack_notify.py), matching Owned_Paths exactly.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** S5
-**Updated_At:** 2026-08-26T04:35:00Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-26T06:45:00Z
+**Review_Note:** [2026-08-26T06:45:00Z] [ORCH] APPROVED (first-pass), merged --no-ff into master. Territory clean (net diff = exactly the 4 Owned_Paths, no PLAN.md/frontmatter edits, c8b9872 preflight present). All 8 ACs verified against SLACK spec text itself: Web API chat.postMessage(blocks=)/chat.update/reactions.add — not a webhook (§5); token DEVTEAM_SLACK_TOKEN env only (§8); all four §3 Block Kit designs with correct button rows; §2 routing exact (P0/P1→ops, P2/status/usage→project, wave_complete→both deduped); thread tracking via .devteam/slack_threads.json (post→thread_ts reply→chat.update in place→✅ reaction, atomic tmp+replace write); 429 exponential backoff honouring Retry-After + fail-open never-raises (§5); --test smoke subcommand (§10); notify.py registers send_slack via lazy import degrading cleanly, fails open to file channel on delivery failure, telegram sender byte-untouched (§9). ORCH re-ran FULL suite in worktree: pytest 822 passed / 1 failed, node 36/0. The single failure (test_sync_from_pack.py::test_every_framework_owned_path_exists_in_the_pack) is NOT a TASK-015 regression: it fails identically on bare master with a SUPERSET list (10 files incl. slack_notify.py + test_slack_notify.py); on this branch those two files EXIST so the branch's missing list is master's-minus-two — TASK-015 partially HEALS the ORCH-attributed manifest state (4f106a3 pre-registered the whole wave's files). Remaining 8 missing belong to future TOWER tasks (016/017/018). Zero TASK-015-attributable failures. Not subject to the full-suite-green merge gate per plan v4.3 orchestrator_notes.
 
 ### TASK-016
 **Title:** slack_listener.py — Socket Mode command listener (optional-dependency, fail-open)
