@@ -561,7 +561,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-016
 **Title:** slack_listener.py — Socket Mode command listener (optional-dependency, fail-open)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** medium
 **Spec_References:** specs/DEVDEPARTMENT_SLACK_SPEC.md §5 (slack_listener.py), §1 (transport note), §8
@@ -575,15 +575,16 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Queue-contract parity: SlackListener enqueues the SAME raw command-dict shape TelegramListener does (tg_listener.py:132 is the reference), so the shared drain (TASK-018) validates BOTH queues once, through scripts/commands.py — the listener performs no second validation pass (SLACK §5, TOWER H1; corrected in the fable-5 ratification pass: validation's real locus is the drain, per supervisor.py:916)
 - [ ] Malformed/unknown commands rejected, never guessed (TOWER §1 P2 contract)
 - [ ] Tests stub the transport and cover the no-dependency path; full Python + Node suites green
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-016-s5
+**Started_At:** 2026-08-26T09:05:00Z
+**Progress_Notes:**
+- [2026-08-26T09:05:00Z] [S5] Claimed TASK-016. wt-s5-DEVDEPARTMENT worktree lock has cleared (session running there now). Read dossier, tg_listener.py, commands.py, slack_notify.py, SLACK spec §1/§5/§8. Beginning implementation.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** [2026-08-26T06:20:00Z] [ORCH] Reassigned GB -> S5 before claim (task was still pending, no work started). GB hit its weekly rate limit (Alister, ~15:00Z reset); S5 was otherwise fully idle until TASK-018 (which depends on this task anyway) and just built TASK-015's sibling Slack module, so it carries fresh, directly relevant spec context. Technical brief and both ORCH-resolved ambiguities in the dossier are unit-agnostic and unchanged.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-26T06:20:00Z
+**Updated_By:** S5
+**Updated_At:** 2026-08-26T09:05:00Z
 
 ### TASK-017
 **Title:** inbox.py — Tower inbox consumer module (validate, act-shape, reject)
