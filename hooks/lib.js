@@ -179,10 +179,8 @@ function pathInAnyException(filePath, globs) {
 }
 
 const PROTECTED_EXCEPTIONS = [
-  // TOWER pack wave (plan v4.1+) -- active per-task grants, DELETE each when
-  // its task reaches done. TASK-013/014/015/016/017 all done, grants removed.
-  // TASK-018 is the wave's final single-owner supervisor.py integration.
-  'scripts/supervisor.py',      // TASK-018 (S5)
+  // TOWER pack wave (plan v4.1+) COMPLETE -- TASK-013 through TASK-018 all
+  // done and merged; every per-task grant removed. List is back to empty.
   // EMPTY BY DEFAULT. The pack ships the mechanism, not anyone's carve-outs.
   // Add an entry only when a specific path is (a) matched by a protected glob and
   // (b) genuinely not ORCH machinery -- e.g. product scripts that happen to live in
