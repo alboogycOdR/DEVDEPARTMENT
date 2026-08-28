@@ -183,6 +183,7 @@ const PROTECTED_EXCEPTIONS = [
   // done and merged; those grants were removed. TASK-019/TASK-020 done,
   // their scripts/tower_sync.py grant removed. Active grant below.
   'scripts/notify.py',          // TASK-021 (CX) -- delete when done
+  'scripts/tower_sync.py',      // TASK-021 (CX) -- grammar widening, same task
   // EMPTY BY DEFAULT. The pack ships the mechanism, not anyone's carve-outs.
   // Add an entry only when a specific path is (a) matched by a protected glob and
   // (b) genuinely not ORCH machinery -- e.g. product scripts that happen to live in
