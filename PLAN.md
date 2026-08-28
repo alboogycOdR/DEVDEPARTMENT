@@ -680,7 +680,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-019
 **Title:** tower_sync recent_events must emit real ts/kind — /ingest currently 422s every live snapshot
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 (snapshot schema v1, recent_events entry shape), §0 H2 (no invented data), §5 (exit criteria — "orb-jun-26, rwc-admin-portal, and the DEVDEPARTMENT repo itself all pushing")
@@ -707,7 +707,8 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-28T06:24:00Z] [S5] scripts/tower_sync.py, tests/test_tower_sync.py (commit c43a1b0, already on task/TASK-019-s5 at session start)
 **Test_Evidence:**
 - [2026-08-28T06:24:00Z] [S5] `python -m pytest tests/test_tower_sync.py -q` → 10 passed in 0.28s. `python -m pytest -q` (full suite) → 937 passed, 0 failed in 164.57s. `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff master...HEAD --stat` → scripts/tower_sync.py (+31/-1), tests/test_tower_sync.py (+68) — exactly the two Owned_Paths, nothing else.
-**Review_Findings:** —
+**Review_Findings:**
+- [2026-08-28T11:15:00Z] [ORCH] APPROVED, first-pass, merged --no-ff. Territory clean (exactly the 2 Owned_Paths). Independent subagent run after a clean merge of master: pytest 937/0/0, tests/test_tower_sync.py 10 passed, node hooks 36/0 — matches Test_Evidence exactly. All 6 ACs verified against source. DISCRIMINATING CHECK: reverting the parsing to the old null-emitting behavior made exactly 4 of the new tests FAIL, then restored clean — the contract-regression test is genuine, not a tautology. END-TO-END PROOF run by ORCH: the parsed output now validates against Tower's real SnapshotV1 (ACCEPTED), where the pre-fix shape 422'd. Non-blocking spec observation for Alister: the pack emits MAINTENANCE: lines that spec section-1's five-value enum omits, so they are correctly-but-silently dropped from Tower's digest — consider a spec enum amendment rather than leaving real operational events invisible.
 **Blocked_Reason:** —
-**Updated_By:** S5
+**Updated_By:** ORCH
 **Updated_At:** 2026-08-28T06:24:00Z
