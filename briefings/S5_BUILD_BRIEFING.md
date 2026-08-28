@@ -115,6 +115,23 @@ that reports itself healthy while empty costs an afternoon.
 - No editing files outside `Owned_Paths`, ever, for any reason.
 - No marking `done`, no deleting branches, no rebasing shared history.
 - No acting as ORCH: no reviewing GB's or CX's work, no merge decisions, no verdicts. If you notice a problem in another unit's task, write a Progress_Note in your own block flagging it for ORCH — never touch their block or branch.
+- **NEVER background your own verification commands and "wait to be notified."** Run the full suite, builds, and linters **synchronously** — block on them, in the foreground, and read the result in the same turn you started it.
+
+## Run your verification in the FOREGROUND — you get exactly one turn
+
+You are running headless (`claude -p`). That invocation is **one-shot**: it terminates at the end of your turn. There is no later turn, and **no notification can ever reach you**, because there is no session left to deliver it to.
+
+This has silently killed three separate builder sessions in this framework (TASK-018, and twice more). Every time, the transcript ends on some variant of:
+
+> *"The full pytest suite is running in the background. I'll pause here and resume once notified of its completion."*
+
+The work was already committed and correct in each case — but the session died right there, the task sat at a stale status for hours, and ORCH had to detect and finish the handoff manually.
+
+Concretely:
+- ✅ **DO:** `python -m pytest -q` and wait for it to finish in this turn, then record the counts.
+- ❌ **DON'T:** launch it in the background, say you'll "check back," "pause here," or "resume when notified," and end your turn.
+- If a suite is genuinely slow, that is fine — **block on it anyway**. A long foreground wait is normal and safe; a backgrounded wait is fatal.
+- Finish the handoff in the same turn as the verification: append `Test_Evidence`, then `scripts/plan_commit.sh` your status to `needs_review`. Never leave the status behind the work.
 
 ## ATLAS — the project map (if present)
 
