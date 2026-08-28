@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,9 +18,35 @@ from urllib.request import Request, urlopen
 from validate_plan import Report, parse_tasks
 import usage_probe
 
+# Spec §1 recent_events.kind enum. A parsed kind outside this set is dropped
+# rather than passed through, because one out-of-enum value 422s the whole
+# snapshot (recent_events is a field of the top-level pydantic model).
+_EVENT_KINDS = {"DISPATCH", "REVIEW", "MERGE", "BLOCKED", "DIGEST"}
+
+# AUTOPILOT_LOG.md lines are always written as `- [<ISO8601>] <KIND>: <text>`.
+# Both ts and kind are therefore parseable, never invented (H2).
+_LOG_LINE_RE = re.compile(r"^- \[(?P<ts>[^\]]+)\] (?P<kind>[A-Z_]+): (?P<text>.*)$")
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _parse_log_line(line: str) -> dict | None:
+    """Parse one AUTOPILOT_LOG.md line into a spec §1 recent_events entry.
+
+    Returns ``None`` (skip) when the line does not match the fixed log
+    format, or when its ``kind`` falls outside the spec enum — an
+    unparseable or out-of-enum line is not a snapshot event, and must never
+    be emitted with null/placeholder/guessed fields (H2).
+    """
+    match = _LOG_LINE_RE.match(line)
+    if not match:
+        return None
+    kind = match.group("kind")
+    if kind not in _EVENT_KINDS:
+        return None
+    return {"ts": match.group("ts"), "kind": kind, "text": match.group("text")}
 
 
 def _field(task, name: str):
@@ -65,7 +92,9 @@ def build_snapshot(repo: str | Path, cfg: dict, state=None) -> dict:
     if log.exists():
         try:
             for line in log.read_text(encoding="utf-8").splitlines()[-20:]:
-                if line.strip(): events.append({"ts": None, "kind": None, "text": line.strip()})
+                if not line.strip(): continue
+                event = _parse_log_line(line)
+                if event is not None: events.append(event)
         except OSError: pass
     st = state or {}
     get = (lambda key, default=None: st.get(key, default)) if isinstance(st, dict) else (lambda key, default=None: getattr(st, key, default))
