@@ -715,7 +715,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-020
 **Title:** tower_sync — emit the real event vocabulary and per-event task/unit scope
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 v1.1 (recent_events open vocabulary, task_id/unit), §0 H2 (no invented data)
@@ -723,23 +723,31 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** —
 **Description:** TASK-019 fixed the SHAPE of `recent_events`; the VOCABULARY is still wrong, and the effect is the same class of silent data loss. `_EVENT_KINDS` in scripts/tower_sync.py hardcodes the old closed 5-value enum and drops every kind outside it. Measured against supervisor.py's actual call sites, the pack emits **17** distinct kinds — CONTROL, DEFER_BUDGET, DEFER_USAGE, DIGEST, DISPATCH, DISPATCH_COMMAND, DISTILL, HALT, IDLE, MAINTENANCE, MUTED, REDISPATCH_STALE, RETRO, REVIEW, REVIEW_TG, TG_COMMAND, TRIAGE_UNBLOCK — of which only DISPATCH, REVIEW and DIGEST survive the filter, while MERGE and BLOCKED (both in the old enum) are emitted by nothing at all. Fourteen real event kinds never reach the board. Spec §1 was amended to v1.1 on 2026-08-28: `kind` is now an OPEN uppercase token, the documented list is not a whitelist, and consumers must accept unknown kinds rather than reject the snapshot. This task makes the producer match that. ALSO add the optional `task_id` and `unit` fields §1 v1.1 introduces: `DISPATCH_COMMAND` lines already carry `unit=<U> task=<T>` verbatim and dispatch/review lines name TASK-NNN inline, so both are PARSED, never inferred — absent means null, never a guess (H2). **CROSS-REPO SEQUENCING (read before starting):** the tower repo's TASK-121 makes Tower ACCEPT unknown kinds. Until that is merged, widening the producer would 422 live snapshots. There is no live risk today — Tower is not deployed — and ORCH will not authorise the clawsrv deploy until both sides are merged. Do not attempt to coordinate across repos yourself; build to the amended spec and report.
 **Acceptance_Criteria:**
-- [ ] The closed `_EVENT_KINDS` filter is gone: any kind matching `[A-Z_]+` parsed from a well-formed line is emitted verbatim (§1 v1.1)
-- [ ] Events previously dropped now appear — a test asserts MAINTENANCE explicitly plus at least three others from the 14 (e.g. CONTROL, DISTILL, TG_COMMAND)
-- [ ] `task_id` is parsed from both the `task=TASK-NNN` form and an inline `TASK-NNN`; null when the line carries none, never guessed (H2)
-- [ ] `unit` is parsed from the `unit=<U>` form; null when absent, never guessed (H2)
-- [ ] Unparseable lines are still skipped entirely; empty/missing AUTOPILOT_LOG.md still yields `recent_events: []` and a valid snapshot
-- [ ] **Cross-side contract test (the one whose absence let TASK-019 ship):** a test validates `build_snapshot()`'s real output against Tower's SnapshotV1 field contract — every entry has a non-empty string `ts`, a `kind` matching `[A-Z_]+`, and `task_id`/`unit` each a string or None. It must exercise the REAL AUTOPILOT_LOG.md line formats, not a hand-written fixture
-- [ ] Full Python + Node suites green
+- [x] The closed `_EVENT_KINDS` filter is gone: any kind matching `[A-Z_]+` parsed from a well-formed line is emitted verbatim (§1 v1.1)
+- [x] Events previously dropped now appear — a test asserts MAINTENANCE explicitly plus at least three others from the 14 (e.g. CONTROL, DISTILL, TG_COMMAND)
+- [x] `task_id` is parsed from both the `task=TASK-NNN` form and an inline `TASK-NNN`; null when the line carries none, never guessed (H2)
+- [x] `unit` is parsed from the `unit=<U>` form; null when absent, never guessed (H2)
+- [x] Unparseable lines are still skipped entirely; empty/missing AUTOPILOT_LOG.md still yields `recent_events: []` and a valid snapshot
+- [x] **Cross-side contract test (the one whose absence let TASK-019 ship):** a test validates `build_snapshot()`'s real output against Tower's SnapshotV1 field contract — every entry has a non-empty string `ts`, a `kind` matching `[A-Z_]+`, and `task_id`/`unit` each a string or None. It must exercise the REAL AUTOPILOT_LOG.md line formats, not a hand-written fixture
+- [x] Full Python + Node suites green
 **Branch:** task/TASK-020-s5
 **Started_At:** 2026-08-28T11:00:00Z
 **Progress_Notes:**
 - [2026-08-28T11:00:00Z] [S5] Claimed TASK-020 on task/TASK-020-s5. Next: preflight_paths, then implement the open-vocabulary parser + task_id/unit fields against spec §1 v1.1.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-28T11:05:00Z] [S5] Preflight (c8b9872 filesystem check), run in worktree before any edit:
+  FILE   scripts/tower_sync.py  -> exists, 136 line(s), 6650 bytes
+  FILE   tests/test_tower_sync.py  -> exists, 132 line(s), 5636 bytes
+  Read supervisor.py's real log_line() call sites (grep across the file) to derive the actual line grammar rather than guess it: the generic per-action line is `f"{a.kind}: {a.detail}"` (colon form, used for DIGEST/REVIEW/IDLE/HALT/MAINTENANCE/CONTROL/DISTILL/RETRO/MUTED/TRIAGE_UNBLOCK/REDISPATCH_STALE/DEFER_BUDGET/DEFER_USAGE/REVIEW_TG), but DISPATCH_COMMAND and TG_COMMAND are logged separately via `f"DISPATCH_COMMAND unit={a.unit} task={a.task_id or '—'} command={command}"` / `f"TG_COMMAND unit=TG cmd={cmd} task={task_id or '—'}"` — no colon after the kind token at all. The old regex required a literal `: ` after kind, so these two kinds were unparseable (not merely enum-filtered) even before this task; fixing that is required for the task_id `task=TASK-NNN` field-form AC to be reachable at all.
+- [2026-08-28T11:20:00Z] [S5] Implemented: removed `_EVENT_KINDS` whitelist filtering (kept as a non-filtering `_KNOWN_KINDS` documentation set); widened `_LOG_LINE_RE` to `KIND:?\s` so both the colon and no-colon real shapes parse; added `_parse_task_id` (task=TASK-NNN field, else first inline TASK-NNN mention) and `_parse_unit` (unit=<U> field only, never inferred) per H2. Rewrote the TASK-019 test section: replaced `test_recent_events_skips_out_of_enum_kind` (asserted the now-wrong drop behaviour) with open-vocabulary coverage, both task_id parse-path tests, a null-when-absent test (incl. the literal `task=—` missing-marker), and a cross-side contract test built from the real supervisor.py f-string shapes (not a hand-simplified fixture) asserting Tower's SnapshotV1 field contract (`ts` non-empty str, `kind` matches `[A-Z_]+`, `task_id`/`unit` each str-or-None) over every one of the 17 documented kinds. Committed 7b9a7dc.
+- [2026-08-28T11:30:00Z] [S5] Verification, run synchronously in the foreground per briefing: `python -m pytest tests/test_tower_sync.py -q` → 14 passed. Full suite `python -m pytest -q` → 941 passed, 0 failed (199.14s). `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff master...HEAD --stat` → exactly the two Owned_Paths (scripts/tower_sync.py, tests/test_tower_sync.py), single commit 7b9a7dc, no merge, no PLAN.md/frontmatter edits. Self-checked all 7 acceptance criteria against spec §1 v1.1 text and source — all satisfied. Submitting needs_review.
+**Artifacts:**
+- [2026-08-28T11:30:00Z] [S5] scripts/tower_sync.py, tests/test_tower_sync.py (commit 7b9a7dc)
+**Test_Evidence:**
+- [2026-08-28T11:30:00Z] [S5] `python -m pytest tests/test_tower_sync.py -q` → 14 passed in 0.34s (8 pre-existing + 6 new/rewritten TASK-020 tests: open-vocabulary previously-dropped kinds, task_id field-form parse, task_id inline-form parse, task_id/unit null-when-absent incl. literal `task=—`, cross-side contract over all 17 documented kinds using real supervisor.py log-line shapes). `python -m pytest -q` (full suite) → 941 passed, 0 failed in 199.14s. `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff master...HEAD --stat` → scripts/tower_sync.py (+49/-8 net), tests/test_tower_sync.py (+113/-11 net) — exactly the two Owned_Paths, nothing else.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** S5
-**Updated_At:** 2026-08-28T11:00:00Z
+**Updated_At:** 2026-08-28T11:30:00Z
 
 ### TASK-021
 **Title:** notify.send_file writes alert lines the board can never read
