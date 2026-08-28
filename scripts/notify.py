@@ -69,7 +69,10 @@ def send_console(priority: str, message: str) -> None:
 def send_file(priority: str, message: str) -> None:
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     with open(Path("AUTOPILOT_LOG.md"), "a", encoding="utf-8") as f:
-        f.write(f"- [{ts}] **{priority}** {message}\n")
+        # Keep the priority visible to operators while using the same
+        # machine-readable `KIND: text` grammar as supervisor log entries.
+        # Tower parses this as ALERT_P0 / ALERT_P1 / ALERT_P2 (§1 v1.2).
+        f.write(f"- [{ts}] ALERT_{priority}: {message}\n")
 
 
 def send_telegram(priority: str, message: str) -> None:

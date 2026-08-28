@@ -6,11 +6,15 @@ specs/DEVDEPARTMENT_SLACK_SPEC.md §5, §9): lazily imported, degrades cleanly
 when unconfigured, never raises into the caller."""
 import sys
 from pathlib import Path
+import re
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import notify  # noqa: E402
 from notify import CHANNELS, append_reply_hint, send_slack  # noqa: E402
+import board_publisher  # noqa: E402
+import maintenance  # noqa: E402
+import tower_sync  # noqa: E402
 
 
 class TestAppendReplyHint:
@@ -45,6 +49,37 @@ class TestAppendReplyHint:
         lines = out.splitlines()
         assert lines[0] == msg
         assert lines[1].startswith("Reply:")
+
+
+class TestFileChannelLogGrammar:
+    def test_send_file_writes_parseable_alert_kind_with_utc_timestamp(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        notify.send_file("P1", "stop the line")
+        [line] = (tmp_path / "AUTOPILOT_LOG.md").read_text(encoding="utf-8").splitlines()
+        assert re.match(r"^- \[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\] [A-Z][A-Z0-9_]*: ", line)
+        event = tower_sync._parse_log_line(line)
+        assert event is not None
+        assert event["kind"] == "ALERT_P1"
+        assert event["text"] == "stop the line"
+
+    def test_alert_lines_do_not_disturb_maintenance_summary_or_log_rotation(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "AUTOPILOT_LOG.md").write_text(
+            "- [2026-08-28T16:00:00Z] MAINTENANCE: Self-audit: PASS\n",
+            encoding="utf-8",
+        )
+        notify.send_file("P0", "digest")
+        assert board_publisher.read_maintenance_summary(tmp_path)["status"] == "Self-audit: PASS"
+
+        # Rotation is content-agnostic: an alert at the end of an oversized
+        # log is preserved in its archive and the live log is reset.
+        (tmp_path / "AUTOPILOT_LOG.md").write_text("x" * 1_000_001, encoding="utf-8")
+        notify.send_file("P2", "TASK-021 blocked")
+        result = maintenance._step_hygiene(tmp_path)
+        archive = next(tmp_path.glob("AUTOPILOT_LOG.*.md"))
+        assert result.passed is True
+        assert "ALERT_P2: TASK-021 blocked" in archive.read_text(encoding="utf-8")
+        assert (tmp_path / "AUTOPILOT_LOG.md").read_text(encoding="utf-8") == ""
 
 
 # ---------------------------------------------------------- slack channel (P1b-1)
