@@ -715,7 +715,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-020
 **Title:** tower_sync — emit the real event vocabulary and per-event task/unit scope
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 v1.1 (recent_events open vocabulary, task_id/unit), §0 H2 (no invented data)
@@ -730,15 +730,16 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Unparseable lines are still skipped entirely; empty/missing AUTOPILOT_LOG.md still yields `recent_events: []` and a valid snapshot
 - [ ] **Cross-side contract test (the one whose absence let TASK-019 ship):** a test validates `build_snapshot()`'s real output against Tower's SnapshotV1 field contract — every entry has a non-empty string `ts`, a `kind` matching `[A-Z_]+`, and `task_id`/`unit` each a string or None. It must exercise the REAL AUTOPILOT_LOG.md line formats, not a hand-written fixture
 - [ ] Full Python + Node suites green
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-020-s5
+**Started_At:** 2026-08-28T11:00:00Z
+**Progress_Notes:**
+- [2026-08-28T11:00:00Z] [S5] Claimed TASK-020 on task/TASK-020-s5. Next: preflight_paths, then implement the open-vocabulary parser + task_id/unit fields against spec §1 v1.1.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-28T10:55:00Z
+**Updated_By:** S5
+**Updated_At:** 2026-08-28T11:00:00Z
 
 ### TASK-021
 **Title:** notify.send_file writes alert lines the board can never read
