@@ -126,7 +126,19 @@ reaching the board.
 
 Rules, binding on both sides:
 
-- `kind` is a non-empty uppercase token (`[A-Z_]+`), parsed from the log line —
+- `kind` is a non-empty uppercase token (`[A-Z][A-Z0-9_]*`), parsed from the log line —
+  **v1.2, 2026-08-28: digits are permitted after the first character.** v1.1 said
+  `[A-Z_]+`, which silently forbade digits and made this system's own house
+  priority vocabulary unrepresentable: `ALERT_P0`/`ALERT_P1`/`ALERT_P2` (the
+  P0/P1/P2 scheme used by `notify.py`, and by SLACK §3's own message designs
+  `P0-WAVE-COMPLETE`/`P1-STOP-THE-LINE`/`P2-BLOCKED`) could never parse. CX hit
+  this as a hard blocker on TASK-021 and correctly refused to guess. The v1.1
+  restriction had no stated justification — its purpose was to reject garbage
+  while accepting unknown kinds, and a digit is not garbage. Requiring a leading
+  LETTER still rejects `0`, `_`, `123`. **Sequencing is binding: every CONSUMER
+  must widen before any PRODUCER emits a digit-bearing kind** — a producer that
+  runs ahead 422s the whole snapshot against an un-widened consumer, which is the
+  identical failure mode as TASK-019 and the live-clawsrv deploy gate.
   never invented (H2). The list above is the *documented* set, not a
   whitelist.
 - **A consumer MUST accept an unrecognised `kind` and render it neutrally.**
