@@ -680,7 +680,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-019
 **Title:** tower_sync recent_events must emit real ts/kind — /ingest currently 422s every live snapshot
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 (snapshot schema v1, recent_events entry shape), §0 H2 (no invented data), §5 (exit criteria — "orb-jun-26, rwc-admin-portal, and the DEVDEPARTMENT repo itself all pushing")
@@ -695,12 +695,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] **Contract regression test:** a test asserts the emitted `recent_events` entries satisfy the spec §1 shape — every entry has a non-null string `ts` and a `kind` within the enum. This is the test whose absence let the break ship; it must fail against the current null-emitting code
 - [ ] Empty/missing AUTOPILOT_LOG.md still yields `recent_events: []` and a valid snapshot (existing behaviour preserved)
 - [ ] Full Python + Node suites green
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-019-s5
+**Started_At:** 2026-08-28T05:09:57Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-28T05:30:00Z
+**Updated_By:** S5
+**Updated_At:** 2026-08-28T05:09:57Z
