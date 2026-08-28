@@ -85,7 +85,7 @@ def test_recent_events_contract_matches_spec_shape(tmp_path):
     assert len(events) == 5
     for event in events:
         assert isinstance(event["ts"], str) and event["ts"]
-        # Open vocabulary (§1 v1.1): all five example kinds are well-formed
+        # Open vocabulary (§1 v1.2): all five example kinds are well-formed
         # uppercase tokens, whether or not they're in the historical enum.
         assert event["kind"] in _VALID_KINDS
         assert isinstance(event["text"], str)
@@ -212,7 +212,7 @@ def test_recent_events_cross_side_contract_against_real_log_line_formats(tmp_pat
     field contract. This asserts, over EVERY one of the real supervisor.py
     log-line shapes (not a hand-simplified fixture), the exact field
     contract Tower's SnapshotV1 requires for recent_events entries: a
-    non-empty string `ts`, a `kind` matching `[A-Z_]+`, and `task_id`/`unit`
+    non-empty string `ts`, a `kind` matching `[A-Z][A-Z0-9_]*`, and `task_id`/`unit`
     each either a string or None."""
     (tmp_path / "PLAN.md").write_text(PLAN, encoding="utf-8")
     log = "\n".join(_REAL_LOG_LINES.values()) + "\n"
@@ -220,7 +220,7 @@ def test_recent_events_cross_side_contract_against_real_log_line_formats(tmp_pat
     snap = tower_sync.build_snapshot(tmp_path, cfg())
     events = snap["recent_events"]
     assert len(events) == len(_REAL_LOG_LINES)
-    kind_token = re.compile(r"^[A-Z_]+$")
+    kind_token = re.compile(r"^[A-Z][A-Z0-9_]*$")
     for event in events:
         assert isinstance(event["ts"], str) and event["ts"]
         assert kind_token.match(event["kind"])
@@ -230,3 +230,16 @@ def test_recent_events_cross_side_contract_against_real_log_line_formats(tmp_pat
     # The previously-dropped kinds are actually present, not just shaped right.
     assert {"MAINTENANCE", "CONTROL", "DISTILL", "TG_COMMAND", "DISPATCH_COMMAND",
             "REDISPATCH_STALE", "TRIAGE_UNBLOCK"} <= {e["kind"] for e in events}
+
+
+def test_recent_events_accepts_alert_priority_kinds(tmp_path):
+    """§1 v1.2 admits this project's real ALERT_P0/P1/P2 vocabulary."""
+    (tmp_path / "PLAN.md").write_text(PLAN, encoding="utf-8")
+    (tmp_path / "AUTOPILOT_LOG.md").write_text(
+        "- [2026-08-28T16:30:00Z] ALERT_P0: digest\n"
+        "- [2026-08-28T16:30:01Z] ALERT_P1: stop the line\n"
+        "- [2026-08-28T16:30:02Z] ALERT_P2: decision needed\n",
+        encoding="utf-8",
+    )
+    events = tower_sync.build_snapshot(tmp_path, cfg())["recent_events"]
+    assert [event["kind"] for event in events] == ["ALERT_P0", "ALERT_P1", "ALERT_P2"]

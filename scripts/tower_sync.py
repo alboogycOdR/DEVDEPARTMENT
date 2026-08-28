@@ -18,8 +18,8 @@ from urllib.request import Request, urlopen
 from validate_plan import Report, parse_tasks
 import usage_probe
 
-# Spec §1 v1.1 (2026-08-28): recent_events.kind is an OPEN uppercase token
-# (`[A-Z_]+`), not a closed enum — the producer skips only lines it cannot
+# Spec §1 v1.2 (2026-08-28): recent_events.kind is an OPEN uppercase token
+# (`[A-Z][A-Z0-9_]*`), not a closed enum — the producer skips only lines it cannot
 # parse; it never filters by vocabulary (that is a Tower rendering decision).
 # Measured against supervisor.py's real call sites the pack emits 17 distinct
 # kinds; this list is documentation of what's known to occur, not a filter.
@@ -37,7 +37,7 @@ _KNOWN_KINDS = {
 # "DISPATCH_COMMAND unit=GB task=TASK-117 command=..."). The colon is
 # therefore optional, but the separating whitespace after the kind token is
 # not.
-_LOG_LINE_RE = re.compile(r"^- \[(?P<ts>[^\]]+)\] (?P<kind>[A-Z_]+):?\s(?P<text>.*)$")
+_LOG_LINE_RE = re.compile(r"^- \[(?P<ts>[^\]]+)\] (?P<kind>[A-Z][A-Z0-9_]*):?\s(?P<text>.*)$")
 
 # task_id/unit (§1 v1.1) are both PARSED from data already present in the
 # line, never inferred — absent means null, never a guess (H2).
@@ -69,13 +69,13 @@ def _parse_unit(text: str) -> str | None:
 
 
 def _parse_log_line(line: str) -> dict | None:
-    """Parse one AUTOPILOT_LOG.md line into a spec §1 v1.1 recent_events entry.
+    """Parse one AUTOPILOT_LOG.md line into a spec §1 v1.2 recent_events entry.
 
     Returns ``None`` (skip) only when the line does not match the fixed log
     format at all — an unparseable line is not a snapshot event, and must
     never be emitted with null/placeholder/guessed fields (H2). ``kind`` is
     emitted verbatim for any well-formed line regardless of whether it is in
-    ``_KNOWN_KINDS`` (§1 v1.1: open vocabulary, not a whitelist — vocabulary
+    ``_KNOWN_KINDS`` (§1 v1.2: open vocabulary, not a whitelist — vocabulary
     curation is Tower's job, not the producer's).
     """
     match = _LOG_LINE_RE.match(line)
