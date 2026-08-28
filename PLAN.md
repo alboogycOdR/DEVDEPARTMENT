@@ -680,7 +680,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-019
 **Title:** tower_sync recent_events must emit real ts/kind — /ingest currently 422s every live snapshot
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 (snapshot schema v1, recent_events entry shape), §0 H2 (no invented data), §5 (exit criteria — "orb-jun-26, rwc-admin-portal, and the DEVDEPARTMENT repo itself all pushing")
@@ -688,19 +688,26 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** —
 **Description:** BLOCKING BUG, found 2026-08-28 during the tower repo's TASK-114 review and verified empirically by running the real payload shape through Tower's own pydantic model. `scripts/tower_sync.py:68` builds every AUTOPILOT_LOG.md line as `{"ts": None, "kind": None, "text": line.strip()}`. Tower's `SnapshotV1.recent_events` (towerserver/schemas.py, built to spec §1) requires `ts: str` and `kind: Literal["DISPATCH","REVIEW","MERGE","BLOCKED","DIGEST"]`. Pydantic therefore rejects the payload — and because `recent_events` is a field of the top-level model, the ENTIRE snapshot 422s, not just the offending events. Any project with a non-empty AUTOPILOT_LOG.md (i.e. every real one) cannot push at all; the project simply never appears on the Tower board. Worse, it fails SILENTLY: the H5 fail-open path in `sync_tick` swallows the non-2xx as one warning per tick and returns cleanly, so nothing surfaces to the operator. Verified reproduction: `SnapshotV1.model_validate(snap)` with one pack-shaped event raises `recent_events.0.ts :: Input should be a valid string` + `recent_events.0.kind :: Input should be 'DISPATCH', 'REVIEW', 'MERGE', 'BLOCKED' or 'DIGEST'`. THE NULLS WERE NEVER NECESSARY: AUTOPILOT_LOG.md lines are written in a fixed format — `- [2026-08-16T18:34:45Z] DISPATCH: S5 idle; dispatching onto TASK-010 (...)` — so both `ts` and `kind` are directly parseable from the line. H2 forbids INVENTING data; it does not require nulling data that is present and parseable. Parse `ts` (the bracketed ISO8601) and `kind` (the token before the first colon) and pass `text` as the remainder. A line that genuinely does not match the format must be SKIPPED (not emitted with nulls, not guessed a kind for) — an unparseable line is not a snapshot event. A `kind` token outside the spec's five-value enum must also be skipped rather than passed through, since the backend will reject the whole snapshot for one bad value. Why both prior reviews missed it: each side was verified against the spec in isolation and neither test exercised the other's real payload — the pack's `test_tower_sync.py:40` asserts only that the `recent_events` KEY exists, and Tower's `tests/server/conftest.py` uses a hand-written spec-shaped fixture, so the two contracts never met in a test.
 **Acceptance_Criteria:**
-- [ ] `build_snapshot()` emits `recent_events` entries with a real ISO8601 `ts` string and a `kind` drawn from the spec §1 enum, parsed from the AUTOPILOT_LOG.md line format `- [<ISO8601>] <KIND>: <text>`
-- [ ] `text` carries the remainder of the line (the message after `<KIND>: `), not the raw line including timestamp/kind
-- [ ] A log line that does not match the expected format is SKIPPED entirely — never emitted with null/placeholder fields, never assigned a guessed `kind` (H2)
-- [ ] A parsed `kind` outside the spec's five-value enum is also skipped (one out-of-enum value would 422 the whole snapshot)
-- [ ] **Contract regression test:** a test asserts the emitted `recent_events` entries satisfy the spec §1 shape — every entry has a non-null string `ts` and a `kind` within the enum. This is the test whose absence let the break ship; it must fail against the current null-emitting code
-- [ ] Empty/missing AUTOPILOT_LOG.md still yields `recent_events: []` and a valid snapshot (existing behaviour preserved)
-- [ ] Full Python + Node suites green
+- [x] `build_snapshot()` emits `recent_events` entries with a real ISO8601 `ts` string and a `kind` drawn from the spec §1 enum, parsed from the AUTOPILOT_LOG.md line format `- [<ISO8601>] <KIND>: <text>`
+- [x] `text` carries the remainder of the line (the message after `<KIND>: `), not the raw line including timestamp/kind
+- [x] A log line that does not match the expected format is SKIPPED entirely — never emitted with null/placeholder fields, never assigned a guessed `kind` (H2)
+- [x] A parsed `kind` outside the spec's five-value enum is also skipped (one out-of-enum value would 422 the whole snapshot)
+- [x] **Contract regression test:** a test asserts the emitted `recent_events` entries satisfy the spec §1 shape — every entry has a non-null string `ts` and a `kind` within the enum. This is the test whose absence let the break ship; it must fail against the current null-emitting code
+- [x] Empty/missing AUTOPILOT_LOG.md still yields `recent_events: []` and a valid snapshot (existing behaviour preserved)
+- [x] Full Python + Node suites green
 **Branch:** task/TASK-019-s5
 **Started_At:** 2026-08-28T05:09:57Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-08-28T06:20:00Z] [S5] Resumed TASK-019 (already claimed on task/TASK-019-s5, worktree clean, HEAD at c43a1b0). Preflight (c8b9872 filesystem check):
+  FILE   scripts/tower_sync.py  -> exists, 136 line(s), 6650 bytes
+  FILE   tests/test_tower_sync.py  -> exists, 132 line(s), 5636 bytes
+  Read both files fresh: the fix (`_EVENT_KINDS`, `_LOG_LINE_RE`, `_parse_log_line`) and the six TASK-019 regression tests were already implemented and committed (c43a1b0). `_parse_log_line` parses the bracketed ISO8601 `ts` and the `<KIND>:` token via regex `^- \[(?P<ts>[^\]]+)\] (?P<kind>[A-Z_]+): (?P<text>.*)$`, drops kinds outside the 5-value enum, and skips non-matching lines entirely (H2: no nulls, no guessed kind) — matches spec §1 exactly. `git diff master...HEAD --stat` confirms territory is clean: only scripts/tower_sync.py and tests/test_tower_sync.py touched, no other files. Proceeded straight to verification since implementation was already complete and correct on re-read.
+- [2026-08-28T06:24:00Z] [S5] Verification complete, all criteria satisfied. `python -m pytest tests/test_tower_sync.py -q` → 10 passed (4 pre-existing + 6 new TASK-019 contract tests: real-shape contract, ts/kind/text parsed correctly from a real log line, non-matching lines skipped, out-of-enum kind skipped, missing log → empty list, empty log → empty list). `python -m pytest -q` (full suite) → 937 passed, 0 failed in 164.57s. `node hooks/run-tests.js` → 36 passed, 0 failed. Manually re-verified H2 compliance by reading `_parse_log_line` and its tests line-by-line: no code path invents ts/kind, non-matching/out-of-enum lines are dropped via `continue`/`return None`, never emitted with placeholders. Self-checked all 7 acceptance criteria against spec §1/§0 H2/§5 text — all satisfied. Submitting needs_review.
+**Artifacts:**
+- [2026-08-28T06:24:00Z] [S5] scripts/tower_sync.py, tests/test_tower_sync.py (commit c43a1b0, already on task/TASK-019-s5 at session start)
+**Test_Evidence:**
+- [2026-08-28T06:24:00Z] [S5] `python -m pytest tests/test_tower_sync.py -q` → 10 passed in 0.28s. `python -m pytest -q` (full suite) → 937 passed, 0 failed in 164.57s. `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff master...HEAD --stat` → scripts/tower_sync.py (+31/-1), tests/test_tower_sync.py (+68) — exactly the two Owned_Paths, nothing else.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** S5
-**Updated_At:** 2026-08-28T05:09:57Z
+**Updated_At:** 2026-08-28T06:24:00Z
