@@ -752,7 +752,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-021
 **Title:** notify.send_file writes alert lines the board can never read
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 v1.1 (recent_events kind token), §0 H2
@@ -767,10 +767,11 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Full Python + Node suites green
 **Branch:** task/TASK-021-cx
 **Started_At:** 2026-08-28T13:37:28Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-08-28T13:38:09Z] [CX] Preflight completed before edits: `[preflight] TASK-021 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-codex-DEVDEPARTMENT`; `[preflight] 2 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.`; `FILE   scripts/notify.py  -> exists, 160 line(s), 6798 bytes`; `FILE   tests/test_notify.py  -> exists, 151 line(s), 6753 bytes`. Read spec §1 v1.1 and all owned files. Verified consumer compatibility by inspecting board_publisher.py (only searches `MAINTENANCE:`) and maintenance.py (rotates the complete log); `rg` found no external assertion of the old `**P0**` format.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-08-28T13:37:28Z
+**Updated_At:** 2026-08-28T13:38:09Z
