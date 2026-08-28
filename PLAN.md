@@ -752,7 +752,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-021
 **Title:** notify.send_file writes alert lines the board can never read
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 v1.1 (recent_events kind token), §0 H2
@@ -765,12 +765,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] `board_publisher.py`'s MAINTENANCE parsing and `maintenance.py`'s log rotation are verified unaffected (assert, do not assume)
 - [ ] No other notify channel (stdout, telegram) changes behaviour
 - [ ] Full Python + Node suites green
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-021-cx
+**Started_At:** 2026-08-28T13:37:28Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-28T10:55:00Z
+**Updated_By:** CX
+**Updated_At:** 2026-08-28T13:37:28Z
