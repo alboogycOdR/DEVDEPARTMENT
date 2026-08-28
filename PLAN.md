@@ -752,7 +752,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-021
 **Title:** notify.send_file writes alert lines the board can never read
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 v1.1 (recent_events kind token), §0 H2
@@ -769,9 +769,10 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Started_At:** 2026-08-28T13:37:28Z
 **Progress_Notes:**
 - [2026-08-28T13:38:09Z] [CX] Preflight completed before edits: `[preflight] TASK-021 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-codex-DEVDEPARTMENT`; `[preflight] 2 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.`; `FILE   scripts/notify.py  -> exists, 160 line(s), 6798 bytes`; `FILE   tests/test_notify.py  -> exists, 151 line(s), 6753 bytes`. Read spec §1 v1.1 and all owned files. Verified consumer compatibility by inspecting board_publisher.py (only searches `MAINTENANCE:`) and maintenance.py (rotates the complete log); `rg` found no external assertion of the old `**P0**` format.
+- [2026-08-28T13:39:29Z] [CX] Blocked before committing code: the required `ALERT_P0`/`ALERT_P1`/`ALERT_P2` kinds contain digits, but the task's required grammar, Tower spec §1 v1.1, and `scripts/tower_sync.py:_LOG_LINE_RE` all require `[A-Z_]+`, which rejects digits. A direct `send_file("P1", ...)` regression test against that grammar failed exactly as expected. Reverted the uncommitted trial change; task needs an explicit grammar/kind decision.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** SPEC_AMBIGUITY: TASK-021 mandates `ALERT_P0`/`ALERT_P1`/`ALERT_P2`, while its own required grammar and spec §1 v1.1 mandate `[A-Z_]+`; tower_sync currently enforces that regex. Clarify whether alert kinds must be digit-free (for example `ALERT_HIGH`) or widen the cross-repo event-kind grammar and its consumers to permit digits.
 **Updated_By:** CX
-**Updated_At:** 2026-08-28T13:38:09Z
+**Updated_At:** 2026-08-28T13:39:29Z
