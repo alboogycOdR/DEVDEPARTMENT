@@ -62,6 +62,55 @@ absent-path in CI/on a clean box instead.
 Set these in your shell / PM2 env config for the test session. **Never** commit
 them, and never let a builder or this runbook write them to a tracked file.
 
+### 0.3 — Create the Slack app (pre-Tower Socket Mode configuration)
+
+Suites C and D above need a real Slack app before they can run, and SLACK §1's
+manifest **cannot be used as-is today**: it configures the post-Tower webhook
+transport. Its three `request_url` values point at
+`https://<tower-tailnet-host>/slack/...`, which does not exist until Tower is
+deployed and the §5 cutover has happened. Slack also rejects a manifest whose
+request URLs fail its challenge check, so deploying §1 verbatim now fails.
+
+The spec does not carry a pre-Tower variant — SLACK §1 has no
+`socket_mode_enabled` key, no `connections:write` scope, and no app-level-token
+step, and DEPLOYMENT §5 describes the interim in prose only. The steps below are
+**ORCH decisions filling that gap** (2026-08-28), recorded here so the interim is
+reproducible; they are additive to the manifest and change nothing about the
+post-cutover target state.
+
+1. **Create the app** at `api.slack.com/apps` → *From an app manifest* → paste
+   SLACK §1's manifest with these edits:
+   - **Delete all three Tower URL settings**: `settings.interactivity.request_url`,
+     `settings.slash_commands_request_url`, and
+     `settings.event_subscriptions.request_url`. Keep
+     `interactivity.is_enabled: true`, keep the `bot_events` list, and keep every
+     slash command — in Socket Mode, commands and interactions are delivered over
+     the socket, so they are declared without URLs.
+   - **Add** `settings.socket_mode_enabled: true`.
+   - Leave `oauth_config.scopes.bot` exactly as §1 lists it. Socket Mode needs no
+     extra *bot* scope; the socket scope is an app-level-token scope (step 3).
+2. **Install to the workspace**, then copy the Bot User OAuth Token (`xoxb-...`)
+   into `DEVTEAM_SLACK_TOKEN`.
+3. **Generate the app-level token**: *Basic Information → App-Level Tokens →
+   Generate Token and Scopes*, add the **`connections:write`** scope, and copy the
+   `xapp-...` value into `DEVTEAM_SLACK_APP_TOKEN`. This token is what Socket Mode
+   authenticates with; without the scope, `slack_listener.py` connects and is then
+   disconnected by Slack.
+4. **Copy the Signing Secret** (*Basic Information → App Credentials*) into
+   `DEVTEAM_SLACK_SIGNING_SECRET`. The per-project supervisor does not verify
+   signatures — Tower does (§8) — but set it now so the cutover needs no revisit.
+5. **Invite the bot to both channels** (SLACK §10 step 2) and record their IDs in
+   `autopilot.json`'s `slack.project_channel` / `slack.ops_channel`. Get IDs with
+   the `conversations.list` call in SLACK §2's `_note`.
+
+At cutover (DEPLOYMENT §5) this reverses: disable Socket Mode, restore the three
+`request_url` values, and drop the app-level token. `DEVTEAM_SLACK_APP_TOKEN`
+becomes unused at that point but is harmless to leave set — the fallback path
+(§5 step 2) reuses it if a project is ever flipped back to Socket Mode.
+
+> **Spec follow-up:** SLACK §1 should carry this interim variant itself rather
+> than leaving it to a runbook. Tracked in PLAN.md as a spec-amendment item.
+
 ---
 
 ## Suite A — Automated regression (run first, every time)

@@ -106,12 +106,50 @@ Snapshot schema v1:
                   "task": "TASK-117", "heartbeat_age_min": 7} ],
   "review_queue": [ {"id": "TASK-114", "age_min": 95} ],
   "usage": { "claude": {"pct_5h": 62, "pct_7d": 41}, "codex": {"pct": 30} },
-  "recent_events": [ {"ts": "...", "kind": "DISPATCH|REVIEW|MERGE|BLOCKED|DIGEST",
-                       "text": "..."} ]
+  "recent_events": [ {"ts": "...", "kind": "DISPATCH", "text": "...",
+                       "task_id": "TASK-117|null", "unit": "GB|null"} ]
 }
 ```
 Everything above is already computed inside the supervisor — P1 is assembly
 and transport, not new analysis.
+
+**`recent_events.kind` — open vocabulary, not a closed enum (v1.1, 2026-08-28).**
+This field previously read `DISPATCH|REVIEW|MERGE|BLOCKED|DIGEST`. That was
+written aspirationally and does not describe what the pack emits. Measured
+against `supervisor.py`'s actual call sites: the pack emits **17** distinct
+kinds — `CONTROL DEFER_BUDGET DEFER_USAGE DIGEST DISPATCH DISPATCH_COMMAND
+DISTILL HALT IDLE MAINTENANCE MUTED REDISPATCH_STALE RETRO REVIEW REVIEW_TG
+TG_COMMAND TRIAGE_UNBLOCK` — of which **only 3 (`DISPATCH`, `REVIEW`,
+`DIGEST`) were in the enum**, while `MERGE` and `BLOCKED` are emitted by
+nothing at all. Fourteen real event kinds were therefore dropped before
+reaching the board.
+
+Rules, binding on both sides:
+
+- `kind` is a non-empty uppercase token (`[A-Z_]+`), parsed from the log line —
+  never invented (H2). The list above is the *documented* set, not a
+  whitelist.
+- **A consumer MUST accept an unrecognised `kind` and render it neutrally.**
+  It must never reject the event, and must never reject the enclosing
+  snapshot. A closed `Literal` here is a latent outage: one new pack event
+  kind 422s the entire payload for every project, which is precisely the
+  failure class TASK-019 fixed one level down. Forward compatibility is the
+  point of this rule.
+- The producer skips only lines it cannot parse; it does not filter by
+  vocabulary. Vocabulary curation is a *rendering* decision, made by Tower.
+- Known gap, deliberately not solved here: `notify.send_file` writes alert
+  lines as `- [<ts>] **P0** <text>`, which carries no `KIND:` token and is
+  therefore skipped entirely. Normalising that writer is a pack change with
+  its own compatibility surface (`board_publisher.py` reads the log too), so
+  it is tracked as a separate task rather than assumed.
+
+**`task_id` / `unit` (v1.1).** Both optional, both `null` when the line does
+not carry them, both parsed rather than inferred. They exist because §2.5's
+workshop animations bind an event to a specific desk and crate and cannot do
+so from `text` alone. `DISPATCH_COMMAND` lines already carry `unit=<U>
+task=<T>` verbatim, and dispatch/review lines name `TASK-NNN` inline — so
+this is parsing present data, not synthesis. A consumer that cannot resolve
+scope must fail closed (render the event unscoped), never guess a desk.
 
 ### P2 — Inbox consumer (in `supervisor.py`, before `decide()`)
 

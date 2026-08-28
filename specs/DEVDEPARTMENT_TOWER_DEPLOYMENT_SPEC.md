@@ -56,7 +56,7 @@ module.exports = {
   apps: [{
     name: "tower",
     cwd: "/opt/tower/repo",
-    script: "venv/bin/uvicorn",
+    script: "/opt/tower/venv/bin/uvicorn",
     args: "server:app --host <tailnet-ip> --port 8100",
     interpreter: "none",
     env_file: "/opt/tower/.env",
@@ -70,6 +70,16 @@ module.exports = {
 - `--host` is the machine's **Tailscale IP** (e.g. `100.x.y.z`), resolved at
   deploy time — binding to the tailnet interface is what enforces H4 at the
   socket level. `tailscale ip -4` gives it; the deploy script writes it in.
+- `script` **must be absolute**. PM2 resolves a relative `script` against
+  `cwd` — not against the ecosystem file's own directory (`lib/Common.js`
+  `prepareAppConf`: `app.pm_exec_path = path.resolve(cwd, app.script)`, where
+  `cwd` is `app.cwd` whenever it is set). With `cwd: "/opt/tower/repo"`, a
+  relative `"venv/bin/uvicorn"` resolves to `/opt/tower/repo/venv/bin/uvicorn`,
+  which nothing ever creates — the venv lives at `/opt/tower/venv` per §1 — so
+  `pm2 startOrRestart` aborts with `Script not found` and the §7 criterion
+  `pm2 ls shows tower online` can never pass. (Spec correction 2026-08-28,
+  v1.1: this block previously showed the relative form. Verified against pm2's
+  own resolver, not assumed.)
 - `pm2 save` + `pm2 startup` so Tower survives a server reboot.
 - Optional hardening (deferred, §6): a `tailscale serve` HTTPS front so the
   Slack request URLs (§5) get a valid cert without exposing anything publicly.
