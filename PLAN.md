@@ -752,7 +752,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-021
 **Title:** notify.send_file writes alert lines the board can never read
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §1 v1.1 (recent_events kind token), §0 H2
@@ -760,20 +760,23 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** —
 **Description:** `notify.send_file` (scripts/notify.py) appends alerts as `- [<ts>] **P0** <message>` — a format with no `KIND:` token at all. tower_sync's line parser therefore skips every one of them, so P0/P1/P2 operator alerts are invisible on the Tower board even after TASK-020 widens the vocabulary. This is the third distinct layer of the same defect family (TASK-019 = shape, TASK-020 = vocabulary, this = a writer that never matched the log grammar). Normalise the writer to the grammar the rest of the log already uses: `- [<ts>] ALERT_<PRIORITY>: <message>`, keeping the priority visible to a human reader and making the line machine-readable as kind `ALERT_P0`/`ALERT_P1`/`ALERT_P2`. **Check before you write:** other code reads this file — `scripts/board_publisher.py` parses `MAINTENANCE:` lines and `scripts/maintenance.py` rotates the log. Neither should be affected, but VERIFY rather than assume, and if a test outside your Owned_Paths asserts the old `**P0**` format, do not edit it — report an OWNERSHIP_CONFLICT with the exact file and assertion and ORCH will grant or fix it.
 **Acceptance_Criteria:**
-- [ ] `send_file` writes `- [<ts>] ALERT_<PRIORITY>: <message>` with a UTC timestamp; the priority remains legible in the human-readable log
-- [ ] A test asserts the emitted line matches the log grammar `^- \[<iso>\] [A-Z_]+: ` — i.e. it is parseable by the same rules tower_sync uses
-- [ ] `board_publisher.py`'s MAINTENANCE parsing and `maintenance.py`'s log rotation are verified unaffected (assert, do not assume)
-- [ ] No other notify channel (stdout, telegram) changes behaviour
-- [ ] Full Python + Node suites green
+- [x] `send_file` writes `- [<ts>] ALERT_<PRIORITY>: <message>` with a UTC timestamp; the priority remains legible in the human-readable log
+- [x] A test asserts the emitted line matches the log grammar `^- \[<iso>\] [A-Z_]+: ` — i.e. it is parseable by the same rules tower_sync uses
+- [x] `board_publisher.py`'s MAINTENANCE parsing and `maintenance.py`'s log rotation are verified unaffected (assert, do not assume)
+- [x] No other notify channel (stdout, telegram) changes behaviour
+- [x] Full Python + Node suites green
 **Branch:** task/TASK-021-cx
 **Started_At:** 2026-08-28T13:37:28Z
 **Progress_Notes:**
 - [2026-08-28T16:05:00Z] [ORCH] **SPEC_AMBIGUITY RESOLVED — unblocked, scope widened.** CX was right to stop: `ALERT_P0` contains a digit and spec §1 v1.1's `[A-Z_]+` forbade digits, so the kind this task mandates could never parse. CX verified consumer safety, wrote a regression test that failed exactly as predicted, then REVERTED rather than committing broken work — correct behaviour, no rework attaches. RESOLUTION (ORCH, spec amended to §1 v1.2, commit 69fce41): the grammar becomes `[A-Z][A-Z0-9_]*` — digits allowed after the first character, leading letter still required so `0`/`_`/`123` stay rejected. I chose widening over digit-free kinds (`ALERT_HIGH` etc.) because P0/P1/P2 is this system's house vocabulary end-to-end (notify.py priorities, SLACK §3's `P0-WAVE-COMPLETE`/`P1-STOP-THE-LINE`/`P2-BLOCKED`); renaming would force a permanent translation layer and lose fidelity, and v1.1's restriction had no stated justification — its purpose was rejecting garbage, and a digit is not garbage. **Owned_Paths widened** to include `scripts/tower_sync.py` + `tests/test_tower_sync.py`: the writer and the parser grammar are one inseparable change (an alert line the parser cannot read is not a fix), and no other task is active in this repo, so territory stays disjoint. Its firewall grant is already live. **MERGE GATE — binding:** this branch emits `ALERT_P0`-style kinds. The tower repo's TASK-123 widens the CONSUMER to match and MUST merge (and reach clawsrv) first. Ship the producer ahead of the consumer and the first operator alert 422s the whole snapshot with H5 hiding it — the identical silent-outage mode as TASK-019. Build and submit freely; I will hold the merge until TASK-123 lands.
 - [2026-08-28T13:38:09Z] [CX] Preflight completed before edits: `[preflight] TASK-021 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-codex-DEVDEPARTMENT`; `[preflight] 2 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.`; `FILE   scripts/notify.py  -> exists, 160 line(s), 6798 bytes`; `FILE   tests/test_notify.py  -> exists, 151 line(s), 6753 bytes`. Read spec §1 v1.1 and all owned files. Verified consumer compatibility by inspecting board_publisher.py (only searches `MAINTENANCE:`) and maintenance.py (rotates the complete log); `rg` found no external assertion of the old `**P0**` format.
 - [2026-08-28T13:39:29Z] [CX] Blocked before committing code: the required `ALERT_P0`/`ALERT_P1`/`ALERT_P2` kinds contain digits, but the task's required grammar, Tower spec §1 v1.1, and `scripts/tower_sync.py:_LOG_LINE_RE` all require `[A-Z_]+`, which rejects digits. A direct `send_file("P1", ...)` regression test against that grammar failed exactly as expected. Reverted the uncommitted trial change; task needs an explicit grammar/kind decision.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-08-28T14:08:25Z] [CX] Implemented and committed 9733d76 after ORCH's §1 v1.2 resolution. `send_file` now writes UTC `ALERT_P0`/`ALERT_P1`/`ALERT_P2` entries; tower_sync accepts the v1.2 `[A-Z][A-Z0-9_]*` grammar. Added regressions for writer-to-parser compatibility, all three alert priorities, retained MAINTENANCE summary parsing, and content-preserving log rotation. Console and Telegram code paths were not changed.
+**Artifacts:**
+- [2026-08-28T14:08:25Z] [CX] scripts/notify.py, tests/test_notify.py, scripts/tower_sync.py, tests/test_tower_sync.py (commit 9733d76)
+**Test_Evidence:**
+- [2026-08-28T14:08:25Z] [CX] `python -m pytest tests/test_notify.py tests/test_tower_sync.py -q` → 33 passed in 0.45s. `python -m pytest -q` → 944 passed, 0 failed in 156.93s. `node hooks/run-tests.js` → 36 passed, 0 failed. `git diff --check` → clean; diff confined to all four Owned_Paths.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-28T13:39:29Z
+**Updated_By:** CX
+**Updated_At:** 2026-08-28T14:08:25Z
