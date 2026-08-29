@@ -19,3 +19,8 @@ STOP
 # tower.enabled/url/project_id). Genuinely project-specific values belong in
 # this untracked file instead — never commit it. See docs/SYNC.md.
 autopilot.local.json
+
+# Git bundles used for out-of-band spec/branch transfer (e.g. the sandbox-merge
+# remote). Large binary artefacts, regenerable with `git bundle create` — never
+# commit them.
+*.bundle
