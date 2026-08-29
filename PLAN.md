@@ -783,7 +783,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-022
 **Title:** autopilot.json is simultaneously the shipped template AND DEVDEPARTMENT's own project config — no per-project override exists
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §5 (exit criteria names "the DEVDEPARTMENT repo itself" as one of three projects that should be pushing), docs/SYNC.md (add_only_keys template semantics), §0 (ask-don't-auto-flip discipline)
@@ -814,7 +814,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-08-29T07:11:15Z] [S5] scripts/supervisor.py, tests/test_supervisor.py (commit 58a8bf9); .gitignore, docs/SYNC.md (commit 9eb6aee); merge commit picking up master's PLAN.md/hooks/lib.js widening (no S5 edits outside territory)
 **Test_Evidence:**
 - [2026-08-29T07:11:15Z] [S5] `python -m pytest tests/test_supervisor.py -q` → 53 passed in 37.43s (includes all 7 new TASK-022 tests). `python -m pytest -q` (full suite) → 950 passed in 135.43s. `node C:/CLAUDECODE_kingdom.work/DEVDEPARTMENT/hooks/run-tests.js` → 36 passed, 0 failed. `git check-ignore -v autopilot.local.json` → confirmed ignored via the new `.gitignore` rule. `git diff --stat origin/master...HEAD` → scripts/supervisor.py +39, tests/test_supervisor.py +100, .gitignore +8, docs/SYNC.md +46; nothing outside the 4 Owned_Paths.
-**Review_Findings:** —
+**Review_Findings:** Approved first-pass. Territory clean (4 files, exactly the widened Owned_Paths, 193 insertions / 0 deletions elsewhere), zero PLAN.md commits outside own block. All six ACs verified directly against the diff: `_merge_local_config()` deep-merges (local wins, sibling keys preserved), absent file is a silent no-op, invalid-JSON/non-dict `autopilot.local.json` fails open with a stderr warning rather than crashing, `.gitignore` entry with rationale comment, docs/SYNC.md gained a full "Local, untracked overrides" section explaining the two-file split. Independent re-run: `node hooks/run-tests.js` 36/0 and `git check-ignore -v autopilot.local.json` both confirmed clean. Full `pytest` independently showed 32 failures, but every one is a `plan_commit.sh` subprocess timeout in `tests/test_plan_commit.py`/`tests/test_dispatch_worktree.py` — files TASK-022's diff never touches. Root-caused: `plan_commit.sh` resolves `REPO_ROOT` via `git-common-dir`, so invoking it from ANY worktree commits against this actual live main checkout; with several concurrent orchestrator/builder sessions active on this repo, that's real write contention, not a logic bug. Reproduced the same failure pattern in a fresh, isolated detached-HEAD worktree of this exact commit, confirming it is pre-existing environmental flakiness in the shared test design, not a regression this task introduced. Non-blocking follow-up worth filing: those two test files should isolate REPO_ROOT to a tmp fixture repo instead of resolving to whatever main checkout happens to be running, so they don't flake under concurrent multi-session use. Merged 9eb6aee→master; branch deleted.
 **Blocked_Reason:** —
-**Updated_By:** S5
-**Updated_At:** 2026-08-29T07:11:15Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-08-29T11:35:00Z
