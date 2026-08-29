@@ -783,7 +783,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-022
 **Title:** autopilot.json is simultaneously the shipped template AND DEVDEPARTMENT's own project config — no per-project override exists
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §5 (exit criteria names "the DEVDEPARTMENT repo itself" as one of three projects that should be pushing), docs/SYNC.md (add_only_keys template semantics), §0 (ask-don't-auto-flip discipline)
@@ -791,20 +791,30 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** —
 **Description:** FOUND LIVE 2026-08-29T06:52Z, SECOND OCCURRENCE of a documented mistake — a value flipped for local use in autopilot.json (this time tower.enabled/url/project_id, to push DEVDEPARTMENT's own first snapshot) landed directly in the file every onboarded project inherits via sync's add_only_keys merge, exactly as `tests/test_sync_from_pack.py::TestPackTemplateShipsSafeDefaults`'s own docstring records happening once before with ATLAS. The guard caught it and was RED on master (commit aa1da4a) until ORCH reverted it (6df0fa7) — full pytest suite was failing in between. The underlying cause is structural, not a one-off slip: DEVDEPARTMENT's `autopilot.json` is BOTH the pack's shipped template and DEVDEPARTMENT's own live project config, and `load_config()` reads that single tracked file with no override layer — so there is currently no way for this repo to configure itself differently from what it ships to every other project, short of committing the difference. Build a small, genuinely optional override: `load_config()` should also read an untracked `autopilot.local.json` (gitignored, add-only keys merged OVER the tracked config, same shape) if present, absent otherwise (no behaviour change for every project that doesn't have one). This is the SAME pattern used for secrets (`DEVTEAM_TOWER_TOKEN` etc. — never in a tracked file, read from the environment); config values that are genuinely project-specific belong beside it, not in the shared template. Do not touch `sync_from_pack.py`'s own merge logic — the override sits entirely on the read side, in `load_config()`.
 **Acceptance_Criteria:**
-- [ ] `load_config()` merges an untracked `autopilot.local.json` (if present) over `autopilot.json`'s values, add-only-keys same as the existing template-merge semantics (a key present in local wins; a key absent in local falls through to the tracked file)
-- [ ] Absent `autopilot.local.json` is a silent no-op — zero behaviour change for every project without one, verified against the existing supervisor test suite passing unmodified
-- [ ] `autopilot.local.json` added to `.gitignore` with a comment explaining why (same convention as the ATLAS db / R2 gitignore blocks)
-- [ ] A regression test: `tower.enabled` true in `autopilot.local.json` + false in the tracked `autopilot.json` → `load_config()` returns true; the tracked file is provably unmodified after
-- [ ] `docs/SYNC.md` or a new short doc explains the two-file split so this mistake has a documented alternative next time, not just a test that reverts it after the fact
-- [ ] Full `pytest` + `node hooks/run-tests.js` green
+- [x] `load_config()` merges an untracked `autopilot.local.json` (if present) over `autopilot.json`'s values, add-only-keys same as the existing template-merge semantics (a key present in local wins; a key absent in local falls through to the tracked file)
+- [x] Absent `autopilot.local.json` is a silent no-op — zero behaviour change for every project without one, verified against the existing supervisor test suite passing unmodified
+- [x] `autopilot.local.json` added to `.gitignore` with a comment explaining why (same convention as the ATLAS db / R2 gitignore blocks)
+- [x] A regression test: `tower.enabled` true in `autopilot.local.json` + false in the tracked `autopilot.json` → `load_config()` returns true; the tracked file is provably unmodified after
+- [x] `docs/SYNC.md` or a new short doc explains the two-file split so this mistake has a documented alternative next time, not just a test that reverts it after the fact
+- [x] Full `pytest` + `node hooks/run-tests.js` green
 **Branch:** task/TASK-022-s5
 **Started_At:** 2026-08-29T07:01:45Z
 **Progress_Notes:**
+- [2026-08-29T07:11:15Z] [S5] All six ACs delivered. After ORCH's pre-emptive Owned_Paths widening (91d9e1d), merged origin/master into task/TASK-022-s5 (brings only ORCH's PLAN.md/hooks/lib.js/handover commits, zero S5 edits outside territory) and re-ran preflight_paths.py TASK-022, now 4/4 entries FILE (all pre-existing):
+  ```
+  FILE   scripts/supervisor.py  -> exists, 1314 line(s), 67127 bytes
+  FILE   tests/test_supervisor.py  -> exists, 746 line(s), 33065 bytes
+  FILE   .gitignore  -> exists, 13 line(s), 340 bytes
+  FILE   docs/SYNC.md  -> exists, 120 line(s), 5845 bytes
+  ```
+  Implemented `_merge_local_config()` + `load_config()` reading optional `autopilot.local.json` (deep merge, local wins, recursive-dict shape mirroring `sync_from_pack.merge_add_only_keys` with priority reversed; fail-open on invalid JSON / non-dict content — warns to stderr, falls back to tracked config, never crashes) — commit 58a8bf9. Added 7 new tests to tests/test_supervisor.py: no-op when absent, override wins + tracked file provably byte-unmodified, partial override preserves sibling keys (deep-merge not replace), invalid JSON fail-open, non-dict fail-open, and a unit-level test of the merge helper itself. Added the `.gitignore` entry (with rationale comment, same convention as the ATLAS db / R2 blocks) and a new "Local, untracked overrides" section in docs/SYNC.md explaining the structural problem, the fix, an example file, and when to use it vs. the tracked config — commit 9eb6aee. `git diff --stat origin/master...HEAD` = exactly the 4 widened Owned_Paths, all net additions (193 insertions, 0 deletions elsewhere). Did not touch `sync_from_pack.py`'s own merge logic, per Description. Self-checked all six ACs against spec text; submitting needs_review.
 - [2026-08-29T07:03:16Z] [ORCH] OWNERSHIP GAP RESOLVED PRE-EMPTIVELY — do not block. Your reading is correct: AC3/AC5 required paths outside the original territory. Owned_Paths is now widened to include `.gitignore` and `docs/SYNC.md`, and the firewall grants for `scripts/supervisor.py` + `docs/SYNC.md` are live in hooks/lib.js (per-task, removed at done). Deliver all six ACs on this branch; no OWNERSHIP_CONFLICT needed. For AC5 prefer amending docs/SYNC.md over creating a new doc — the grant is scoped to that one file.
 - [2026-08-29T07:01:45Z] [S5] Claimed TASK-022 on task/TASK-022-s5. Note before implementing: AC3 (`.gitignore` entry for `autopilot.local.json`) and AC5 (`docs/SYNC.md` or new doc explaining the two-file split) both require writes outside `Owned_Paths` (scripts/supervisor.py, tests/test_supervisor.py only — no `.gitignore`, no `docs/**`). Proceeding with AC1/2/4/6 (the `load_config()` override + tests, fully within territory); will flag the AC3/AC5 gap as OWNERSHIP_CONFLICT once the in-territory work is committed and verified, rather than blocking before doing anything.
-**Artifacts:** —
-**Test_Evidence:** —
+**Artifacts:**
+- [2026-08-29T07:11:15Z] [S5] scripts/supervisor.py, tests/test_supervisor.py (commit 58a8bf9); .gitignore, docs/SYNC.md (commit 9eb6aee); merge commit picking up master's PLAN.md/hooks/lib.js widening (no S5 edits outside territory)
+**Test_Evidence:**
+- [2026-08-29T07:11:15Z] [S5] `python -m pytest tests/test_supervisor.py -q` → 53 passed in 37.43s (includes all 7 new TASK-022 tests). `python -m pytest -q` (full suite) → 950 passed in 135.43s. `node C:/CLAUDECODE_kingdom.work/DEVDEPARTMENT/hooks/run-tests.js` → 36 passed, 0 failed. `git check-ignore -v autopilot.local.json` → confirmed ignored via the new `.gitignore` rule. `git diff --stat origin/master...HEAD` → scripts/supervisor.py +39, tests/test_supervisor.py +100, .gitignore +8, docs/SYNC.md +46; nothing outside the 4 Owned_Paths.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** S5
-**Updated_At:** 2026-08-29T07:01:45Z
+**Updated_At:** 2026-08-29T07:11:15Z
