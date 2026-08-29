@@ -194,6 +194,10 @@ const PROTECTED_EXCEPTIONS = [
   // Example (from the project this came out of, where builders had to fix product
   // CAPS extractors that live alongside dispatch/plan_commit in scripts/):
   //   'scripts/extract_caps_taxonomy*.py',
+  //
+  // TASK-022 (autopilot.local.json override layer) — remove both when done:
+  'scripts/supervisor.py',
+  'docs/SYNC.md',
 ];
 
 /**
