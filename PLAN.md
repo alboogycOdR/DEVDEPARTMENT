@@ -783,7 +783,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-022
 **Title:** autopilot.json is simultaneously the shipped template AND DEVDEPARTMENT's own project config — no per-project override exists
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** high
 **Spec_References:** specs/DEVDEPARTMENT_TOWER_SPEC.md §5 (exit criteria names "the DEVDEPARTMENT repo itself" as one of three projects that should be pushing), docs/SYNC.md (add_only_keys template semantics), §0 (ask-don't-auto-flip discipline)
@@ -797,12 +797,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] A regression test: `tower.enabled` true in `autopilot.local.json` + false in the tracked `autopilot.json` → `load_config()` returns true; the tracked file is provably unmodified after
 - [ ] `docs/SYNC.md` or a new short doc explains the two-file split so this mistake has a documented alternative next time, not just a test that reverts it after the fact
 - [ ] Full `pytest` + `node hooks/run-tests.js` green
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-022-s5
+**Started_At:** 2026-08-29T07:01:45Z
+**Progress_Notes:**
+- [2026-08-29T07:01:45Z] [S5] Claimed TASK-022 on task/TASK-022-s5. Note before implementing: AC3 (`.gitignore` entry for `autopilot.local.json`) and AC5 (`docs/SYNC.md` or new doc explaining the two-file split) both require writes outside `Owned_Paths` (scripts/supervisor.py, tests/test_supervisor.py only — no `.gitignore`, no `docs/**`). Proceeding with AC1/2/4/6 (the `load_config()` override + tests, fully within territory); will flag the AC3/AC5 gap as OWNERSHIP_CONFLICT once the in-territory work is committed and verified, rather than blocking before doing anything.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-08-29T07:05:00Z
+**Updated_By:** S5
+**Updated_At:** 2026-08-29T07:01:45Z
