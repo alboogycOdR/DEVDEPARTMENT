@@ -110,6 +110,52 @@ merge_special entry is added, run the pack's own test suite before shipping**
 longer matches, instead of failing silently on every downstream project
 forever.
 
+## Local, untracked overrides (`autopilot.local.json`)
+
+`autopilot.json`'s `merge_special` handling (above) keeps a project's
+*existing* values safe from sync — but it does nothing for the pack
+repository itself. **DEVDEPARTMENT's own `autopilot.json` is simultaneously
+the shipped template AND this repo's live project config**, so any value
+flipped here for local use (to enable a feature just for DEVDEPARTMENT, say)
+lands directly in the file every onboarded project inherits through the
+`add_only_keys` merge the moment they add that key. This has happened twice:
+once with an ATLAS setting, and again on 2026-08-29 with `tower.enabled` /
+`tower.url` / `tower.project_id`, committed straight to the tracked file to
+push DEVDEPARTMENT's first Tower snapshot (commit `aa1da4a`) — the pack
+repo's own `test_sync_from_pack.py::TestPackTemplateShipsSafeDefaults` guard
+caught it and stayed red on `master` until the value was reverted
+(`6df0fa7`).
+
+The fix is a small, genuinely optional read-side override:
+`supervisor.load_config()` also reads an **untracked**, gitignored
+`autopilot.local.json` in the repo root, if present, and deep-merges its
+values over the tracked `autopilot.json`/`DEFAULT_CONFIG` result — a key
+present in the local file always wins (nested dicts merge recursively, so
+overriding just `tower.enabled` doesn't clobber `tower.url`); a key absent in
+the local file falls through untouched to the tracked config. Absent
+`autopilot.local.json` is a silent no-op — every project without one behaves
+exactly as before.
+
+This is the same pattern already used for secrets (`DEVTEAM_TOWER_TOKEN` and
+friends): a value that is genuinely specific to *this* checkout does not
+belong in a tracked file that other projects inherit — it belongs beside it,
+outside git.
+
+```jsonc
+// autopilot.local.json — untracked, repo root, same shape as autopilot.json.
+// Only the keys you want to override locally; everything else falls
+// through to the tracked autopilot.json.
+{
+  "tower": { "enabled": true }
+}
+```
+
+**When you need a project-specific value in DEVDEPARTMENT itself** (or any
+project that also happens to be the pack it ships from): put it in
+`autopilot.local.json`, not `autopilot.json`. If a change belongs in the
+shared template for every project, it still goes in the tracked file, same
+as always.
+
 ## For the pack maintainer
 
 When a wave adds a new framework file, **add it to `sync-manifest.json`** in

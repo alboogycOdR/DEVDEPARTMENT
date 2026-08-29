@@ -11,3 +11,11 @@ STOP
 # Per-launch builder runner scripts, prompts and transcripts (dispatch.ps1 detached-window mode).
 # Transient: one set per builder session, safe to delete once the window has closed.
 .devteam/launch/
+
+# TASK-022: optional per-project override, read by supervisor.load_config().
+# autopilot.json is simultaneously the shipped pack template AND (for this
+# repo) a live project config, so a value flipped here for local use has
+# twice leaked into the shared template other projects inherit (ATLAS, then
+# tower.enabled/url/project_id). Genuinely project-specific values belong in
+# this untracked file instead — never commit it. See docs/SYNC.md.
+autopilot.local.json

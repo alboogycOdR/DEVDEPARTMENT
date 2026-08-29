@@ -390,6 +390,106 @@ def test_load_config_preserves_custom_tower_section(tmp_path):
     assert cfg["tower"]["url"] == "https://tower.example"
 
 
+# ================================================================ TASK-022 ==
+# load_config() optional untracked autopilot.local.json override — lets
+# DEVDEPARTMENT (or any project) run itself differently from what
+# autopilot.json ships as the shared pack template, without committing the
+# difference into that template. Absent file = silent no-op.
+
+def test_load_config_no_local_file_is_noop(tmp_path):
+    """Zero behaviour change for every project without autopilot.local.json —
+    identical cfg with vs. without the (absent) override file."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+    assert not (repo / "autopilot.local.json").exists()
+    cfg_without = sup.load_config(repo)
+    cfg_again = sup.load_config(repo)
+    assert cfg_without == cfg_again
+
+
+def test_load_config_local_override_wins_and_tracked_file_untouched(tmp_path):
+    """tower.enabled true in autopilot.local.json + false in the tracked
+    autopilot.json -> load_config() returns true; the tracked file is
+    provably unmodified after (TASK-022 regression criterion)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+    tracked = dict(DEFAULT_CONFIG)
+    tracked["tower"] = {"enabled": False, "url": "", "project_id": "",
+                        "_token_env": "DEVTEAM_TOWER_TOKEN"}
+    tracked_text = json.dumps(tracked, indent=2)
+    (repo / "autopilot.json").write_text(tracked_text, encoding="utf-8")
+    (repo / "autopilot.local.json").write_text(
+        json.dumps({"tower": {"enabled": True}}), encoding="utf-8")
+
+    cfg = sup.load_config(repo)
+
+    assert cfg["tower"]["enabled"] is True
+    # tracked file provably unmodified — byte-identical to what was written
+    assert (repo / "autopilot.json").read_text(encoding="utf-8") == tracked_text
+    assert json.loads((repo / "autopilot.json").read_text(encoding="utf-8"))["tower"]["enabled"] is False
+
+
+def test_load_config_local_partial_override_preserves_sibling_keys(tmp_path):
+    """A local override of one nested key (tower.enabled) must not clobber
+    sibling keys (tower.url/project_id) that local didn't mention — deep
+    merge, not a dict replace."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+    tracked = dict(DEFAULT_CONFIG)
+    tracked["tower"] = {"enabled": False, "url": "https://tower.example",
+                        "project_id": "p1", "_token_env": "DEVTEAM_TOWER_TOKEN"}
+    (repo / "autopilot.json").write_text(json.dumps(tracked), encoding="utf-8")
+    (repo / "autopilot.local.json").write_text(
+        json.dumps({"tower": {"enabled": True}}), encoding="utf-8")
+
+    cfg = sup.load_config(repo)
+
+    assert cfg["tower"]["enabled"] is True
+    assert cfg["tower"]["url"] == "https://tower.example"
+    assert cfg["tower"]["project_id"] == "p1"
+
+
+def test_load_config_local_invalid_json_falls_back_to_tracked(tmp_path, capsys):
+    """Malformed autopilot.local.json is fail-open: log a warning, ignore it,
+    use autopilot.json only — never crash load_config()."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+    (repo / "autopilot.local.json").write_text("{not valid json", encoding="utf-8")
+
+    cfg = sup.load_config(repo)
+
+    assert cfg["tower"]["enabled"] is False  # DEFAULT_CONFIG value, untouched
+    err = capsys.readouterr().err
+    assert "autopilot.local.json" in err
+
+
+def test_load_config_local_non_dict_ignored(tmp_path, capsys):
+    """A local override file that isn't a JSON object is ignored, not
+    partially applied or crashed on."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+    (repo / "autopilot.local.json").write_text(json.dumps([1, 2, 3]), encoding="utf-8")
+
+    cfg = sup.load_config(repo)
+
+    assert cfg["tower"]["enabled"] is False
+    err = capsys.readouterr().err
+    assert "autopilot.local.json" in err
+
+
+def test_merge_local_config_deep_merges_nested_dicts():
+    """Unit-level check of the merge helper itself: nested dict values merge
+    recursively (local wins at the leaf), non-dict values replace outright."""
+    cfg = {"tower": {"enabled": False, "url": "https://a"}, "top": "orig"}
+    sup._merge_local_config(cfg, {"tower": {"enabled": True}, "top": "new"})
+    assert cfg == {"tower": {"enabled": True, "url": "https://a"}, "top": "new"}
+
+
 # ------------------------------------------------------- drain_command_queue
 def _q_item(cmd, args="", chat_id="12345"):
     return {"cmd": cmd, "args": args, "chat_id": chat_id, "update_id": 1, "raw": f"{cmd} {args}"}

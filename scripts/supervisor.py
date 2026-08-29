@@ -1011,6 +1011,23 @@ def drain_inbox_commands(repo: Path, cfg: dict, state: RuntimeState,
 
 
 # ---------------------------------------------------------------------- main --
+def _merge_local_config(cfg: dict, local: dict) -> None:
+    """Recursively merge `local`'s values into `cfg`, in place.
+
+    Priority is the reverse of sync_from_pack.merge_add_only_keys: here a key
+    PRESENT in `local` always wins (dicts are merged recursively so a partial
+    override, e.g. just `tower.enabled`, doesn't clobber sibling keys like
+    `tower.url`); a key ABSENT in `local` falls through untouched to whatever
+    `cfg` already has from autopilot.json/DEFAULT_CONFIG. Same recursive-dict
+    shape as the pack's add_only_keys merge (scripts/sync_from_pack.py), just
+    with the winner reversed (TASK-022)."""
+    for key, value in local.items():
+        if isinstance(value, dict) and isinstance(cfg.get(key), dict):
+            _merge_local_config(cfg[key], value)
+        else:
+            cfg[key] = value
+
+
 def load_config(repo: Path) -> dict:
     cfg_path = repo / "autopilot.json"
     if not cfg_path.exists():
@@ -1025,6 +1042,28 @@ def load_config(repo: Path) -> dict:
     cfg["usage"] = {**DEFAULT_CONFIG["usage"], **cfg.get("usage", {})}
     cfg["tower"] = {**DEFAULT_CONFIG["tower"], **cfg.get("tower", {})}
     cfg["slack"] = {**DEFAULT_CONFIG["slack"], **cfg.get("slack", {})}
+
+    # TASK-022: optional untracked per-project override. autopilot.json is
+    # simultaneously the shipped pack template AND (for this repo) the live
+    # project config — there is otherwise no way to run this repo differently
+    # from what it ships to every other project short of committing the
+    # difference into the shared template (twice-observed mistake: ATLAS,
+    # then tower.enabled). Same pattern as secrets living in the environment
+    # rather than a tracked file — genuinely project-specific values belong
+    # beside the tracked config, not inside it. Absent file = silent no-op.
+    local_path = repo / "autopilot.local.json"
+    if local_path.exists():
+        try:
+            local_cfg = json.loads(local_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            print(f"[supervisor] autopilot.local.json is invalid JSON ({exc}) — "
+                  f"ignoring it, using autopilot.json only", file=sys.stderr)
+        else:
+            if isinstance(local_cfg, dict):
+                _merge_local_config(cfg, local_cfg)
+            else:
+                print(f"[supervisor] autopilot.local.json must be a JSON object — "
+                      f"ignoring it, using autopilot.json only", file=sys.stderr)
     return cfg
 
 
