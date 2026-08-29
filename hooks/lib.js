@@ -183,7 +183,9 @@ const PROTECTED_EXCEPTIONS = [
   // done and merged; those grants were removed. TASK-019/TASK-020 done,
   // their scripts/tower_sync.py grant removed. Active grant below.
   // TASK-021 done 2026-08-28 (notify.py + tower_sync.py grammar) — grants
-  // removed. List is EMPTY again, which is the correct resting state.
+  // removed. TASK-022 done 2026-08-29 (autopilot.local.json override layer),
+  // its scripts/supervisor.py + docs/SYNC.md grant removed. List is EMPTY
+  // again, which is the correct resting state.
   // EMPTY BY DEFAULT. The pack ships the mechanism, not anyone's carve-outs.
   // Add an entry only when a specific path is (a) matched by a protected glob and
   // (b) genuinely not ORCH machinery -- e.g. product scripts that happen to live in
@@ -194,10 +196,6 @@ const PROTECTED_EXCEPTIONS = [
   // Example (from the project this came out of, where builders had to fix product
   // CAPS extractors that live alongside dispatch/plan_commit in scripts/):
   //   'scripts/extract_caps_taxonomy*.py',
-  //
-  // TASK-022 (autopilot.local.json override layer) — remove both when done:
-  'scripts/supervisor.py',
-  'docs/SYNC.md',
 ];
 
 /**
