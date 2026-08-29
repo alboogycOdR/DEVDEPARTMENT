@@ -127,9 +127,9 @@
     "_comment": "Ships DISABLED per the ATLAS spec's ask-don't-auto-flip rule (same as control.mode and the builder roster). Enable per project only AFTER running `python scripts/atlas.py scan --full` there -- an empty/absent db makes dispatch skip the section silently, so a true here without a scan is a no-op that merely looks configured. See docs/ATLAS.md."
   },
   "tower": {
-    "enabled": false,
-    "url": "",
-    "project_id": "",
+    "enabled": true,
+    "url": "http://100.78.70.2:8100",
+    "project_id": "DEVDEPARTMENT",
     "_token_env": "DEVTEAM_TOWER_TOKEN",
     "_comment": "TOWER P1 (specs/DEVDEPARTMENT_TOWER_SPEC.md \u00a71). Ships DISABLED per the ask-don't-auto-flip rule. Enable per project only after Tower is deployed and DEVTEAM_TOWER_TOKEN is set in the supervisor's environment \u2014 never in a tracked file."
   },
