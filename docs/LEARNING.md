@@ -81,6 +81,69 @@ math is deterministic and testable; the model only drafts rules and proposes
 status transitions, which the code validates against the thresholds (a
 premature retirement proposal is rejected).
 
+## Retirement, pruning and promotion (v4.8)
+
+The confidence table above is a complete *entry and demotion* path and had no
+*exit* path: retired instincts stayed in `INSTINCTS.md` forever, and a rule that
+kept proving itself had nowhere to go but "high confidence, still an instinct".
+Both ends are now closed. Concept borrowed from ECC's `continuous-learning-v2`
+(MIT); the constitutional constraints below are ours.
+
+An optional sixth field appears **only** on retired instincts:
+
+```markdown
+**Retired:** 2026-03-01
+```
+
+A file with no retirement dates renders back byte-identically, which
+`save_atomic`'s round-trip validation depends on. An unparseable date is
+dropped rather than defaulted to today — a garbage value must not silently
+restart the grace clock.
+
+### `instincts.py prune`
+
+Two phases, and they never happen in the same run:
+
+1. **Stamp** — a retired instinct with no `Retired:` date gets today's. It stays
+   in `INSTINCTS.md`.
+2. **Archive** — a retired instinct stamped more than 30 days ago (`--grace-days`)
+   moves to `INSTINCTS.archive.md`.
+
+The split is deliberate: the grace period has to start from an observation *we*
+recorded, or the first prune after this shipped would archive the entire back
+catalogue at once and a wrong retirement would disappear before anyone saw it.
+
+Archived instincts remain visible to `load_all()`, and **`next_id()` must be
+called with `load_all()`, never `load()`** — otherwise the first ID after an
+archive sweep collides with an archived block. Archiving writes the archive file
+before the live file, so a half-failed prune duplicates a block rather than
+losing one.
+
+Dry-run by default; `--apply` writes.
+
+### `instincts.py evolve` / `promote`
+
+`evolve` finds instincts that clear the promotion bar — confidence ≥ 0.9 **and**
+evidence from ≥ 2 distinct source tasks — then clusters them into connected
+components over territory overlap (`globs_intersect` again; still one glob
+implementation). Confidence alone is not the bar, because a single task can bump
+one instinct to 0.9 on its own; a project-wide law should have fired in more than
+one place.
+
+`promote` renders the winning cluster as an `AMEND-NNN` proposal. **It writes
+only under `.devteam/pending_amendments/`.** Promoting an instinct into AGENTS.md
+is a constitutional change and goes through the same human gate as everything
+else — the proposal body states both the accept and the reject path, and nothing
+in `AGENTS.md`, `CLAUDE.md` or `briefings/` is touched by generating it.
+
+`instincts.py status` summarizes the store: counts and mean confidence per
+status, unstamped retirements, and current promotion candidates.
+
+These are ORCH maintenance commands, not dispatch-path code. Unlike `inject`
+(which always exits 0 so a broken store cannot block a launch) they report
+failure through the exit code — a silent no-op would be indistinguishable from
+"nothing to prune".
+
 ## Dispatch injection
 
 `dispatch.sh`/`dispatch.ps1` compose one generic resume-first prompt per unit

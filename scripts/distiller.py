@@ -282,6 +282,12 @@ def _run(repo: Path, cfg: dict) -> DistillResult:
                              reason=f"{len(findings)} new findings < min {min_new}")
 
     current = inst_mod.load(repo)
+    # ID allocation must span the archive too (v4.8): instincts.py prune moves
+    # long-retired blocks to INSTINCTS.archive.md, and load() alone no longer
+    # sees their numbers — allocating from `current` would re-issue an ID that
+    # already exists. `current` stays the live working set; archived blocks are
+    # never resurrected into it.
+    id_space = inst_mod.load_all(repo)
 
     # Deterministic lifecycle pass FIRST — bumps/decay/status thresholds are
     # code-owned, never delegated to the model.
@@ -322,11 +328,12 @@ def _run(repo: Path, cfg: dict) -> DistillResult:
             if existing is None:
                 # New instinct: force sequential ID + seed confidence; never
                 # trust the model on either.
-                p.inst_id = inst_mod.next_id(current)
+                p.inst_id = inst_mod.next_id(id_space)
                 p.confidence = inst_mod.SEED_CONFIDENCE
                 if p.status not in ("active",):
                     p.status = "active"
                 current.append(p)
+                id_space.append(p)
                 by_id[p.inst_id] = p
                 result.new_instincts.append(p.inst_id)
             else:

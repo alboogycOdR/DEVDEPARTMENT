@@ -117,6 +117,20 @@ class TestDistill:
         ids = [i.inst_id for i in im.load(repo)]
         assert ids == ["INST-005", "INST-006"]
 
+    def test_new_instinct_id_skips_archived_numbers(self, tmp_path):
+        """v4.8 regression: prune moves retired blocks to INSTINCTS.archive.md,
+        so load() no longer sees INST-005 and the naive allocator would re-issue
+        it. IDs are never reused, archive included."""
+        archived = ("### INST-005\n**Rule:** archived rule\n**Territory:** docs/**\n"
+                    "**Confidence:** 0.1\n**Source:** TASK-001 rework\n"
+                    "**Status:** retired\n**Retired:** 2020-01-01\n")
+        repo = repo_with(tmp_path, FINDINGS, instincts_text="")
+        (repo / im.ARCHIVE_FILENAME).write_text(archived, encoding="utf-8")
+        cfg = {"learning": {"distill_cmd": fake_model(tmp_path, MODEL_INSTINCT)}}
+        r = dm.run(repo, cfg)
+        assert r.new_instincts == ["INST-006"]
+        assert [i.inst_id for i in im.load(repo)] == ["INST-006"]
+
     def test_lifecycle_bump_on_matching_rework(self, tmp_path):
         existing = ("### INST-001\n**Rule:** ship tests\n**Territory:** python/orb/**\n"
                     "**Confidence:** 0.6\n**Source:** TASK-050 rework\n**Status:** active\n")

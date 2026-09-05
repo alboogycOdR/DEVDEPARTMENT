@@ -9,6 +9,7 @@ Coordination Protocol. Zero npm dependencies (Node stdlib only), cross-platform
 | Hook | Event | Enforces | Blocks? |
 |---|---|---|---|
 | `territory-firewall.js` | PreToolUse (Edit/Write/MultiEdit/NotebookEdit) | Owned_Paths isolation + protected-paths hard prohibitions for GB/CX. Inert for ORCH. | Yes (exit 2) |
+| `gateguard.js` | PreToolUse (same matcher, plus Bash) | Comprehension, not permission: denies the *first* write to each file and every destructive Bash command until the unit presents importers, affected API, data shape and the governing acceptance criterion — then allows the retry. Builders only by default. See `docs/GATEGUARD.md`. | Yes (exit 2), fail-open |
 | `secret-scan.js` | PreToolUse (same matcher) | No credentials written to the repo — API keys, tokens, private key blocks, hardcoded password assignments. Applies to ALL units including ORCH. | Yes (exit 2) |
 | `session-start.js` | SessionStart | §10 sync-and-orient: injects unit identity, STOP status, active tasks + last Progress_Note, orchestrator_notes, unresolved checkpoints into fresh context. | Never |
 | `pre-compact.js` | PreCompact | §10b automated: snapshots resumable state to `.devteam/CHECKPOINT.md` before compaction. | Never |
@@ -18,7 +19,12 @@ Coordination Protocol. Zero npm dependencies (Node stdlib only), cross-platform
 
 1. **Write-time (new):** the firewall physically blocks out-of-territory and
    protected-path writes in hook-capable harnesses. A violation now fails at
-   the keystroke, not at review.
+   the keystroke, not at review. `gateguard.js` sits immediately behind it in
+   the same ring and answers a different question — the firewall asks whether a
+   unit *may* write here, gateguard asks whether it *understands* what it is
+   about to change. Order inside the matcher is load-bearing: a unit outside its
+   territory should be told about the boundary, not sent to investigate a file it
+   may not touch.
 2. **Plan-time:** `validate_plan.py` rejects illegal plans before dispatch.
 3. **Review-time:** `/devteam-review` diffs every branch against territory.
 

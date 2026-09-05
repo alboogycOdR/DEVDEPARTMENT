@@ -1,12 +1,19 @@
 {
-  "$comment": "DEVDEPARTMENT hook wiring. Merge the `hooks` object below into the project's .claude/settings.json (create it if absent). Paths are project-relative; Claude Code runs hook commands from the project root with CLAUDE_PROJECT_DIR set. Set DEVTEAM_UNIT=GB|CX in a builder harness environment to activate territory enforcement for that unit; unset/ORCH sessions get secret-scan + session lifecycle only.",
+  "$comment": "DEVDEPARTMENT hook wiring. Merge the `hooks` object below into the project's .claude/settings.json (create it if absent). Paths are project-relative; Claude Code runs hook commands from the project root with CLAUDE_PROJECT_DIR set. Set DEVTEAM_UNIT=GB|CX in a builder harness environment to activate territory enforcement for that unit; unset/ORCH sessions get secret-scan + session lifecycle only. Hook ORDER inside a matcher is load-bearing: territory-firewall (may this unit write here?) runs before gateguard (does it understand the file?), so a unit outside its territory is told about the boundary rather than sent to investigate a file it may not touch. Gateguard is builders-only by default — see docs/GATEGUARD.md.",
   "hooks": {
     "PreToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [
           { "type": "command", "command": "node hooks/territory-firewall.js" },
+          { "type": "command", "command": "node hooks/gateguard.js" },
           { "type": "command", "command": "node hooks/secret-scan.js" }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "node hooks/gateguard.js" }
         ]
       }
     ],
