@@ -109,6 +109,80 @@ def test_stale_heartbeat_redispatches_then_escalates():
     assert "ESCALATE_P2" in kinds(third)
 
 
+class TestCircuitBreakerIntegration:
+    """decide()/execute() wiring for the stagnation circuit breaker (ported
+    from ralph-claude-code). circuit_breaker.py's own arithmetic is covered
+    exhaustively in test_circuit_breaker.py; these tests only check that
+    supervisor.py feeds it correctly and reacts on its verdict. Heartbeat is
+    kept FRESH throughout (upd_at == NOW) specifically to prove this signal
+    fires independently of stale-heartbeat detection — a builder can be
+    perfectly "alive" and still be caught here."""
+
+    FRESH = task(status="in_progress", upd_at="2026-07-12T20:00:00Z")  # == NOW
+
+    def test_no_signal_for_a_task_is_a_pure_no_op(self):
+        """A task_id absent from stagnation_signal (git/worktree unresolved
+        this tick) must never be treated as stagnant."""
+        acts = decide(FM + self.FRESH, RuntimeState(), CFG, NOW, stagnation_signal={})
+        assert "REDISPATCH_STAGNANT" not in kinds(acts)
+        assert "ESCALATE_P2" not in kinds(acts)
+
+    def test_progress_never_triggers_regardless_of_denials(self):
+        sig = {"TASK-001": {"changed": True, "denials": 50}}
+        acts = decide(FM + self.FRESH, RuntimeState(), CFG, NOW, stagnation_signal=sig)
+        assert "REDISPATCH_STAGNANT" not in kinds(acts)
+
+    def test_single_stagnant_tick_below_threshold_does_not_fire(self):
+        sig = {"TASK-001": {"changed": False, "denials": 0}}
+        acts = decide(FM + self.FRESH, RuntimeState(), CFG, NOW, stagnation_signal=sig)
+        assert "REDISPATCH_STAGNANT" not in kinds(acts)
+
+    def test_streak_reaching_threshold_redispatches(self):
+        """DEFAULT_CIRCUIT_BREAKER_CFG's no_progress_ticks is 3: a prior
+        streak of 2 plus this tick's no-progress sample crosses it."""
+        sig = {"TASK-001": {"changed": False, "denials": 0}}
+        st = RuntimeState(stagnation_counts={"TASK-001": 2})
+        acts = decide(FM + self.FRESH, st, CFG, NOW, stagnation_signal=sig)
+        rd = [a for a in acts if a.kind == "REDISPATCH_STAGNANT"]
+        assert rd and rd[0].unit == "GB" and rd[0].task_id == "TASK-001"
+        assert st.stagnation_counts["TASK-001"] == 3  # decide() advances the streak in place
+
+    def test_high_denial_count_escalates_faster_than_the_generic_streak(self):
+        """denial_ticks (2) is a lower bar than no_progress_ticks (3) —
+        a stuck permission loop should not need to wait as long."""
+        sig = {"TASK-001": {"changed": False, "denials": 2}}
+        acts = decide(FM + self.FRESH, RuntimeState(), CFG, NOW, stagnation_signal=sig)
+        assert "REDISPATCH_STAGNANT" in kinds(acts)
+
+    def test_repeated_stagnation_escalates_to_a_human(self):
+        sig = {"TASK-001": {"changed": False, "denials": 0}}
+        st = RuntimeState(stagnation_counts={"TASK-001": 3}, stagnation_resets={"TASK-001": 2})
+        acts = decide(FM + self.FRESH, st, CFG, NOW, stagnation_signal=sig)
+        assert "ESCALATE_P2" in kinds(acts)
+        assert "REDISPATCH_STAGNANT" not in kinds(acts)
+
+    def test_stale_heartbeat_and_stagnation_never_double_fire_the_same_task(self):
+        """If step 4 (heartbeat) already queued an action for this task_id,
+        step 4b must skip it — otherwise execute() would launch two
+        redispatches for the same unit in the same tick."""
+        stale = task(status="in_progress", upd_at="2026-07-12T17:00:00Z")  # 3h old
+        sig = {"TASK-001": {"changed": False, "denials": 0}}
+        st = RuntimeState(stagnation_counts={"TASK-001": 5})  # would independently fire
+        acts = decide(FM + stale, st, CFG, NOW, stagnation_signal=sig)
+        assert kinds(acts).count("REDISPATCH_STALE") + kinds(acts).count("REDISPATCH_STAGNANT") == 1
+
+    def test_execute_bumps_the_lifetime_reset_counter_and_redispatches(self, monkeypatch, tmp_path):
+        launched = []
+        monkeypatch.setattr(sup, "launch_shell_bg",
+                            lambda cmd, repo: launched.append(cmd) or _FinishedDispatch(0))
+        st = RuntimeState()
+        action = sup.Action("REDISPATCH_STAGNANT", "stagnant", unit="GB", task_id="TASK-001")
+        keep_going = sup.execute([action], CFG, st, tmp_path, dry_run=False, now=NOW, inflight={})
+        assert keep_going is True
+        assert st.stagnation_resets == {"TASK-001": 1}
+        assert launched  # a redispatch command was actually launched
+
+
 def test_fresh_heartbeat_not_reset():
     acts = decide(FM + task(status="in_progress", upd_at="2026-07-12T19:50:00Z"),
                   RuntimeState(), CFG, NOW)

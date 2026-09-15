@@ -92,6 +92,20 @@ remain the backstop.
 `node tests/test_gateguard.js` — 34 cases, run against the hook as a real subprocess
 (stdin JSON → exit code + stderr), because the process boundary *is* the hook contract.
 
+## Feeding the stagnation circuit breaker
+
+Every destructive-Bash or file-comprehension denial (not the once-per-session
+routine-Bash gate) also bumps a best-effort counter at
+`.devteam/gateguard/denials/<UNIT>.json`. `scripts/circuit_breaker.py`
+(`docs/AUTOPILOT.md` → "The stagnation circuit breaker") reads this as one of
+two signals for "this unit is alive but not landing any progress" — a unit
+repeatedly denied without ever producing a diff escalates faster than pure
+silence would. Only `supervisor.py` resets the counter, and only once it
+observes real progress; gateguard itself never decreases it, so a healthy
+deny-once-then-allow cycle (the normal case) doesn't wash out a genuinely
+stuck unit's count between ticks. This write is pure telemetry — best-effort,
+silently swallowed on failure, and never affects the gate's own verdict.
+
 ## Tuning it
 
 Watch REVIEW.md. If rework findings stop citing "changed a signature without updating

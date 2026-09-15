@@ -179,6 +179,30 @@ function saveState(file, state) {
   }
 }
 
+/**
+ * Best-effort per-unit denial counter at .devteam/gateguard/denials/<UNIT>.json,
+ * read by supervisor.py's circuit breaker (scripts/circuit_breaker.py,
+ * ported from ralph-claude-code) as one of two independent stagnation
+ * signals — a unit repeatedly denied without ever landing a diff is a
+ * stronger, faster stall signal than mere silence. Deliberately NOT this
+ * hook's job to ever DECREASE it: only supervisor.py resets it, the instant
+ * it observes real progress for the unit's task. Bumped only on destructive-
+ * Bash and file comprehension denials — never on the once-per-session
+ * routine-Bash gate, which is a trivial formality, not evidence of a stall.
+ * Fail-open and silent: telemetry must never affect the gate's own verdict
+ * or be allowed to throw.
+ */
+function bumpDenialCounter(unit) {
+  try {
+    const dir = path.join(lib.repoRoot(), '.devteam', 'gateguard', 'denials');
+    const file = path.join(dir, unit + '.json');
+    let count = 0;
+    try { count = JSON.parse(fs.readFileSync(file, 'utf-8')).count || 0; } catch (_e) { /* start at 0 */ }
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ count: count + 1, last: new Date().toISOString() }), 'utf-8');
+  } catch (_e) { /* best-effort telemetry only — never affects the gate */ }
+}
+
 // ---------------------------------------------------------------------------
 // Fact blocks
 // ---------------------------------------------------------------------------
@@ -280,6 +304,7 @@ function main() {
       // Never memoized: destructive commands gate every single time.
       state.denials += 1;
       if (!saveState(file, state)) return 0;
+      bumpDenialCounter(u);
       process.stderr.write(
         state.denials > fullBudget ? condensed(state.denials, 'this destructive command') : destructiveFacts(cmd)
       );
@@ -311,6 +336,7 @@ function main() {
 
   state.checked[key] = Date.now();
   state.denials += 1;
+  if (tool !== 'Bash') bumpDenialCounter(u); // file comprehension denial — routine-Bash is not a stall signal
   // If we cannot persist "already asked", allow — otherwise the retry we just
   // demanded would hit the identical denial and the unit would loop forever.
   if (!saveState(file, state)) {

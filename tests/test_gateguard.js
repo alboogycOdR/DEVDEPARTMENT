@@ -177,6 +177,39 @@ function bash(cmd) {
   check('unpersistable state ALLOWS (never loops)', a.code === 0, 'exit=' + a.code);
 }
 
+// --- per-unit denial counter (feeds supervisor.py's circuit breaker) ------
+{
+  const d = freshDir('denialcounter');
+  const denialFile = path.join(REPO, '.devteam', 'gateguard', 'denials', 'S5.json');
+  try { fs.rmSync(denialFile, { force: true }); } catch (_e) { /* ignore */ }
+
+  run(edit('scripts/budget.py'), {}, d); // first-touch file denial
+  let count = JSON.parse(fs.readFileSync(denialFile, 'utf-8')).count;
+  check('file denial bumps the counter to 1', count === 1, 'count=' + count);
+
+  run(edit('scripts/notify.py'), {}, d); // a different file, also denied
+  count = JSON.parse(fs.readFileSync(denialFile, 'utf-8')).count;
+  check('a second file denial bumps it to 2', count === 2, 'count=' + count);
+
+  run(bash('ls -la'), {}, d); // routine bash — should NOT bump
+  count = JSON.parse(fs.readFileSync(denialFile, 'utf-8')).count;
+  check('routine-Bash denial does NOT bump the counter', count === 2, 'count=' + count);
+
+  run(bash('rm -rf x'), {}, d); // destructive bash — SHOULD bump
+  count = JSON.parse(fs.readFileSync(denialFile, 'utf-8')).count;
+  check('destructive-Bash denial bumps the counter', count === 3, 'count=' + count);
+
+  try { fs.rmSync(denialFile, { force: true }); } catch (_e) { /* cleanup */ }
+}
+
+{
+  const d = freshDir('denialcounter-orch');
+  const denialFile = path.join(REPO, '.devteam', 'gateguard', 'denials', 'ORCH.json');
+  try { fs.rmSync(denialFile, { force: true }); } catch (_e) { /* ignore */ }
+  run(edit('scripts/budget.py'), { DEVTEAM_UNIT: 'ORCH' }, d); // ungated by default
+  check('an ungated unit never gets a denial file', !fs.existsSync(denialFile));
+}
+
 // --- unknown unit is left to territory-firewall ---------------------------
 {
   const d = freshDir('unknown');

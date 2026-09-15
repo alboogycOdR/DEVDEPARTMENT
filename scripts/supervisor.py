@@ -33,7 +33,7 @@ from pathlib import Path
 
 # Reuse the protocol parser — single source of truth.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from validate_plan import parse_tasks, validate, Report, Task  # noqa: E402
+from validate_plan import parse_tasks, validate, Report, Task, parse_owned_paths  # noqa: E402
 import tg_commands as tgc  # noqa: E402 — Wave A-remainder: two-way Telegram
 from tg_listener import TelegramListener  # noqa: E402
 import scheduling  # noqa: E402 — Wave B: shared daily/weekly idempotency-marker helper
@@ -43,6 +43,8 @@ import distiller  # noqa: E402 — Wave C: post-review-batch distillation
 import retro  # noqa: E402 — Wave C: weekly retro drafter
 import control  # noqa: E402 — Wave I (I1): CONTROL-block single-writer blackboard
 import usage_probe  # noqa: E402 — Wave I (I2): live usage-window meters
+import circuit_breaker  # noqa: E402 — stagnation detection (ported from ralph-claude-code, MIT)
+import builder_registry  # noqa: E402 — worktree/branch resolution for stagnation git-diff
 import tower_sync  # noqa: E402 — TOWER P1: snapshot push + queue pull (TASK-018 wiring)
 import inbox  # noqa: E402 — TOWER P2: local command inbox consumer (TASK-018 wiring)
 from slack_listener import SlackListener  # noqa: E402 — SLACK P1b-2: socket-mode listener (TASK-018 wiring)
@@ -114,6 +116,10 @@ DEFAULT_CONFIG = {
     # Wave B: nightly self-maintenance + dispatch ceiling.
     "maintenance": dict(maintenance.DEFAULT_MAINTENANCE_CFG),
     "budget": dict(budget.DEFAULT_BUDGET_CFG),
+    # Stagnation circuit breaker (ported from ralph-claude-code, MIT): a
+    # builder can be alive and progress-free at once, which stale-heartbeat
+    # detection above cannot see. See circuit_breaker.py's module docstring.
+    "circuit_breaker": dict(circuit_breaker.DEFAULT_CIRCUIT_BREAKER_CFG),
     # Wave C: continuous learning loop (distiller trigger + weekly retro).
     "learning": {
         "min_new_findings": 3,
@@ -158,7 +164,7 @@ DEFAULT_CONFIG = {
 # ---------------------------------------------------------------- decisions --
 @dataclass
 class Action:
-    kind: str          # ESCALATE_P1 | ESCALATE_P2 | REVIEW | REVIEW_TG | DISPATCH | DEFER_BUDGET | TRIAGE_UNBLOCK | REDISPATCH_STALE | DIGEST | IDLE | HALT
+    kind: str          # ESCALATE_P1 | ESCALATE_P2 | REVIEW | REVIEW_TG | DISPATCH | DEFER_BUDGET | TRIAGE_UNBLOCK | REDISPATCH_STALE | REDISPATCH_STAGNANT | DIGEST | IDLE | HALT
     detail: str
     unit: str | None = None       # for DISPATCH
     task_id: str | None = None
@@ -178,6 +184,8 @@ class RuntimeState:
     pending_digest_lines: list[str] = field(default_factory=list)  # Wave B: e.g. "Self-audit: PASS", folded into the next P0 digest
     reviews_since_distill: int = 0  # Wave C: reset to 0 after each distiller.run()
     unreported_counts: dict[str, int] = field(default_factory=dict)  # Wave I: consecutive no-CONTROL-block runs per task
+    stagnation_counts: dict[str, int] = field(default_factory=dict)  # task_id -> current consecutive no-progress streak
+    stagnation_resets: dict[str, int] = field(default_factory=dict)  # task_id -> lifetime REDISPATCH_STAGNANT count (mirrors stale_resets)
 
     @classmethod
     def load(cls, path: Path) -> "RuntimeState":
@@ -244,7 +252,8 @@ def _active_builders(cfg: dict) -> list:
 def decide(plan_text: str, state: RuntimeState, cfg: dict,
            now: datetime | None = None, stop_file_exists: bool = False,
            dossier_heartbeats: dict[str, datetime] | None = None,
-           usage: dict | None = None) -> list[Action]:
+           usage: dict | None = None,
+           stagnation_signal: dict[str, dict] | None = None) -> list[Action]:
     """Pure decision engine: plan + runtime state -> ordered list of actions for this tick.
 
     dossier_heartbeats (Wave I, control.mode=strict): task_id -> latest
@@ -256,11 +265,22 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
     usage_probe.get_usage(), pre-computed by the caller for the same
     filesystem-purity reason — decide() never touches the usage cache file
     itself, it just consults whatever the tick loop already read once.
+
+    stagnation_signal (circuit breaker, ported from ralph-claude-code):
+    task_id -> {"changed": bool, "denials": int}, pre-computed by the tick
+    loop's _stagnation_signal() from a git diff in the unit's worktree plus
+    gateguard's denial counter — same filesystem-purity reason as the two
+    above. A task_id ABSENT from this dict (rather than present with
+    changed=True) means the caller could not confidently resolve the
+    signal (no worktree yet, branch mismatch, git error) and decide() skips
+    it entirely: fail-open, exactly like an empty dossier_heartbeats falls
+    back to plain Updated_At staleness rather than guessing.
     """
     now = now or datetime.now(timezone.utc)
     control_mode = cfg.get("control", {}).get("mode", "legacy")
     dossier_heartbeats = dossier_heartbeats or {}
     usage = usage or {}
+    stagnation_signal = stagnation_signal or {}
     actions: list[Action] = []
 
     if stop_file_exists:
@@ -337,6 +357,39 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
                                               f"{t.task_id} heartbeat stale ({int(age_min)}m > {cfg['stale_minutes']}m) — "
                                               f"redispatch {t.get('Assigned_To')}; its resume-first rule (protocol §10a) continues the existing branch",
                                               unit=t.get("Assigned_To"), task_id=t.task_id))
+
+    # 4b. Progress-based stagnation detection (circuit breaker, ported from
+    # ralph-claude-code). A builder can pass step 4 forever — heartbeat
+    # fresh, process alive — while never touching a file under its
+    # Owned_Paths. Skip any task step 4 already queued an action for
+    # (already_handled): both mechanisms would otherwise try to redispatch
+    # the same unit in the same tick.
+    already_handled = {a.task_id for a in actions if a.task_id}
+    for t in real:
+        if t.get("Status") not in ("claimed", "in_progress") or t.task_id in already_handled:
+            continue
+        sig = stagnation_signal.get(t.task_id)
+        if sig is None:
+            continue  # caller could not confidently resolve this tick — fail open, never guess
+        sample = circuit_breaker.StagnationSample(
+            changed=bool(sig.get("changed")), denials=int(sig.get("denials") or 0))
+        streak = circuit_breaker.update_streak(state.stagnation_counts.get(t.task_id, 0), sample)
+        state.stagnation_counts[t.task_id] = streak
+        if not circuit_breaker.is_stagnant(streak, sample, cfg["circuit_breaker"]):
+            continue
+        resets = state.stagnation_resets.get(t.task_id, 0)
+        if circuit_breaker.remedial_kind(resets, cfg["circuit_breaker"]) == "ESCALATE_P2":
+            actions.append(Action("ESCALATE_P2",
+                                  f"{t.task_id} stagnant for {streak} consecutive tick(s) "
+                                  f"({sample.denials} gateguard denial(s)) after {resets} stagnation "
+                                  f"redispatch(es) — builder alive but producing no diff under its Owned_Paths",
+                                  task_id=t.task_id))
+        else:
+            actions.append(Action("REDISPATCH_STAGNANT",
+                                  f"{t.task_id} stagnant for {streak} consecutive tick(s) "
+                                  f"({sample.denials} gateguard denial(s)) — redispatching "
+                                  f"{t.get('Assigned_To')}; resume-first rule continues the existing branch",
+                                  unit=t.get("Assigned_To"), task_id=t.task_id))
 
     # 5. Dispatch idle builders onto eligible work
     active_by_unit = {t.get("Assigned_To") for t in real
@@ -578,6 +631,16 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
             log_line(repo, f"DISPATCH_COMMAND unit={a.unit} task={a.task_id} command={command}")
             proc = launch_shell_bg(command, repo)
             inflight[a.unit] = (proc, a.task_id or "", command)
+        elif a.kind == "REDISPATCH_STAGNANT" and a.task_id and a.unit:
+            # Same non-reset, resume-first relaunch as REDISPATCH_STALE above —
+            # a separate lifetime counter (state.stagnation_resets) so a task's
+            # heartbeat-staleness history and progress-stagnation history don't
+            # share a redispatch budget.
+            state.stagnation_resets[a.task_id] = state.stagnation_resets.get(a.task_id, 0) + 1
+            command = dispatch_cmd_for(a.unit, cfg)
+            log_line(repo, f"DISPATCH_COMMAND unit={a.unit} task={a.task_id} command={command}")
+            proc = launch_shell_bg(command, repo)
+            inflight[a.unit] = (proc, a.task_id or "", command)
     return not halt
 
 
@@ -712,6 +775,117 @@ def _dossier_heartbeats(repo: Path) -> dict[str, datetime]:
             out[m.group(1)] = datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc)
         except OSError:
             continue
+    return out
+
+
+# ---------------------------------------------------- stagnation signal (I/O) --
+# Best-effort git/gateguard readers feeding circuit_breaker.py's pure arithmetic.
+# Every function below fails toward "no opinion" (None / omitted key), never
+# toward "stagnant" — a wrong guess here must only under-detect a real stall,
+# it must never falsely redispatch or escalate a builder that is fine.
+
+def _worktree_and_branch(repo: Path, task_id: str, unit: str) -> tuple[Path, str] | None:
+    """Resolve the unit's worktree path and this task's branch name from
+    builder_registry, mirroring dispatch.sh's own WT=.../branch=task/<id>-<suffix>
+    computation. Reimplemented rather than shared: dispatch.sh is bash and this
+    needs it from Python — same reasoning as _deps_done's deliberate
+    reimplementation elsewhere in this file. Returns None for an unregistered
+    unit (fail-open path for the caller)."""
+    try:
+        _, entry = builder_registry.resolve(unit, repo)
+    except builder_registry.RegistryError:
+        return None
+    worktree = repo.parent / f"wt-{entry['worktree_suffix']}-{repo.name}"
+    branch = f"task/{task_id}-{entry['branch_suffix']}"
+    return worktree, branch
+
+
+def _git_diff_since(worktree: Path, branch: str, base_branch: str, owned_paths: list[str]) -> bool | None:
+    """True/False if a diff-since-base could be confidently computed for
+    owned_paths in worktree; None if not (worktree missing, HEAD isn't on the
+    expected task branch yet, or a git command failed) — None is the caller's
+    cue to omit the task_id entirely rather than guess. Counts both modified
+    tracked files (git diff) and new untracked ones (git ls-files --others),
+    since a builder's first commit on a brand-new file wouldn't show in the
+    former alone."""
+    if not worktree.is_dir():
+        return None
+    path_args = ["--", *owned_paths] if owned_paths else []
+    try:
+        head = subprocess.run(["git", "-C", str(worktree), "rev-parse", "--abbrev-ref", "HEAD"],
+                              capture_output=True, text=True, timeout=10)
+        if head.returncode != 0 or head.stdout.strip() != branch:
+            return None  # not (yet) checked out on the expected task branch
+        diff = subprocess.run(["git", "-C", str(worktree), "diff", base_branch, "--name-only", *path_args],
+                              capture_output=True, text=True, timeout=15)
+        if diff.returncode != 0:
+            return None
+        if diff.stdout.strip():
+            return True
+        untracked = subprocess.run(
+            ["git", "-C", str(worktree), "ls-files", "--others", "--exclude-standard", *path_args],
+            capture_output=True, text=True, timeout=15)
+        if untracked.returncode != 0:
+            return None
+        return bool(untracked.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _gateguard_denials(repo: Path, unit: str) -> int:
+    """Best-effort read of the denial counter hooks/gateguard.js maintains at
+    .devteam/gateguard/denials/<UNIT>.json. Missing/corrupt -> 0: this is
+    telemetry feeding a threshold, not a gate, and must never raise."""
+    p = repo / ".devteam" / "gateguard" / "denials" / f"{unit}.json"
+    try:
+        return int(json.loads(p.read_text(encoding="utf-8")).get("count", 0))
+    except (OSError, json.JSONDecodeError, ValueError, TypeError):
+        return 0
+
+
+def _reset_gateguard_denials(repo: Path, unit: str) -> None:
+    """Called only when this tick observed real progress (changed=True) for
+    the unit's task — progress fully absolves whatever denials preceded it.
+    gateguard.js itself never resets this counter; only progress does, so a
+    healthy deny-once-then-allow cycle doesn't wash out a genuinely stuck
+    unit's count between ticks."""
+    p = repo / ".devteam" / "gateguard" / "denials" / f"{unit}.json"
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"count": 0, "last": ""}), encoding="utf-8")
+    except OSError:
+        pass  # best-effort; a failed reset just delays the count returning to 0, never corrupts it
+
+
+def _stagnation_signal(repo: Path, plan_text: str, cfg: dict) -> dict[str, dict]:
+    """Best-effort per-task {"changed": bool, "denials": int} for decide()'s
+    circuit-breaker step (4b). Fail-open PER TASK, not just per-call: any
+    resolution failure for one task (unit not registered, worktree/branch not
+    ready, git error) omits that task_id, while other tasks this tick still
+    get a real signal. decide() treats an absent key as 'no opinion', never
+    as 'stagnant'."""
+    out: dict[str, dict] = {}
+    try:
+        rep = Report()
+        tasks = parse_tasks(plan_text, rep)
+    except Exception:
+        return out
+    base_branch = cfg.get("git", {}).get("base_branch", "main")
+    for t in tasks:
+        if t.get("Status") not in ("claimed", "in_progress"):
+            continue
+        unit = t.get("Assigned_To")
+        resolved = _worktree_and_branch(repo, t.task_id, unit)
+        if resolved is None:
+            continue
+        worktree, branch = resolved
+        changed = _git_diff_since(worktree, branch, base_branch, parse_owned_paths(t.get("Owned_Paths")))
+        if changed is None:
+            continue
+        denials = _gateguard_denials(repo, unit)
+        if changed:
+            _reset_gateguard_denials(repo, unit)
+        out[t.task_id] = {"changed": changed, "denials": denials}
     return out
 
 
@@ -1256,10 +1430,16 @@ def main(argv: list[str]) -> int:
             except Exception as exc:
                 print(f"[usage] skipped this tick (non-fatal): {exc}", file=sys.stderr)
                 usage = {}
+            try:
+                stagnation_signal = _stagnation_signal(repo, plan_text, cfg)
+            except Exception as exc:
+                print(f"[circuit_breaker] skipped this tick (non-fatal): {exc}", file=sys.stderr)
+                stagnation_signal = {}
             actions = queue_actions + inbox_actions + decide(plan_text, state, cfg, now=now,
                                           stop_file_exists=(repo / "STOP").exists(),
                                           dossier_heartbeats=dossier_heartbeats,
-                                          usage=usage)
+                                          usage=usage,
+                                          stagnation_signal=stagnation_signal)
             keep_going = execute(actions, cfg, state, repo, args.dry_run, now=now, inflight=inflight)
             if args.once and not args.dry_run:
                 # A normal loop reaps on its next tick. A single-tick run has

@@ -44,16 +44,64 @@ tick:
   5. stale heartbeat (> stale_minutes on active task)?    → redispatch that builder; its resume-first rule
                                   (protocol §10a) continues the existing branch from the last Progress_Note;
                                   3rd stale on same task → ESCALATE (P2)
+  5b. stagnant despite a fresh heartbeat (circuit breaker — see below)?
+                                → redispatch, same resume-first mechanism; after
+                                  max_stagnation_resets (default 2) → ESCALATE (P2)
   6. all tasks done?           → ESCALATE (P0-GOOD: wave complete digest) and stop
   sleep(interval); repeat
 ```
+
+## The stagnation circuit breaker (step 5b)
+
+Ported in concept from [ralph-claude-code](https://github.com/frankbria/ralph-claude-code)
+(MIT), a single-agent autonomous-loop tool whose circuit breaker catches
+exactly the failure mode step 5 above cannot: a builder can be **alive** —
+dossier heartbeat fresh, process running or exited 0 — while producing
+**zero progress**, looping on a fix it cannot find, or repeatedly hitting a
+gateguard/firewall denial without adapting. Stale-heartbeat detection never
+fires in that case, because the heartbeat keeps advancing.
+
+Each tick, for every `claimed`/`in_progress` task, `_stagnation_signal()`
+(supervisor.py) resolves the unit's worktree via `builder_registry` and
+checks two independent, best-effort signals:
+
+- **changed** — any diff (tracked or new untracked files) under the task's
+  `Owned_Paths` since the last tick that saw progress;
+- **denials** — the unit's `hooks/gateguard.js` denial count, accumulated
+  since the last tick that saw progress (a diff resets it to 0 — real
+  progress absolves whatever denials preceded it).
+
+The pure decision (`scripts/circuit_breaker.py`) escalates on **either**
+signal: 3 consecutive stagnant ticks (`no_progress_ticks`), or the denial
+count alone reaching 2 (`denial_ticks`) — a stuck permission loop is a
+faster, stronger signal than mere silence, so it does not have to wait out
+the generic streak. Neither threshold fires on a single quiet tick: a
+builder legitimately thinks before writing, and a first-touch gateguard
+denial is the gate working as designed, not a problem.
+
+**Fail-open, deliberately conservative, at every layer.** A task_id absent
+from the signal (no worktree yet, HEAD not on the expected branch, a git
+command failed) is never treated as stagnant — `decide()` skips it. A wrong
+guess here must only ever under-detect a real stall, never falsely
+redispatch or escalate a builder that is fine.
+
+**Unlike Ralph's OPEN/HALF_OPEN/CLOSED state machine with a timed
+auto-recovery cooldown**, this reuses supervisor.py's existing two-stage
+ladder (the same shape as stale-heartbeat's `stale_resets`): redispatch via
+the unit's own resume-first rule, then hand off to a human via `ESCALATE_P2`
+once `max_stagnation_resets` (default 2, lifetime per task_id) is reached.
+Ralph invented cooldown/auto-recovery because it runs fully unattended with
+no human to hand off to; we have review/merge discipline and a human in the
+loop already, so a second state-machine vocabulary would only add surface
+area. Tunable via `autopilot.json` → `circuit_breaker` (`no_progress_ticks`,
+`denial_ticks`, `max_stagnation_resets`).
 
 ## Escalation contract — the ONLY reasons the human is contacted
 
 | Priority | Condition | Channel behaviour |
 |---|---|---|
 | **P1 — stop the line** | Protocol-illegal PLAN.md; out-of-territory diff detected; merge conflict on main; validator or git corruption; same task fails review ≥ `max_rework` (default 2) times | Immediate notification, loop pauses |
-| **P2 — decision needed** | SPEC_AMBIGUITY; unresolvable dependency; repeated OWNERSHIP_CONFLICT; builder session died twice; task exceeds `max_task_hours` | Immediate notification, loop continues on other lanes |
+| **P2 — decision needed** | SPEC_AMBIGUITY; unresolvable dependency; repeated OWNERSHIP_CONFLICT; builder session died twice; task exceeds `max_task_hours`; task stagnant (alive, no diff/denials-resolving) past `max_stagnation_resets` redispatches | Immediate notification, loop continues on other lanes |
 | **P0 — digest** | Wave complete; or every `digest_hours` (default 4) a one-paragraph summary | Batched, never interrupts |
 
 Everything else — claims, progress notes, passing reviews, merges, redispatches —
