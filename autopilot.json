@@ -109,6 +109,9 @@
   "control": {
     "mode": "legacy"
   },
+  "sync": {
+    "pack_path": ""
+  },
   "git": {
     "base_branch": "master"
   },

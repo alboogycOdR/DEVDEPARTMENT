@@ -46,8 +46,11 @@ shells out; pure filesystem. Commit the result yourself after reviewing
 from __future__ import annotations
 
 import argparse
+import difflib
 import hashlib
 import json
+import re
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -112,6 +115,108 @@ def load_manifest(pack: Path) -> dict:
             f"{path} not found — the pack at {pack} predates sync support "
             f"(needs the pack itself updated first).")
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def pack_version(pack: Path) -> str:
+    """Return a human-readable pack version plus its current commit id."""
+    version = "unknown"
+    readme = pack / "README.md"
+    try:
+        matches = re.findall(r"^[-*]\s+v(\d+(?:\.\d+)+)\b", readme.read_text(encoding="utf-8"), re.M)
+        if matches:
+            version = matches[-1]
+    except OSError:
+        pass
+    try:
+        sha = subprocess.run(["git", "-C", str(pack), "rev-parse", "--short", "HEAD"],
+                             text=True, capture_output=True, timeout=5, check=True).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        sha = "unknown"
+    return f"v{version}+{sha}"
+
+
+def _version_number(value: object) -> tuple[int, ...]:
+    match = re.search(r"v(\d+(?:\.\d+)*)", str(value))
+    return tuple(int(x) for x in match.group(1).split(".")) if match else ()
+
+
+def _version_sha(value: object) -> str | None:
+    """Extract the recorded Git object name from ``pack_version`` output."""
+    match = re.search(r"\+([0-9a-fA-F]+)$", str(value))
+    return match.group(1) if match else None
+
+
+def _is_ancestor(pack: Path, older: str) -> bool | None:
+    """Whether ``older`` is an ancestor of pack HEAD; None means unknown."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(pack), "merge-base", "--is-ancestor", older, "HEAD"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode == 0:
+        return True
+    return False if result.returncode == 1 else None
+
+
+def _behind_warning(installed: object, current: str, pack: Path, detail: str = "") -> str:
+    suffix = f" ({detail})" if detail else ""
+    return (f"framework {installed} behind pack {current}{suffix} — run: python "
+            f"{pack / 'scripts' / 'sync_from_pack.py'} --project .")
+
+
+def behind_pack(project: Path) -> str | None:
+    """Return the operator action when a project's recorded pack is behind."""
+    try:
+        cfg = json.loads((project / "autopilot.json").read_text(encoding="utf-8"))
+        pack_path = cfg.get("sync", {}).get("pack_path")
+        installed = cfg.get("framework_version")
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return None
+    if not pack_path or not installed:
+        return None
+    pack = Path(pack_path)
+    current = pack_version(pack)
+    if _version_number(installed) < _version_number(current):
+        return _behind_warning(installed, current, pack)
+    if _version_number(installed) != _version_number(current):
+        return None
+    installed_sha, current_sha = _version_sha(installed), _version_sha(current)
+    if not installed_sha or not current_sha or current_sha == "unknown":
+        return _behind_warning(installed, current, pack, "recorded pack commit is unknown")
+    if installed_sha == current_sha:
+        return None
+    ancestor = _is_ancestor(pack, installed_sha)
+    if ancestor is True:
+        return _behind_warning(installed, current, pack)
+    if ancestor is None:
+        return _behind_warning(installed, current, pack, "recorded pack commit is unknown")
+    return None
+
+
+def stamp_framework_version(project: Path, pack: Path) -> None:
+    """Stamp only the sync metadata; existing project settings remain untouched."""
+    path = project / "autopilot.json"
+    try:
+        cfg = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    cfg["framework_version"] = pack_version(pack)
+    cfg.setdefault("sync", {}).setdefault("pack_path", str(pack))
+    path.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8", newline="\n")
+
+
+def write_project_manifest(project: Path, manifest: dict) -> None:
+    """Install/update the tracked identity marker without changing ownership data."""
+    target = project / MANIFEST_NAME
+    current: dict = {}
+    try:
+        current = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        current = manifest.copy()
+    current["role"] = "project"
+    target.write_text(json.dumps(current, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
 # --------------------------------------------------------------------------- #
@@ -480,7 +585,31 @@ def run_sync(pack: Path, project: Path, apply: bool = False,
     if apply:
         state["version"] = STATE_VERSION
         save_state(project, state)
+        write_project_manifest(project, manifest)
+        stamp_framework_version(project, pack)
     return report
+
+
+def diverged_report(pack: Path, project: Path) -> str:
+    """Read-only unified diffs for framework files differing from the pack."""
+    manifest = load_manifest(pack)
+    chunks: list[str] = []
+    for rel in manifest.get("framework_owned", []):
+        source, target = pack / rel, project / rel
+        source_bytes, target_bytes = sha256_file(source), sha256_file(target)
+        if source_bytes == target_bytes:
+            continue
+        try:
+            source_lines = source.read_text(encoding="utf-8").splitlines(keepends=True)
+        except OSError:
+            source_lines = []
+        try:
+            target_lines = target.read_text(encoding="utf-8").splitlines(keepends=True)
+        except OSError:
+            target_lines = []
+        chunks.append("".join(difflib.unified_diff(
+            source_lines, target_lines, fromfile=f"pack/{rel}", tofile=f"project/{rel}")))
+    return "".join(chunks) or "No framework-owned files diverged.\n"
 
 
 def render_report(report: Report, apply: bool) -> str:
@@ -514,7 +643,7 @@ def render_report(report: Report, apply: bool) -> str:
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Sync an onboarded project with the DEVDEPARTMENT pack")
-    ap.add_argument("--pack", required=True, help="path to the DEVDEPARTMENT pack folder")
+    ap.add_argument("--pack", help="path to the DEVDEPARTMENT pack folder")
     ap.add_argument("--project", default=".", help="project root (default: cwd)")
     ap.add_argument("--apply", action="store_true",
                     help="actually write changes (default is dry-run)")
@@ -522,16 +651,35 @@ def main(argv: list[str]) -> int:
                     help="resolve conflicts by taking the pack's version")
     ap.add_argument("--only", nargs="*", default=None,
                     help="restrict to specific manifest paths")
+    ap.add_argument("--diverged", action="store_true",
+                    help="print read-only unified diffs for framework-owned files")
+    ap.add_argument("--behind-pack", action="store_true",
+                    help="print the configured pack-behind warning, if any")
     args = ap.parse_args(argv)
 
-    pack = Path(args.pack).resolve()
     project = Path(args.project).resolve()
+    if args.behind_pack:
+        warning = behind_pack(project)
+        if warning:
+            print(warning)
+        return 0
+    if not args.pack:
+        ap.error("--pack is required unless --behind-pack is used")
+    pack = Path(args.pack).resolve()
     if not pack.is_dir():
         print(f"error: pack not found at {pack}", file=sys.stderr)
         return 1
     if pack == project:
         print("error: --pack and --project are the same directory", file=sys.stderr)
         return 1
+
+    if args.diverged:
+        try:
+            print(diverged_report(pack, project), end="")
+        except FileNotFoundError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        return 0
 
     try:
         report = run_sync(pack, project, apply=args.apply,

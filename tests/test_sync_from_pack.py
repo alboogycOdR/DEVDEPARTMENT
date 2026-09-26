@@ -26,9 +26,8 @@ def _is_pack_repo() -> bool:
     """True when this checkout is the DEVDEPARTMENT pack itself, false when it
     is a project that vendored the pack.
 
-    A consuming project has `.devteam/sync_state.json` — written by
-    onboarding's baseline step and by every sync since. The pack is the source
-    and never syncs into itself, so it has none. `DEVTEAM_PACK_SELF_TESTS=1`
+    The tracked manifest is authoritative: a pack says ``role: pack`` and a
+    consuming checkout says ``role: project``. `DEVTEAM_PACK_SELF_TESTS=1`
     forces the pack answer for CI that runs from an unusual layout.
 
     Why this exists (oikonomos, 2026-08-16): the self-check tests below assert
@@ -44,7 +43,10 @@ def _is_pack_repo() -> bool:
     """
     if os.environ.get("DEVTEAM_PACK_SELF_TESTS") == "1":
         return True
-    return not (REPO_ROOT / ".devteam" / "sync_state.json").exists()
+    try:
+        return json.loads((REPO_ROOT / sfp.MANIFEST_NAME).read_text(encoding="utf-8")).get("role") == "pack"
+    except (OSError, json.JSONDecodeError):
+        return False
 
 
 pack_self_test = pytest.mark.skipif(
@@ -62,7 +64,7 @@ def make_pack(tmp_path: Path, files: dict[str, str],
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8", newline="\n")
     if manifest is None:
-        manifest = {"manifest_version": 1,
+        manifest = {"manifest_version": 1, "role": "pack",
                     "framework_owned": sorted(files.keys()),
                     "project_owned": ["PLAN.md"],
                     "merge_special": {}}
@@ -187,6 +189,93 @@ class TestDryRunSafety:
         proj = make_project(tmp_path, {"scripts/a.py": "x\n", "PLAN.md": "MY REAL PLAN\n"})
         sfp.run_sync(pack, proj, apply=True, adopt_pack=True)
         assert (proj / "PLAN.md").read_text() == "MY REAL PLAN\n"
+
+    def test_first_apply_marks_manifest_as_project(self, tmp_path):
+        pack = make_pack(tmp_path, {"scripts/a.py": "same\n", "autopilot.json": "{}\n"})
+        proj = make_project(tmp_path, {"scripts/a.py": "same\n", "autopilot.json": "{}\n"})
+        sfp.run_sync(pack, proj, apply=True)
+        assert json.loads((proj / sfp.MANIFEST_NAME).read_text())["role"] == "project"
+
+
+class TestDivergenceAndVersions:
+    def test_is_pack_repo_uses_tracked_role_and_fails_closed_when_unreadable(self, tmp_path, monkeypatch):
+        pack = make_pack(tmp_path, {})
+        monkeypatch.setattr(sfp_test_module, "REPO_ROOT", pack)
+        assert _is_pack_repo() is True
+        (pack / sfp.MANIFEST_NAME).write_text(json.dumps({"role": "project"}), encoding="utf-8")
+        assert _is_pack_repo() is False
+        monkeypatch.setattr(Path, "read_text", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("no read")))
+        assert _is_pack_repo() is False
+
+    def test_diverged_report_is_unified_and_read_only(self, tmp_path):
+        pack = make_pack(tmp_path, {"scripts/a.py": "pack\n"})
+        proj = make_project(tmp_path, {"scripts/a.py": "project\n"})
+        before = (proj / "scripts/a.py").read_bytes()
+        report = sfp.diverged_report(pack, proj)
+        assert "--- pack/scripts/a.py" in report and "+++ project/scripts/a.py" in report
+        assert (proj / "scripts/a.py").read_bytes() == before
+
+    def test_behind_pack_warns_for_older_recorded_version(self, tmp_path, monkeypatch):
+        pack = tmp_path / "pack"
+        pack.mkdir()
+        (pack / "README.md").write_text("- v9.0 — current\n", encoding="utf-8")
+        project = make_project(tmp_path, {"autopilot.json": json.dumps({
+            "framework_version": "v1.0+abc", "sync": {"pack_path": str(pack)}})})
+        monkeypatch.setattr(sfp, "pack_version", lambda _: "v9.0+def")
+        assert "framework v1.0+abc behind pack v9.0+def" in sfp.behind_pack(project)
+
+    def test_behind_pack_detects_newer_commit_at_same_semver(self, tmp_path, monkeypatch):
+        pack = tmp_path / "pack"
+        pack.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "master", str(pack)], check=True)
+        subprocess.run(["git", "-C", str(pack), "config", "user.email", "t@example.com"], check=True)
+        subprocess.run(["git", "-C", str(pack), "config", "user.name", "T"], check=True)
+        (pack / "README.md").write_text("- v9.0 — current\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(pack), "add", "README.md"], check=True)
+        subprocess.run(["git", "-C", str(pack), "commit", "-qm", "old"], check=True)
+        old = subprocess.run(["git", "-C", str(pack), "rev-parse", "--short", "HEAD"], text=True,
+                             capture_output=True, check=True).stdout.strip()
+        (pack / "README.md").write_text("- v9.0 — current\nnew commit\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(pack), "commit", "-qam", "new"], check=True)
+        current = subprocess.run(["git", "-C", str(pack), "rev-parse", "--short", "HEAD"], text=True,
+                                 capture_output=True, check=True).stdout.strip()
+        project = make_project(tmp_path, {"autopilot.json": json.dumps({
+            "framework_version": f"v9.0+{old}", "sync": {"pack_path": str(pack)}})})
+        monkeypatch.setattr(sfp, "pack_version", lambda _: f"v9.0+{current}")
+        assert f"framework v9.0+{old} behind pack v9.0+{current}" in sfp.behind_pack(project)
+
+    def test_behind_pack_reports_unknown_same_version_sha(self, tmp_path, monkeypatch):
+        pack = tmp_path / "pack"
+        pack.mkdir()
+        project = make_project(tmp_path, {"autopilot.json": json.dumps({
+            "framework_version": "v9.0+deadbeef", "sync": {"pack_path": str(pack)}})})
+        monkeypatch.setattr(sfp, "pack_version", lambda _: "v9.0+cafebabe")
+        warning = sfp.behind_pack(project)
+        assert "recorded pack commit is unknown" in warning
+        assert "behind pack" in warning
+
+    def test_apply_stamps_framework_version_and_preserves_existing_settings(self, tmp_path, monkeypatch):
+        pack = make_pack(tmp_path, {"scripts/a.py": "same\n", "autopilot.json": "{}\n"})
+        project = make_project(tmp_path, {"scripts/a.py": "same\n", "autopilot.json": json.dumps({
+            "interval_seconds": 42, "sync": {"keep": "me"}})})
+        monkeypatch.setattr(sfp, "pack_version", lambda _: "v9.0+abcdef0")
+        sfp.run_sync(pack, project, apply=True)
+        cfg = json.loads((project / "autopilot.json").read_text(encoding="utf-8"))
+        assert cfg["framework_version"] == "v9.0+abcdef0"
+        assert cfg["sync"] == {"keep": "me", "pack_path": str(pack)}
+        assert cfg["interval_seconds"] == 42
+
+    def test_session_start_prints_behind_pack_warning(self, tmp_path):
+        project = make_project(tmp_path, {})
+        script = project / "scripts" / "sync_from_pack.py"
+        script.parent.mkdir()
+        script.write_text("print('framework v1.0+old behind pack v2.0+new')\n", encoding="utf-8")
+        result = subprocess.run(
+            ["node", str(REPO_ROOT / "hooks" / "session-start.js")], input="{}",
+            text=True, capture_output=True, check=True,
+            env={**os.environ, "CLAUDE_PROJECT_DIR": str(project), "DEVTEAM_UNIT": "CX"},
+        )
+        assert "framework v1.0+old behind pack v2.0+new" in result.stdout
 
 
 # ================================================================ --only ====
@@ -464,6 +553,9 @@ class TestManifestPathsAreLiteral:
         return {ln.strip() for ln in r.stdout.splitlines()
                 if ln.strip().startswith("tests/test_") and ln.strip().endswith(".py")}
 
+    # Ported from oikonomos d3f5fc08: this is pack-template-only even when
+    # the class is instantiated directly by a regression fixture.
+    @pack_self_test
     def test_every_shipped_test_file_is_registered(self):
         """A test suite that does not propagate is a test suite that silently
         stops protecting downstream projects.
@@ -789,4 +881,3 @@ class TestShippedTestFileRegistrationIsBranchAware:
         assert inst._integration_branch_test_files() is None
         with pytest.raises(AssertionError, match="test_a.py"):
             inst.test_every_shipped_test_file_is_registered()
-
