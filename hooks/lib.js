@@ -199,6 +199,17 @@ const PROTECTED_EXCEPTIONS = [
   // Example (from the project this came out of, where builders had to fix product
   // CAPS extractors that live alongside dispatch/plan_commit in scripts/):
   //   'scripts/extract_caps_taxonomy*.py',
+  //
+  // Wave E first dispatch (plan v6.0, 2026-09-26). Remove each when its task is done;
+  // TASK-027's Protected_Grants field retires this ritual.
+  // TASK-023 (S5):
+  'scripts/supervisor.py', 'scripts/status_digest.py',
+  // TASK-024 (GB):
+  'scripts/dispatch.ps1', 'scripts/dispatch.sh', '.claude/agents/devteam-builder.md',
+  'scripts/autopilot-tick.ps1', 'scripts/test_env_scrub.py',
+  // TASK-025 (CX):
+  'scripts/sync_from_pack.py', 'autopilot.json', '.claude/commands/devteam-status.md',
+  'hooks/session-start.js',
 ];
 
 /**

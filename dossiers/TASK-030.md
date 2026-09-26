@@ -10,7 +10,7 @@
 
 ## Territory
 - Owned_Paths: scripts/supervisor.py, scripts/status_digest.py, tests/test_supervisor.py, tests/test_supervisor_park.py (new), tests/test_stagnation_signal.py, deploy/ecosystem.config.js, .claude/commands/devteam-status.md
-- Protected-path grants: scripts/supervisor.py, scripts/status_digest.py, .claude/commands/devteam-status.md
+- Protected-path grants: scripts/supervisor.py, scripts/status_digest.py, .claude/commands/devteam-status.md, deploy/ecosystem.config.js
 - Depends_On: TASK-029
 
 ## Intended approach
