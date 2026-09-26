@@ -873,7 +873,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-025
 **Title:** Wave E E-0c — tracked role marker, --diverged report, legacy first-sync, version stamp
-**Status:** needs_review
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §2 (E-0.2–E-0.5)
@@ -898,10 +898,11 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-26T14:38:00Z] [CX] `node hooks/run-tests.js` — 37 passed, 0 failed.
 - [2026-09-26T14:38:00Z] [CX] `python -m pytest -q` — completed successfully (exit 0).
 - [2026-09-26T14:38:00Z] [CX] Read-only `--diverged` against KERYX and oikonomos completed; both `git status --short` outputs were unchanged before/after (KERYX had pre-existing modified/untracked files; oikonomos had pre-existing untracked files).
-**Review_Findings:** —
+**Review_Findings:**
+- [2026-09-26T14:27:46Z] [ORCH] REWORK (reviewer: claude-opus-5-5). Territory clean (6 files, all Owned_Paths). Required: (1) the d3f5fc08 hunk assigned to this task is not ported — `@pack_self_test` on `test_every_shipped_test_file_is_registered` (cite d3f5fc08 in the commit); (2) criterion 1 untested — add a test that `_is_pack_repo()` is False (self-tests skipped) when the manifest says `role: project`, True for `pack`, False for unreadable; (3) criterion 5 untested — assert a sync `--apply` writes `framework_version` (semver+SHA) and `sync.pack_path` into autopilot.json without altering other keys; add a Node test for the session-start behind-pack line; (4) behind_pack compares semver only, so a pack that advanced commits without a README bump is never reported behind — also compare SHAs (same semver, differing SHA where the recorded SHA is an ancestor of pack HEAD via `git merge-base --is-ancestor` → behind; unknown SHA → say so, don't claim current); test both; (5) evidence: record full-suite COUNTS (not 'exit 0') for both suites, and a one-line summary per real `--diverged` run (KERYX, oikonomos: number of diverged files) with the before/after `git status` comparison. Also: Started_At 14:07:00Z precedes this dispatch (14:20:39Z) — stamp real UTC (`date -u`). Not a finding: E-0.4 first-sync-overwrites-nothing is pre-existing and covered by test_legacy_project_no_baseline_is_conflict.
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-09-26T14:38:00Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-26T14:27:46Z
 
 ### TASK-026
 **Title:** Wave E E-0d — no-manifest adopt path (sync_from_pack --adopt)
