@@ -273,6 +273,26 @@ if ($ControlMode -eq "strict") {
     Write-Host "[dispatch] $ResumeOrClaim $TaskId for $Id (control.mode=strict$DryNote)." -ForegroundColor Cyan
 }
 
+# Port of oikonomos bceb8eb2: a FRESH claim must start from the integration
+# branch. The builder otherwise creates task/<id>-<suffix> from whatever its
+# worktree is on (the previous task's branch): a stale base plus foreign
+# commits. Create the branch here, from the base tip, when it does not exist
+# yet. Resuming keeps the existing branch.
+# Pack adaptation: worktree creation is not gated by -DryRun, so neither is
+# this pre-create (tests exercise it under -DryRun on a tmp fixture repo).
+if ($ResumeOrClaim -eq "claimed" -and $TaskId -and (Test-Path $Wt)) {
+    $TaskBranch = "task/$TaskId-$Suffix"
+    git -C $Wt rev-parse --verify --quiet "refs/heads/$TaskBranch" 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        git -C $Wt branch $TaskBranch $BaseBranch 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "[dispatch] created $TaskBranch from $BaseBranch tip (fresh base)." -ForegroundColor Cyan
+        } else {
+            Write-Warning "[dispatch] could not pre-create $TaskBranch from $BaseBranch; the builder will create it from its worktree HEAD."
+        }
+    }
+}
+
 $PlanPath = Join-Path $RepoRoot "PLAN.md"
 $Fence = '```'
 

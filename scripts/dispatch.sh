@@ -32,6 +32,18 @@ cd "$REPO_ROOT"
 # hand a builder the wrong repo's checkout.
 PROJECT_NAME="$(basename "$REPO_ROOT")"
 
+# Integration branch from autopilot.json (git.base_branch, fail-safe default
+# "main") — resolved once because create, and the fresh-claim branch (bceb8eb2),
+# both need it. Creation previously nested this only inside `if [[ ! -d "$WT" ]]`,
+# so a reused worktree had no BASE_BRANCH for `git branch task/<id>-<suffix>`.
+BASE_BRANCH="$(python3 -c "
+import json
+try:
+    print(json.load(open('autopilot.json')).get('git',{}).get('base_branch') or 'main')
+except Exception:
+    print('main')
+" 2>/dev/null || echo main)"
+
 # v4.7: builder identity comes from the registry (autopilot.json's builders
 # key, dual-shape — see scripts/builder_registry.py). argv may be a unit ID
 # (GB/CX/S5/S5B/...) or, as a compatibility shim, a legacy CLI-family name
@@ -125,15 +137,6 @@ fi
 
 if [[ ! -d "$WT" ]]; then
   echo "[dispatch] Creating worktree at $WT..."
-  # Integration branch from autopilot.json (git.base_branch, fail-safe default
-  # "main") — hardcoding "main" here broke dispatch on master-based repos.
-  BASE_BRANCH="$(python3 -c "
-import json
-try:
-    print(json.load(open('autopilot.json')).get('git',{}).get('base_branch') or 'main')
-except Exception:
-    print('main')
-" 2>/dev/null || echo main)"
   git worktree add --detach "$WT" "$BASE_BRANCH"
 fi
 
@@ -171,6 +174,24 @@ if [[ "$CONTROL_MODE" == "strict" ]]; then
       ;;
   esac
   echo "[dispatch] $RESUME_OR_CLAIM $TASK_ID for $ID (control.mode=strict$( [[ "$DRY" == "--dry-run" ]] && echo ", DRY RUN — no write performed" ))."
+fi
+
+# Port of oikonomos bceb8eb2: a FRESH claim must start from the integration
+# branch. The builder otherwise creates task/<id>-<suffix> from whatever its
+# worktree is on (the previous task's branch): a stale base plus foreign
+# commits. Create the branch here, from the base tip, when it does not exist
+# yet. Resuming keeps the existing branch.
+# Pack adaptation: worktree creation is not gated by --dry-run, so neither is
+# this pre-create (tests exercise it under --dry-run on a tmp fixture repo).
+if [[ "$RESUME_OR_CLAIM" == "claimed" && -n "$TASK_ID" && -d "$WT" ]]; then
+  TASK_BRANCH="task/${TASK_ID}-${SUFFIX}"
+  if ! git -C "$WT" rev-parse --verify --quiet "refs/heads/$TASK_BRANCH" >/dev/null; then
+    if git -C "$WT" branch "$TASK_BRANCH" "$BASE_BRANCH" >/dev/null 2>&1; then
+      echo "[dispatch] created $TASK_BRANCH from $BASE_BRANCH tip (fresh base)."
+    else
+      echo "[dispatch] WARNING: could not pre-create $TASK_BRANCH from $BASE_BRANCH; the builder will create it from its worktree HEAD." >&2
+    fi
+  fi
 fi
 
 # S5 runs the literal `claude` CLI, which auto-loads CLAUDE.md as ambient

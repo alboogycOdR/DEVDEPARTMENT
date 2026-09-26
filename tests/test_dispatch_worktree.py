@@ -449,3 +449,109 @@ class TestBuilderIdentity:
         r = run_dispatch(proj, builder="GB")
         assert "--agent" not in r.stdout
         assert "IDENTITY OVERRIDE" not in r.stdout
+
+
+class TestFreshClaimBranchFromBaseTip:
+    """Port of oikonomos bceb8eb2: a fresh claim's task/<id>-<suffix> is
+    created from the integration tip, not from whatever the worktree happens
+    to be on (the previous task's branch). Tmp fixture repo only — never the
+    live checkout. These fail against pre-port dispatch (no pre-create)."""
+
+    def _strict_stub(self, tmp_path, name):
+        import json
+        proj = make_project(tmp_path, name, REPO_ROOT)
+        cfg = {"control": {"mode": "strict"}, "git": {"base_branch": "main"}}
+        (proj / "autopilot.json").write_text(
+            json.dumps(cfg), encoding="utf-8", newline="\n")
+        (proj / "scripts" / "control.py").write_bytes(
+            b"import sys\n"
+            b"if 'claim' in sys.argv:\n"
+            b"    print('CLAIMED:TASK-099')\n"
+            b"    raise SystemExit(0)\n"
+            b"raise SystemExit('unexpected control.py argv')\n"
+        )
+        return proj
+
+    def _plant_previous_task_branch_via_bash(self, proj: Path) -> str:
+        """Let dispatch.sh create the registered worktree (same git/path form
+        as the script under test), then put that worktree on a previous-task
+        branch with a foreign commit. Returns the foreign SHA."""
+        import json
+        cfg_path = proj / "autopilot.json"
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+        cfg["control"] = {"mode": "legacy"}
+        cfg_path.write_text(json.dumps(cfg), encoding="utf-8", newline="\n")
+        setup = run_dispatch(proj, dry_run=True)
+        assert setup.returncode == 0, setup.stdout + setup.stderr
+        wt = proj.parent / f"wt-grok-{proj.name}"
+        assert wt.is_dir()
+        planted = subprocess.run(
+            ["bash", "-c",
+             "git checkout -B task/TASK-001-gb && "
+             "printf 'from previous task\\n' > foreign.txt && "
+             "git add foreign.txt && git commit -q -m 'foreign previous-task commit'"],
+            cwd=wt, capture_output=True, text=True)
+        assert planted.returncode == 0, planted.stdout + planted.stderr
+        foreign = subprocess.check_output(
+            ["bash", "-c", "git rev-parse HEAD"], cwd=wt, text=True).strip()
+        base = subprocess.check_output(
+            ["bash", "-c", "git rev-parse main"], cwd=proj, text=True).strip()
+        assert foreign != base
+        cfg["control"] = {"mode": "strict"}
+        cfg_path.write_text(json.dumps(cfg), encoding="utf-8", newline="\n")
+        return foreign
+
+    def _plant_previous_task_branch_via_git(self, proj: Path) -> str:
+        """Windows/ps1 path: Git for Windows registers C:/... worktrees."""
+        wt = proj.parent / f"wt-grok-{proj.name}"
+        planted = subprocess.run(
+            ["git", "worktree", "add", "-b", "task/TASK-001-gb", str(wt), "main"],
+            cwd=proj, capture_output=True, text=True)
+        assert planted.returncode == 0, planted.stderr
+        (wt / "foreign.txt").write_text("from previous task", encoding="utf-8", newline="\n")
+        subprocess.run(["git", "add", "foreign.txt"], cwd=wt, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "foreign previous-task commit"],
+            cwd=wt, check=True, capture_output=True)
+        foreign = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=wt, text=True).strip()
+        base = subprocess.check_output(
+            ["git", "rev-parse", "main"], cwd=proj, text=True).strip()
+        assert foreign != base
+        return foreign
+
+    def test_dispatch_sh_creates_fresh_claim_branch_from_base_tip(self, tmp_path):
+        proj = self._strict_stub(tmp_path, "projectTip")
+        foreign = self._plant_previous_task_branch_via_bash(proj)
+        result = run_dispatch(proj, dry_run=True)
+        assert result.returncode == 0, result.stdout + result.stderr
+        combined = _combined(result)
+        assert "created task/TASK-099-gb from main tip" in combined, combined
+        new_sha = subprocess.check_output(
+            ["bash", "-c", "git rev-parse task/TASK-099-gb"], cwd=proj, text=True).strip()
+        base = subprocess.check_output(
+            ["bash", "-c", "git rev-parse main"], cwd=proj, text=True).strip()
+        assert new_sha == base
+        assert new_sha != foreign
+        wt = proj.parent / "wt-grok-projectTip"
+        wt_sha = subprocess.check_output(
+            ["bash", "-c", "git rev-parse HEAD"], cwd=wt, text=True).strip()
+        assert wt_sha == foreign
+
+    def test_dispatch_ps1_creates_fresh_claim_branch_from_base_tip(self, tmp_path):
+        proj = self._strict_stub(tmp_path, "projectTipPs")
+        foreign = self._plant_previous_task_branch_via_git(proj)
+        result = run_dispatch_ps1(proj, dry_run=True)
+        assert result.returncode == 0, result.stdout + result.stderr
+        combined = _combined(result)
+        assert "created task/TASK-099-gb from main tip" in combined, combined
+        new_sha = subprocess.check_output(
+            ["git", "rev-parse", "task/TASK-099-gb"], cwd=proj, text=True).strip()
+        base = subprocess.check_output(
+            ["git", "rev-parse", "main"], cwd=proj, text=True).strip()
+        assert new_sha == base
+        assert new_sha != foreign
+        wt = proj.parent / "wt-grok-projectTipPs"
+        wt_sha = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=wt, text=True).strip()
+        assert wt_sha == foreign
