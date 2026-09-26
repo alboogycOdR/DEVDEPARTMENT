@@ -821,7 +821,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-023
 **Title:** Wave E E-0a — port oikonomos a14f8976 (review ledger, review.lock, escalation de-dup, status digest)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §0, §2 (E-0.1), §4 (context only)
@@ -839,14 +839,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-26T14:40:00Z] [S5] Preflight: supervisor.py FILE, status_digest.py NEW, test_token_efficiency.py NEW, test_supervisor.py FILE. ported a14f8976; adaptations/not-ported in dossier. Ready for review.
 **Artifacts:** scripts/supervisor.py, scripts/status_digest.py, tests/test_token_efficiency.py, dossiers/TASK-023.md
 **Test_Evidence:** [2026-09-26T14:40:00Z] [S5] test_token_efficiency.py 13 passed; with supervisor.py reverted it errors at collection (review_key missing). Full `python -m pytest -q` 1046 passed; `node hooks/run-tests.js` 37 passed, 0 failed.
-**Review_Findings:** —
+**Review_Findings:**
+- [2026-09-26T14:29:58Z] [ORCH] APPROVED first-pass (reviewer: claude-opus-5-5). Territory clean (supervisor.py, status_digest.py, test_token_efficiency.py + own dossier). Port verified against oikonomos a14f8976: status_digest.py byte-identical, tests differ by one justified line (pack vocabulary), supervisor hunks adapted to pack Action/Report/log_line/notify; no oikonomos identifiers. Independent re-run in worktree: pytest 1046 passed, node 37/0, test_token_efficiency 13/13; main checkout untouched. Non-blocking, carried forward: (a) fail-before evidence was a collection ImportError, not a behavioural failure — TASK-028/029 tests must fail on behaviour against pre-change code; (b) maybe_status_digest ships ON and notifies on every content change (≤ every 30 min) — a new message stream; TASK-029 to route it through the escalation ledger / make send opt-in for existing projects (ask-don't-auto-flip); (c) ledger keyed by plan-text fingerprint, lock key `review_lock_minutes`, `escalate_repeat_hours`=24 — TASK-028/029 extend to head-SHA key, `review.lock_stale_minutes`, renotify 4h/1h per spec; (d) Started_At/Updated_At are invented round values (14:25:00Z/14:40:00Z, the latter in the future) — E-E (TASK-033). Merged --no-ff 65339cb; branch deleted.
 **Blocked_Reason:** —
-**Updated_By:** S5
-**Updated_At:** 2026-09-26T14:40:00Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-26T14:29:58Z
 
 ### TASK-024
 **Title:** Wave E E-0b — port oikonomos bceb8eb2, d3f5fc08, 7baeedf3, 3e8c3e79 (base-tip branch, portable tests, tick runner, env scrub)
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §0, §2 (E-0.1)
@@ -864,12 +865,25 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Started_At:** 2026-09-26T14:23:00Z
 **Progress_Notes:**
 - [2026-09-26T14:23:00Z] [GB] Claimed TASK-024 on task/TASK-024-gb. Next: preflight_paths, then port the four oikonomos SHAs (bceb8eb2, d3f5fc08, 7baeedf3, 3e8c3e79) as four pack commits.
+- [2026-09-26T14:32:00Z] [GB] Preflight (c8b9872 filesystem check):
+\[preflight] TASK-024 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-grok-DEVDEPARTMENT
+[preflight] 9 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+  FILE   scripts/dispatch.ps1  -> exists, 675 line(s), 41275 bytes
+  FILE   scripts/dispatch.sh  -> exists, 397 line(s), 25393 bytes
+  FILE   tests/conftest.py  -> exists, 35 line(s), 1679 bytes
+  FILE   tests/test_validate_plan.py  -> exists, 181 line(s), 7113 bytes
+  FILE   tests/test_dispatch_worktree.py  -> exists, 451 line(s), 21303 bytes
+  FILE   .claude/agents/devteam-builder.md  -> exists, 87 line(s), 4554 bytes
+  NEW    scripts/autopilot-tick.ps1  -> does not exist; parent scripts/ exists
+  NEW    scripts/test_env_scrub.py  -> does not exist; parent scripts/ exists
+  NEW    tests/test_test_env_scrub.py  -> does not exist; parent tests/ exists
+\  Paths match the task: six existing files, three NEW. Implementing four origin-SHA commits.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** GB
-**Updated_At:** 2026-09-26T14:23:00Z
+**Updated_At:** 2026-09-26T14:32:00Z
 
 ### TASK-025
 **Title:** Wave E E-0c — tracked role marker, --diverged report, legacy first-sync, version stamp
@@ -989,7 +1003,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H1/H2, §4 (E-B.3–E-B.5), docs/reviews/LIVE_CHECKS_2026-09.md (slash row)
 **Owned_Paths:** scripts/supervisor.py, scripts/status_digest.py, tests/test_supervisor.py, tests/test_supervisor_ledgers.py, tests/test_supervisor_telegram.py, autopilot.json
 **Depends_On:** TASK-028
-**Description:** Escalation ledger: key `kind|task_id|reason_prefix|digit-masked detail` (masking per a14f8976); send on first sight or change; re-send after `escalation.renotify_hours` (4 for P2, 1 for P1); otherwise `ESCALATION_HELD` once per hold period; HALT from a STOP file logs once per STOP-file mtime; clear key when the condition goes. Triage ledger `triage_counts[task_id][reason_prefix]` incremented in the executor for EVERY reason, logged detail shows real attempt number, ceiling `max_triage_attempts` (1; OWNERSHIP_CONFLICT 1; MISSING_DEPENDENCY 2), then one P2 via the escalation ledger; resets when the task leaves blocked. BEFORE coding the triage fix, investigate oikonomos SB-8 ('attempt 1 forever'): state loss between --once processes vs the stale_resets mix-up — record the finding in the dossier; the regression test reproduces whichever it was. One `judgment_prompt(command, args)` helper renders the explicit 'Read .claude/commands/<cmd>.md and execute …' form for review, REVIEW_TG and triage; no -p argument starts with `/` (LIVE_CHECKS: Git Bash rewrites a leading slash into a Windows path). Fix DEFAULT_CONFIG review_cmd and its stale comment; every supervisor headless launch exports `DEVTEAM_DELEGATED=1`. **Protected-path grants (ORCH applies before dispatch):** scripts/supervisor.py, scripts/status_digest.py, autopilot.json.
+**Description:** Escalation ledger: key `kind|task_id|reason_prefix|digit-masked detail` (masking per a14f8976); send on first sight or change; re-send after `escalation.renotify_hours` (4 for P2, 1 for P1); otherwise `ESCALATION_HELD` once per hold period; HALT from a STOP file logs once per STOP-file mtime; clear key when the condition goes. Triage ledger `triage_counts[task_id][reason_prefix]` incremented in the executor for EVERY reason, logged detail shows real attempt number, ceiling `max_triage_attempts` (1; OWNERSHIP_CONFLICT 1; MISSING_DEPENDENCY 2), then one P2 via the escalation ledger; resets when the task leaves blocked. BEFORE coding the triage fix, investigate oikonomos SB-8 ('attempt 1 forever'): state loss between --once processes vs the stale_resets mix-up — record the finding in the dossier; the regression test reproduces whichever it was. One `judgment_prompt(command, args)` helper renders the explicit 'Read .claude/commands/<cmd>.md and execute …' form for review, REVIEW_TG and triage; no -p argument starts with `/` (LIVE_CHECKS: Git Bash rewrites a leading slash into a Windows path). Fix DEFAULT_CONFIG review_cmd and its stale comment; every supervisor headless launch exports `DEVTEAM_DELEGATED=1`. Carried from TASK-023 review: maybe_status_digest currently ships ON and notifies on each content change — route its sends through the escalation ledger and default `status_digest.send` to false for existing projects (true for new), per ask-don't-auto-flip; test it. **Protected-path grants (ORCH applies before dispatch):** scripts/supervisor.py, scripts/status_digest.py, autopilot.json.
 **Acceptance_Criteria:**
 - [ ] 30 ticks with three SPEC_AMBIGUITY tasks produce 3 P2s, not 90; a frozen max_rework task produces 1 P1, and a second only after 1 h (spec §4 Acceptance)
 - [ ] A STOP file present for 6 h logs HALT once (§4 Acceptance)
