@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from validate_plan import validate, globs_intersect, parse_owned_paths  # noqa: E402
+from validate_plan import validate, globs_intersect, parse_owned_paths, _apply_registry  # noqa: E402
 
 FM = """---
 plan_version: 1.0
@@ -168,7 +168,12 @@ def test_globs_intersect_logic():
 
 def test_shipped_plan_md_is_legal():
     plan_path = Path(__file__).resolve().parents[1] / "PLAN.md"
-    rep = validate(plan_path.read_text(encoding="utf-8"))
+    # Apply the project's builder registry (autopilot.json), exactly as the supervisor
+    # and the nightly audit do; without it validate() knows only the legacy GB/CX/S5
+    # units and calls every extra registry unit illegal.
+    # Port of oikonomos d3f5fc08.
+    repo_root = str(Path(__file__).resolve().parents[1])
+    rep = validate(plan_path.read_text(encoding="utf-8"), registry_views=_apply_registry(repo_root))
     assert rep.ok, rep.errors
 
 
