@@ -28,7 +28,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field, fields as _dc_fields
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Reuse the protocol parser — single source of truth.
@@ -186,6 +186,12 @@ class RuntimeState:
     unreported_counts: dict[str, int] = field(default_factory=dict)  # Wave I: consecutive no-CONTROL-block runs per task
     stagnation_counts: dict[str, int] = field(default_factory=dict)  # task_id -> current consecutive no-progress streak
     stagnation_resets: dict[str, int] = field(default_factory=dict)  # task_id -> lifetime REDISPATCH_STAGNANT count (mirrors stale_resets)
+    # Token-efficiency pass (ported from oikonomos a14f8976). A review is a full Opus session; without
+    # memory the supervisor relaunched one per needs_review task on every tick.
+    review_ledger: dict[str, dict] = field(default_factory=dict)    # task_id -> {key, done, fails, retry_after}
+    escalated: dict[str, str] = field(default_factory=dict)         # escalation key -> UTC ts of last P2 notify
+    triage_counts: dict[str, int] = field(default_factory=dict)     # task_id -> MISSING_DEPENDENCY triage attempts
+    last_status_digest_ts: str = ""                                 # scripted status digest throttle
 
     @classmethod
     def load(cls, path: Path) -> "RuntimeState":
@@ -207,6 +213,36 @@ def _parse_ts(value: str) -> datetime | None:
         return datetime.strptime(value, UTC_FMT).replace(tzinfo=timezone.utc)
     except (ValueError, TypeError):
         return None
+
+
+def review_key(task: "Task") -> str:
+    """Fingerprint of ONE submission for review. It changes whenever the builder resubmits
+    (new evidence or artifacts) or a rework verdict lands (new findings), and stays put while a
+    reviewer leaves the task waiting (e.g. CROSS-MODEL REVIEW REQUIRED). Pure: plan text only."""
+    import hashlib
+    raw = "\x1f".join(task.get(f) for f in ("Test_Evidence", "Review_Findings", "Artifacts", "Branch"))
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+_DIGITS = re.compile(r"\d+")
+
+
+def escalation_key(action: "Action") -> str:
+    """Stable identity of a P2 escalation: task plus its message with digits masked, so a counter
+    or a minute count changing does not make the same problem look new."""
+    return f"{action.task_id or '-'}|{_DIGITS.sub('#', action.detail[:70])}"
+
+
+def _dedupe_escalations(actions: list, state: "RuntimeState", cfg: dict, now: datetime) -> list:
+    hours = float(cfg.get("escalate_repeat_hours", 24))
+    out = []
+    for a in actions:
+        if a.kind == "ESCALATE_P2":
+            last = _parse_ts(state.escalated.get(escalation_key(a), ""))
+            if last is not None and (now - last).total_seconds() < hours * 3600:
+                continue
+        out.append(a)
+    return out
 
 
 def is_muted(state: "RuntimeState", now: datetime) -> bool:
@@ -306,6 +342,13 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
                                       f"{t.task_id} reached max_rework={cfg['max_rework']} — frozen for human review",
                                       task_id=t.task_id))
             else:
+                led = state.review_ledger.get(t.task_id) or {}
+                if led.get("key") == review_key(t):
+                    if led.get("done"):
+                        continue                       # this exact submission was already reviewed
+                    retry = _parse_ts(led.get("retry_after", ""))
+                    if retry is not None and now < retry:
+                        continue                       # last attempt failed: back off
                 actions.append(Action("REVIEW", f"{t.task_id} awaiting review", task_id=t.task_id))
 
     # 3. Blocked triage
@@ -327,8 +370,13 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
                                       f"{t.task_id}: ORCH to re-carve territories and unblock (attempt 1)",
                                       task_id=t.task_id))
         elif reason.startswith("MISSING_DEPENDENCY"):
-            actions.append(Action("TRIAGE_UNBLOCK", f"{t.task_id}: ORCH to re-sequence dependencies",
-                                  task_id=t.task_id))
+            if state.triage_counts.get(t.task_id, 0) >= 2:
+                actions.append(Action("ESCALATE_P2",
+                                      f"{t.task_id} blocked: MISSING_DEPENDENCY unresolved after 2 triage attempts - needs human eyes",
+                                      task_id=t.task_id))
+            else:
+                actions.append(Action("TRIAGE_UNBLOCK", f"{t.task_id}: ORCH to re-sequence dependencies",
+                                      task_id=t.task_id))
         elif reason.startswith("TOOLING_FAILURE"):
             n = state.stale_resets.get(t.task_id, 0)
             kind = "ESCALATE_P2" if n >= 1 else "TRIAGE_UNBLOCK"
@@ -437,6 +485,7 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
     if all(t.get("Status") == "done" for t in real):
         return [Action("DIGEST", f"WAVE COMPLETE — all {len(real)} tasks done. Digest + halt.")]
 
+    actions = _dedupe_escalations(actions, state, cfg, now)
     if not actions:
         actions.append(Action("IDLE", "All lanes busy or waiting on dependencies — nothing to do this tick"))
     return actions
@@ -546,7 +595,10 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
     now = now or datetime.now(timezone.utc)
     inflight = inflight if inflight is not None else {}
     halt = False
+    review_ran = False
     for a in actions:
+        if a.kind == "REVIEW" and review_ran:
+            continue
         line = f"{a.kind}: {a.detail}"
         print(f"[tick] {line}")
         log_line(repo, line)
@@ -563,6 +615,7 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
                 log_line(repo, f"MUTED: suppressed P2 — {a.detail}")
             else:
                 notify(cfg, "P2", a.detail, repo)
+                state.escalated[escalation_key(a)] = now.strftime(UTC_FMT)
         elif a.kind == "DIGEST":
             detail = a.detail
             if state.pending_digest_lines:
@@ -576,19 +629,44 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
                 notify(cfg, "P0", detail, repo)
             halt = True
         elif a.kind == "REVIEW":
-            rc = run_shell(cfg["review_cmd"], repo)
+            # review_cmd reviews EVERY needs_review task in one session, so one run per tick covers
+            # all REVIEW actions; the others in the same tick are already covered.
+            review_ran = True
+            peers = [x for x in actions if x.kind == "REVIEW" and x.task_id]
+            lock = repo / ".devteam" / "review.lock"
+            lock_age_min = (time.time() - lock.stat().st_mtime) / 60.0 if lock.exists() else None
+            if lock_age_min is not None and lock_age_min < float(cfg.get("review_lock_minutes", 90)):
+                log_line(repo, f"REVIEW_SKIPPED: a review session is already running (lock {int(lock_age_min)}m old)")
+                continue
+            plan_before = parse_tasks((repo / "PLAN.md").read_text(encoding="utf-8"), Report())
+            keys = {t.task_id: review_key(t) for t in plan_before}
+            lock.parent.mkdir(parents=True, exist_ok=True)
+            lock.write_text(now.strftime(UTC_FMT), encoding="utf-8")
+            try:
+                rc = run_shell(cfg["review_cmd"], repo)
+            finally:
+                lock.unlink(missing_ok=True)
             if rc == 0:
                 state.reviews_since_distill += 1
-            if rc == 0 and a.task_id:
-                # If task still needs_review after the session, it was sent to rework upstream;
-                # rework accounting happens on next tick via REVIEW.md, conservatively bump here
-                # only when the review session reports rework via exit conventions is unavailable —
-                # so re-read the plan:
-                txt = (repo / "PLAN.md").read_text(encoding="utf-8")
-                rep = Report()
-                for t in parse_tasks(txt, rep):
-                    if t.task_id == a.task_id and t.get("Status") == "in_progress":
-                        state.rework_counts[a.task_id] = state.rework_counts.get(a.task_id, 0) + 1
+            after = {t.task_id: t for t in parse_tasks((repo / "PLAN.md").read_text(encoding="utf-8"), Report())}
+            for x in peers:
+                led = state.review_ledger.setdefault(x.task_id, {})
+                led["key"] = keys.get(x.task_id, "")
+                if rc == 0:
+                    led["done"] = True
+                    led["fails"] = 0
+                    led.pop("retry_after", None)
+                    t_after = after.get(x.task_id)
+                    if t_after is not None and t_after.get("Status") == "in_progress":
+                        state.rework_counts[x.task_id] = state.rework_counts.get(x.task_id, 0) + 1
+                    elif t_after is not None and t_after.get("Status") == "needs_review":
+                        log_line(repo, f"REVIEW_NO_VERDICT: {x.task_id} still needs_review after a clean review session; "
+                                       f"it will not be re-reviewed until it is resubmitted")
+                else:
+                    led["done"] = False
+                    led["fails"] = int(led.get("fails", 0)) + 1
+                    wait_min = min(15 * (2 ** (led["fails"] - 1)), 240)
+                    led["retry_after"] = (now + timedelta(minutes=wait_min)).strftime(UTC_FMT)
         elif a.kind == "REVIEW_TG" and a.task_id:
             # Wave A-remainder /approve: same review_cmd, but scoped explicitly to one
             # task (unlike the generic REVIEW action, which lets /devteam-review pick
@@ -613,6 +691,8 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
         elif a.kind == "TRIAGE_UNBLOCK" and a.task_id:
             if "OWNERSHIP_CONFLICT" in a.detail:
                 state.conflict_counts[a.task_id] = state.conflict_counts.get(a.task_id, 0) + 1
+            elif "re-sequence dependencies" in a.detail:
+                state.triage_counts[a.task_id] = state.triage_counts.get(a.task_id, 0) + 1
             # Scope triage = architectural judgment → judgment_model (opus-4-8) per
             # ORCH model discipline in CLAUDE.md — must NOT share a model with the
             # S5 builder (sonnet-5) whose blocked tasks it may be triaging.
@@ -642,6 +722,21 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
             proc = launch_shell_bg(command, repo)
             inflight[a.unit] = (proc, a.task_id or "", command)
     return not halt
+
+
+def maybe_status_digest(repo: Path, cfg: dict, state: RuntimeState, now: datetime) -> None:
+    """Scripted status digest (no model call): rewrites .devteam/STATUS.md every interval and
+    sends it on the notify channels only when it changed. Fail-open."""
+    try:
+        minutes = float(cfg.get("status_digest_minutes", 30))
+        last = _parse_ts(state.last_status_digest_ts)
+        if last is not None and (now - last).total_seconds() < minutes * 60:
+            return
+        import status_digest
+        status_digest.run(repo, cfg, now=now, send=True)
+        state.last_status_digest_ts = now.strftime(UTC_FMT)
+    except Exception as exc:
+        print(f"[status_digest] skipped this tick (non-fatal): {exc}", file=sys.stderr)
 
 
 def maybe_distill(repo: Path, cfg: dict, state: RuntimeState, now: datetime) -> None:
@@ -1406,6 +1501,7 @@ def main(argv: list[str]) -> int:
             if not args.dry_run:
                 maybe_distill(repo, cfg, state, now)
                 maybe_run_retro(repo, cfg, now)
+                maybe_status_digest(repo, cfg, state, now)
 
             # Wave I (I1): drain queued CONTROL blocks + no-block markers
             # BEFORE decide() — exactly where the Telegram queue is already
