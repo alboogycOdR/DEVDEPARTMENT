@@ -821,7 +821,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-023
 **Title:** Wave E E-0a — port oikonomos a14f8976 (review ledger, review.lock, escalation de-dup, status digest)
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §0, §2 (E-0.1), §4 (context only)
@@ -829,19 +829,20 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** —
 **Description:** Port oikonomos (github.com/alboogycOdR/oikonomos-gbot) commit a14f8976 ('review once per submission, escalate once a day, scripted status digest') into the pack. Source: `git -C C:/CLAUDECODE_TOOLSETS/oikonomos show a14f8976` (read-only; pulled to origin/master 76b0cb3 on 2026-09-26 — never write to that repo; if a SHA is missing, block with MISSING_DEPENDENCY — do NOT re-derive from spec text). Port = adapt to the pack's supervisor (which differs from oikonomos's copy), never paste oikonomos-specific names/paths. This is the foundation E-B (TASK-028/029) extends: keep the review ledger, review.lock, one-review-per-tick, backoff, escalate_repeat_hours de-dup (with digit-masked detail) and MISSING_DEPENDENCY triage cap as separable functions. The commit message cites the origin SHA; anything intentionally not ported is listed in the dossier with the reason. **Protected-path grants (ORCH applies before dispatch):** scripts/supervisor.py, scripts/status_digest.py.
 **Acceptance_Criteria:**
-- [ ] Every behaviour in a14f8976 is ported or explicitly listed as not-ported with a reason in the dossier; commit message cites `a14f8976` (spec §2 E-0.1, §16)
-- [ ] `scripts/status_digest.py` and `tests/test_token_efficiency.py` exist, adapted to pack names; the ported tests pass and FAIL against pre-port `scripts/supervisor.py` (demonstrate by `git stash`/revert run, recorded in Test_Evidence) (§1 H7)
-- [ ] No oikonomos-specific identifiers (OIK_*, service names, paths) in ported code
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+- [x] Every behaviour in a14f8976 is ported or explicitly listed as not-ported with a reason in the dossier; commit message cites `a14f8976` (spec §2 E-0.1, §16)
+- [x] `scripts/status_digest.py` and `tests/test_token_efficiency.py` exist, adapted to pack names; the ported tests pass and FAIL against pre-port `scripts/supervisor.py` (demonstrate by `git stash`/revert run, recorded in Test_Evidence) (§1 H7)
+- [x] No oikonomos-specific identifiers (OIK_*, service names, paths) in ported code
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-023-s5
 **Started_At:** 2026-09-26T14:25:00Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-26T14:40:00Z] [S5] Preflight: supervisor.py FILE, status_digest.py NEW, test_token_efficiency.py NEW, test_supervisor.py FILE. ported a14f8976; adaptations/not-ported in dossier. Ready for review.
+**Artifacts:** scripts/supervisor.py, scripts/status_digest.py, tests/test_token_efficiency.py, dossiers/TASK-023.md
+**Test_Evidence:** [2026-09-26T14:40:00Z] [S5] test_token_efficiency.py 13 passed; with supervisor.py reverted it errors at collection (review_key missing). Full `python -m pytest -q` 1046 passed; `node hooks/run-tests.js` 37 passed, 0 failed.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** S5
-**Updated_At:** 2026-09-26T14:25:00Z
+**Updated_At:** 2026-09-26T14:40:00Z
 
 ### TASK-024
 **Title:** Wave E E-0b — port oikonomos bceb8eb2, d3f5fc08, 7baeedf3, 3e8c3e79 (base-tip branch, portable tests, tick runner, env scrub)
