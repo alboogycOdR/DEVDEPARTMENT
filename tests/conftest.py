@@ -28,8 +28,11 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
+
+import pytest
 
 _TEMP_ROOT = os.path.realpath(tempfile.gettempdir())
 _existing = os.environ.get("GIT_CEILING_DIRECTORIES")
@@ -83,3 +86,14 @@ if _GIT_BASH is not None:
         _real_popen_init(self, args, *a, **kw)
 
     subprocess.Popen.__init__ = _popen_init
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _scrub_operator_env():
+    """Port of the portable idea in oikonomos 3e8c3e79: drop operator env
+    vars from the test process so live keys cannot leak into suites."""
+    scripts = str(Path(__file__).resolve().parents[1] / "scripts")
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    import test_env_scrub
+    test_env_scrub.scrub()
