@@ -821,7 +821,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-023
 **Title:** Wave E E-0a — port oikonomos a14f8976 (review ledger, review.lock, escalation de-dup, status digest)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §0, §2 (E-0.1), §4 (context only)
@@ -833,15 +833,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] `scripts/status_digest.py` and `tests/test_token_efficiency.py` exist, adapted to pack names; the ported tests pass and FAIL against pre-port `scripts/supervisor.py` (demonstrate by `git stash`/revert run, recorded in Test_Evidence) (§1 H7)
 - [ ] No oikonomos-specific identifiers (OIK_*, service names, paths) in ported code
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-023-s5
+**Started_At:** 2026-09-26T14:25:00Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-26T13:49:25Z
+**Updated_By:** S5
+**Updated_At:** 2026-09-26T14:25:00Z
 
 ### TASK-024
 **Title:** Wave E E-0b — port oikonomos bceb8eb2, d3f5fc08, 7baeedf3, 3e8c3e79 (base-tip branch, portable tests, tick runner, env scrub)
