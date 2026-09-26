@@ -219,6 +219,79 @@ def write_project_manifest(project: Path, manifest: dict) -> None:
     target.write_text(json.dumps(current, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
+def _version_at_commit(pack: Path, commit: str) -> str:
+    """Return the pack version as it was recorded at ``commit``."""
+    version = "unknown"
+    try:
+        readme = subprocess.run(
+            ["git", "-C", str(pack), "show", f"{commit}:README.md"],
+            capture_output=True, text=True, timeout=5, check=True,
+        ).stdout
+        matches = re.findall(r"^[-*]\s+v(\d+(?:\.\d+)+)\b", readme, re.M)
+        if matches:
+            version = matches[-1]
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return f"v{version}+{commit[:8]}"
+
+
+def fingerprint_history(pack: Path, rel: str, content: bytes) -> str | None:
+    """Return the newest historical pack revision whose ``rel`` equals content."""
+    try:
+        history = subprocess.run(
+            ["git", "-C", str(pack), "log", "--all", "--format=%H", "--", rel],
+            capture_output=True, text=True, timeout=10, check=True,
+        ).stdout.splitlines()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for commit in history:
+        try:
+            candidate = subprocess.run(
+                ["git", "-C", str(pack), "show", f"{commit}:{rel}"],
+                capture_output=True, timeout=5, check=True,
+            ).stdout
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if candidate == content:
+            return _version_at_commit(pack, commit)
+    return None
+
+
+def adopt_project(pack: Path, project: Path, apply: bool = False) -> "Report":
+    """Fingerprint a pre-manifest project and prepare its conservative sync.
+
+    Adoption never copies a framework file. Existing files go through the
+    legacy no-baseline path; missing layers stay explicit checklist-only adds.
+    ``apply`` writes only the identity/record manifest and version stamp.
+    """
+    manifest = load_manifest(pack)
+    report = Report()
+    records: dict[str, str] = {}
+    for rel in manifest.get("framework_owned", []):
+        target = project / rel
+        if not target.exists():
+            record = "absent"
+            report.adoption.append(f"{rel}: absent — proposed add (review checklist; not installed)")
+        else:
+            matched = fingerprint_history(pack, rel, target.read_bytes())
+            record = f"matches {matched}" if matched else "diverged"
+            report.adoption.append(f"{rel}: {record}")
+        records[rel] = record
+
+    legacy = run_sync(pack, project, apply=False)
+    report.decisions.extend(legacy.decisions)
+    report.merge_notes.extend(legacy.merge_notes)
+    for decision in report.by(ADD):
+        decision.detail = "absent layer — proposed add in adoption checklist; not installed"
+
+    if apply:
+        adopted_manifest = manifest.copy()
+        adopted_manifest["adopted_files"] = records
+        write_project_manifest(project, adopted_manifest)
+        stamp_framework_version(project, pack)
+    return report
+
+
 # --------------------------------------------------------------------------- #
 #  Per-file decision
 # --------------------------------------------------------------------------- #
@@ -234,6 +307,7 @@ class Decision:
 class Report:
     decisions: list[Decision] = field(default_factory=list)
     merge_notes: list[str] = field(default_factory=list)
+    adoption: list[str] = field(default_factory=list)
 
     def add(self, rel: str, verdict: str, detail: str = "") -> None:
         self.decisions.append(Decision(rel, verdict, detail))
@@ -627,6 +701,10 @@ def render_report(report: Report, apply: bool) -> str:
                 suffix = f"  ({d.detail})" if d.detail else ""
                 lines.append(f"  - {d.rel}{suffix}")
     lines.append(f"In sync: {len(report.by(IN_SYNC))} files")
+    if report.adoption:
+        lines.append("Adoption fingerprint:")
+        for note in report.adoption:
+            lines.append(f"  - {note}")
     if report.merge_notes:
         lines.append("Merge-special:")
         for note in report.merge_notes:
@@ -653,6 +731,10 @@ def main(argv: list[str]) -> int:
                     help="restrict to specific manifest paths")
     ap.add_argument("--diverged", action="store_true",
                     help="print read-only unified diffs for framework-owned files")
+    ap.add_argument("--adopt", action="store_true",
+                    help="fingerprint a pre-manifest project and create a conservative adoption report")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="explicitly prevent writes (the default unless --apply is supplied)")
     ap.add_argument("--behind-pack", action="store_true",
                     help="print the configured pack-behind warning, if any")
     args = ap.parse_args(argv)
@@ -681,14 +763,19 @@ def main(argv: list[str]) -> int:
             return 1
         return 0
 
+    if args.adopt and args.adopt_pack:
+        ap.error("--adopt and --adopt-pack cannot be combined")
+    if args.adopt and args.only:
+        ap.error("--only is not supported with --adopt")
     try:
-        report = run_sync(pack, project, apply=args.apply,
-                          adopt_pack=args.adopt_pack, only=args.only)
+        report = (adopt_project(pack, project, apply=args.apply and not args.dry_run)
+                  if args.adopt else run_sync(pack, project, apply=args.apply and not args.dry_run,
+                                               adopt_pack=args.adopt_pack, only=args.only))
     except FileNotFoundError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    print(render_report(report, args.apply))
+    print(render_report(report, args.apply and not args.dry_run))
     return 2 if report.has_conflicts else 0
 
 
