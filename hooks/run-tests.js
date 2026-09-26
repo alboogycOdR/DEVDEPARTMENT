@@ -98,7 +98,11 @@ function runHook(script, payload, env) {
   // is exactly when the suite gates a needs_review submission (TASK-002 hit
   // this live). Tests that need a unit set it explicitly via `env`.
   const base = { ...process.env, ...env };
-  if (!env || !('DEVTEAM_UNIT' in env)) delete base.DEVTEAM_UNIT;
+  // Scrub session pins the same way as DEVTEAM_UNIT: a builder dispatch now
+  // exports all three, and a test that does not set them must see them unset.
+  for (const key of ['DEVTEAM_UNIT', 'DEVTEAM_TASK', 'DEVTEAM_DELEGATED']) {
+    if (!env || !(key in env)) delete base[key];
+  }
   try {
     const stdout = execFileSync(process.execPath, [path.join(HOOKS_DIR, script)], {
       input: JSON.stringify(payload),
@@ -462,6 +466,157 @@ test('session-end appends audit line and refreshes checkpoint', () => {
   assert.ok(log.includes('SESSION_END unit=ORCH'));
   assert.ok(log.includes('in_progress:1'));
   assert.ok(fs.existsSync(path.join(repo, '.devteam', 'CHECKPOINT.md')));
+});
+
+// ---------------------------------------------------- E-A (TASK-027) --------
+test('DEVTEAM_TASK reports that task, not the first in_progress block', () => {
+  const plan = PLAN.replace(
+    '### TASK-020',
+    `### TASK-338
+**Title:** Wrong first block
+**Status:** in_progress
+**Assigned_To:** GB
+**Priority:** high
+**Spec_References:** specs/x.md
+**Owned_Paths:** lib/other/**
+**Depends_On:** —
+**Description:** d
+**Acceptance_Criteria:**
+- [ ] c
+**Branch:** task/TASK-338-gb
+**Started_At:** 2026-07-13T09:00:00Z
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** GB
+**Updated_At:** 2026-07-13T09:30:00Z
+
+### TASK-332
+**Title:** The dispatched task
+**Status:** in_progress
+**Assigned_To:** GB
+**Priority:** high
+**Spec_References:** specs/x.md
+**Owned_Paths:** lib/features/auth/**
+**Depends_On:** —
+**Description:** d
+**Acceptance_Criteria:**
+- [ ] c
+**Branch:** task/TASK-332-gb
+**Started_At:** 2026-07-13T09:00:00Z
+**Progress_Notes:**
+- [2026-07-13T09:30:00Z] [GB] pinned note.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** GB
+**Updated_At:** 2026-07-13T09:30:00Z
+
+### TASK-020`
+  );
+  const repo = makeTempRepo({ plan });
+  const r = runHook('session-start.js', {}, {
+    CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB', DEVTEAM_TASK: 'TASK-332',
+  });
+  assert.strictEqual(r.code, 0, r.stderr);
+  assert.ok(r.stdout.includes('TASK-332'), r.stdout);
+  assert.ok(r.stdout.includes('pinned note'), r.stdout);
+  assert.ok(!r.stdout.includes('TASK-338'), 'must not banner the earlier in_progress block');
+});
+
+test('autopilot.json write denied when DEVTEAM_DELEGATED=1 and allowed with neither variable', () => {
+  const repo = makeTempRepo();
+  const denied = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'autopilot.json'), content: '{"control":{"mode":"strict"}}' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_DELEGATED: '1' });
+  assert.strictEqual(denied.code, 2, denied.stderr);
+  assert.ok(denied.stderr.includes('human session'), denied.stderr);
+  const localDenied = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'autopilot.local.json'), content: '{}' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(localDenied.code, 2, localDenied.stderr);
+  const allowed = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'autopilot.json'), content: '{}' } },
+    { CLAUDE_PROJECT_DIR: repo });
+  assert.strictEqual(allowed.code, 0, allowed.stderr);
+  const other = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'anything.txt'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_DELEGATED: '1' });
+  assert.strictEqual(other.code, 0, other.stderr);
+});
+
+test('Protected_Grants on an active task allow that path; a done task grant does not', () => {
+  const activePlan = PLAN.replace(
+    '**Owned_Paths:** lib/features/auth/**, test/auth/**',
+    '**Owned_Paths:** lib/features/auth/**, scripts/granted.py\n**Protected_Grants:** scripts/granted.py'
+  );
+  const repo = makeTempRepo({ plan: activePlan });
+  const ok = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'scripts/granted.py'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(ok.code, 0, ok.stderr);
+
+  const donePlan = activePlan.replace('**Status:** in_progress', '**Status:** done');
+  const doneRepo = makeTempRepo({ plan: donePlan });
+  const blocked = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(doneRepo, 'scripts/granted.py'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: doneRepo, DEVTEAM_UNIT: 'GB', DEVTEAM_TASK: 'TASK-020' });
+  assert.strictEqual(blocked.code, 2, blocked.stderr);
+});
+
+test('claim visible only in the main checkout is allowed; gateguard denials land there', () => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'devteam-ea-'));
+  const main = path.join(parent, 'main');
+  const wt = path.join(parent, 'wt');
+  fs.mkdirSync(main);
+  const git = (args, cwd) => execFileSync('git', args, { cwd, stdio: 'ignore' });
+  try {
+    git(['init', '-q', '-b', 'master'], main);
+    git(['config', 'user.email', 't@example.com'], main);
+    git(['config', 'user.name', 'T'], main);
+    const stale = PLAN.replace('**Status:** in_progress', '**Status:** pending')
+      .replace('**Assigned_To:** GB', '**Assigned_To:** TBD');
+    fs.writeFileSync(path.join(main, 'PLAN.md'), stale, 'utf-8');
+    fs.writeFileSync(path.join(main, 'autopilot.json'), '{}\n', 'utf-8');
+    git(['add', 'PLAN.md', 'autopilot.json'], main);
+    git(['commit', '-q', '-m', 'init'], main);
+    git(['worktree', 'add', '--detach', wt, 'HEAD'], main);
+    // Uncommitted claim exists only in the main checkout working tree.
+    fs.writeFileSync(path.join(main, 'PLAN.md'), PLAN, 'utf-8');
+    assert.ok(fs.readFileSync(path.join(wt, 'PLAN.md'), 'utf-8').includes('**Status:** pending'));
+
+    const allowed = runHook('territory-firewall.js',
+      { tool_input: { file_path: path.join(wt, 'lib/features/auth/login.dart'), content: 'x' } },
+      { CLAUDE_PROJECT_DIR: wt, DEVTEAM_UNIT: 'GB', GATEGUARD_STATE_DIR: '' });
+    assert.strictEqual(allowed.code, 0, allowed.stderr);
+
+    const denied = runHook('gateguard.js',
+      { tool_name: 'Edit', session_id: 'ea', tool_input: { file_path: path.join(wt, 'lib/features/auth/login.dart') } },
+      { CLAUDE_PROJECT_DIR: wt, DEVTEAM_UNIT: 'GB', GATEGUARD_STATE_DIR: '' });
+    assert.strictEqual(denied.code, 2, denied.stderr);
+    const counter = path.join(main, '.devteam', 'gateguard', 'denials', 'GB.json');
+    assert.ok(fs.existsSync(counter), 'denial counter must land in the main checkout');
+    assert.ok(!fs.existsSync(path.join(wt, '.devteam', 'gateguard', 'denials', 'GB.json')),
+      'worktree must not receive the denial counter');
+  } finally {
+    try { git(['worktree', 'remove', '--force', wt], main); } catch (_e) { /* best effort */ }
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test('dispatch exports DEVTEAM_TASK and DEVTEAM_DELEGATED beside DEVTEAM_UNIT', () => {
+  const root = path.join(HOOKS_DIR, '..');
+  const sh = fs.readFileSync(path.join(root, 'scripts', 'dispatch.sh'), 'utf-8');
+  const ps = fs.readFileSync(path.join(root, 'scripts', 'dispatch.ps1'), 'utf-8');
+  assert.ok(sh.includes('export DEVTEAM_TASK="$TASK_ID"'), 'dispatch.sh DEVTEAM_TASK');
+  assert.ok(sh.includes('export DEVTEAM_DELEGATED=1'), 'dispatch.sh DEVTEAM_DELEGATED');
+  assert.ok(ps.includes('$env:DEVTEAM_TASK = $TaskId'), 'dispatch.ps1 DEVTEAM_TASK');
+  assert.ok(ps.includes('$env:DEVTEAM_DELEGATED = "1"'), 'dispatch.ps1 DEVTEAM_DELEGATED');
+  assert.ok(ps.includes("`$env:DEVTEAM_TASK = '$TaskId'"), 'detached runner DEVTEAM_TASK');
+  assert.ok(ps.includes("`$env:DEVTEAM_DELEGATED = '1'"), 'detached runner DEVTEAM_DELEGATED');
 });
 
 // ------------------------------------------------------------------ report --

@@ -17,3 +17,5 @@
 Write the failing test first (it must fail against current master — spec §1 H7), then implement, then run BOTH full suites. Ported code cites its origin SHA and lists anything not ported, with the reason, in the Work Log.
 
 ## Work Log
+
+- [2026-09-26T15:10:00Z] [GB] Implemented E-A.1–4 on task/TASK-027-gb. `mainRoot()` (`git rev-parse --git-common-dir`, fallback `repoRoot()`) is what PLAN.md, autopilot.json, and `.devteam/**` resolve through; `relPath` stays worktree-relative. Dispatch exports `DEVTEAM_TASK` (strict claim, or a unique legacy candidate; left unset when two tasks are already active so the first PLAN block is not pinned) and `DEVTEAM_DELEGATED=1`. Firewall and session-start treat `DEVTEAM_TASK` as the only active task. autopilot.json / autopilot.local.json writes are denied when `DEVTEAM_UNIT` is set or `DEVTEAM_DELEGATED=1`. `Protected_Grants` must be a subset of `Owned_Paths` (`(new)` stripped); the firewall applies grants only while the task is claimed/in_progress/needs_review. `PROTECTED_EXCEPTIONS` is unchanged. Nothing from an origin SHA — this task is not a port.

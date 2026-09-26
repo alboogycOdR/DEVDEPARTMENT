@@ -13,10 +13,47 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 /** Repo root: Claude Code sets CLAUDE_PROJECT_DIR; fall back to cwd. */
 function repoRoot() {
   return process.env.CLAUDE_PROJECT_DIR || process.cwd();
+}
+
+/**
+ * Main checkout (LOOP_HYGIENE E-A.1). Linked worktrees share one git dir;
+ * `git rev-parse --git-common-dir` points at it, and its parent is the
+ * checkout that holds the live PLAN.md / autopilot.json / .devteam.
+ * Fallback is repoRoot() when git cannot answer (fixture repos, no git).
+ */
+function mainRoot() {
+  try {
+    let out = execFileSync('git', ['-C', repoRoot(), 'rev-parse', '--git-common-dir'], {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 5000,
+      windowsHide: true,
+    });
+    out = String(out || '').replace(/\r/g, '').trim();
+    if (!out) return repoRoot();
+    const common = path.isAbsolute(out) ? out : path.resolve(repoRoot(), out);
+    const main = path.resolve(common, '..');
+    if (!main || !fs.existsSync(main)) return repoRoot();
+    return main;
+  } catch (_e) {
+    return repoRoot();
+  }
+}
+
+/** autopilot.json and autopilot.local.json are human-session files (E-A.3). */
+function isHumanOnlyConfig(rel) {
+  return rel === 'autopilot.json' || rel === 'autopilot.local.json';
+}
+
+/** True when this process is a builder or a delegated headless session. */
+function sessionIsDelegated() {
+  const unitSet = typeof process.env.DEVTEAM_UNIT === 'string' && process.env.DEVTEAM_UNIT.trim() !== '';
+  return unitSet || process.env.DEVTEAM_DELEGATED === '1';
 }
 
 /** Known unit IDs: ORCH + every unit DEFINED in autopilot.json's builders
@@ -26,7 +63,7 @@ function repoRoot() {
 function knownUnits() {
   const legacy = ['ORCH', 'GB', 'CX', 'S5'];
   try {
-    const raw = fs.readFileSync(path.join(repoRoot(), 'autopilot.json'), 'utf-8');
+    const raw = fs.readFileSync(path.join(mainRoot(), 'autopilot.json'), 'utf-8');
     const b = (JSON.parse(raw) || {}).builders;
     if (Array.isArray(b)) return ['ORCH', ...b.map((x) => String(x).toUpperCase())];
     if (b && typeof b === 'object' && b.defined && typeof b.defined === 'object') {
@@ -107,13 +144,24 @@ function parsePlan(planText) {
 const EMPTY = new Set(['', '—', '-', '--', 'n/a', 'none']);
 const ACTIVE = new Set(['claimed', 'in_progress', 'needs_review']);
 
-function ownedPathsOf(task) {
-  const raw = (task.fields.Owned_Paths || '').trim();
-  if (EMPTY.has(raw.toLowerCase())) return [];
+function splitPathField(raw) {
+  const text = (raw || '').trim();
+  if (EMPTY.has(text.toLowerCase())) return [];
   // ' (new)' marks a path that must not exist yet (LOOP_HYGIENE E-F.5); it is an
   // annotation, never part of the glob, or a builder is denied its own new file.
-  return raw.split(/[,\n]/).map((s) => s.trim().replace(/\s+\(new\)$/i, ''))
+  return text.split(/[,\n]/).map((s) => s.trim().replace(/\s+\(new\)$/i, ''))
     .filter((s) => s && !EMPTY.has(s.toLowerCase()));
+}
+
+function ownedPathsOf(task) {
+  return splitPathField(task.fields.Owned_Paths || '');
+}
+
+/** ORCH-written per-task carve-outs. Empty unless the task is active. */
+function protectedGrantsOf(task) {
+  const status = (task.fields.Status || '').trim();
+  if (!ACTIVE.has(status)) return [];
+  return splitPathField(task.fields.Protected_Grants || '');
 }
 
 /** Active tasks for a given unit. */
@@ -121,6 +169,23 @@ function activeTasksFor(tasks, unitId) {
   return tasks.filter(
     (t) => (t.fields.Assigned_To || '').trim() === unitId && ACTIVE.has((t.fields.Status || '').trim())
   );
+}
+
+/**
+ * Tasks this session may write under. DEVTEAM_TASK, when set, is the only
+ * active task (E-A.2) — never "whichever in_progress block comes first".
+ * An unknown or inactive id yields no territory rather than a fallback.
+ */
+function sessionTasksFor(tasks, unitId) {
+  const wanted = (process.env.DEVTEAM_TASK || '').trim();
+  if (wanted) {
+    return tasks.filter(
+      (t) => t.task_id === wanted
+        && (t.fields.Assigned_To || '').trim() === unitId
+        && ACTIVE.has((t.fields.Status || '').trim())
+    );
+  }
+  return activeTasksFor(tasks, unitId);
 }
 
 /** Prefix of a glob before the first wildcard char, trimmed of trailing slash. */
@@ -218,7 +283,7 @@ const PROTECTED_EXCEPTIONS = [
  */
 function controlMode() {
   try {
-    const raw = fs.readFileSync(path.join(repoRoot(), 'autopilot.json'), 'utf-8');
+    const raw = fs.readFileSync(path.join(mainRoot(), 'autopilot.json'), 'utf-8');
     const cfg = JSON.parse(raw);
     const m = cfg.control && cfg.control.mode;
     return m === 'strict' ? 'strict' : 'legacy';
@@ -236,14 +301,24 @@ function controlMode() {
  * source has an answer.
  */
 function activeTaskIdFor(tasks, unitId) {
+  const wanted = (process.env.DEVTEAM_TASK || '').trim();
+  if (wanted) return wanted;
   try {
     const raw = fs.readFileSync(
-      path.join(repoRoot(), '.devteam', 'inflight', `${unitId}.json`), 'utf-8');
+      path.join(mainRoot(), '.devteam', 'inflight', `${unitId}.json`), 'utf-8');
     const obj = JSON.parse(raw);
     if (obj && obj.task_id) return obj.task_id;
   } catch (_e) { /* fall through to PLAN.md scan */ }
   const active = activeTasksFor(tasks, unitId);
   return active.length ? active[0].task_id : null;
+}
+
+function readPlanText() {
+  try {
+    return fs.readFileSync(path.join(mainRoot(), 'PLAN.md'), 'utf-8');
+  } catch (_e) {
+    return null;
+  }
 }
 
 /** Secret patterns (superset of ECC's sk-/ghp_/AKIA idea, tuned to reduce noise). */
@@ -287,7 +362,9 @@ function filePathOf(toolInput) {
 }
 
 module.exports = {
-  repoRoot, unit, readStdinJson, relPath, parsePlan, ownedPathsOf, activeTasksFor,
+  repoRoot, mainRoot, unit, readStdinJson, relPath, parsePlan, ownedPathsOf, protectedGrantsOf,
+  activeTasksFor, sessionTasksFor,
   globPrefix, pathInGlob, pathInAnyGlob, PROTECTED_FOR_BUILDERS, PROTECTED_EXCEPTIONS, pathInAnyException, findSecrets,
   writtenContentOf, filePathOf, EMPTY, ACTIVE, controlMode, activeTaskIdFor, knownUnits,
+  isHumanOnlyConfig, sessionIsDelegated, readPlanText,
 };

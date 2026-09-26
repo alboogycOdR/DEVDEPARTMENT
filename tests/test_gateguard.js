@@ -180,7 +180,9 @@ function bash(cmd) {
 // --- per-unit denial counter (feeds supervisor.py's circuit breaker) ------
 {
   const d = freshDir('denialcounter');
-  const denialFile = path.join(REPO, '.devteam', 'gateguard', 'denials', 'S5.json');
+  // Session state dir is the isolation root; the live checkout is not touched.
+  // The main-checkout landing (no GATEGUARD_STATE_DIR) is covered in hooks/run-tests.js.
+  const denialFile = path.join(d, 'denials', 'S5.json');
   try { fs.rmSync(denialFile, { force: true }); } catch (_e) { /* ignore */ }
 
   run(edit('scripts/budget.py'), {}, d); // first-touch file denial
@@ -204,7 +206,7 @@ function bash(cmd) {
 
 {
   const d = freshDir('denialcounter-orch');
-  const denialFile = path.join(REPO, '.devteam', 'gateguard', 'denials', 'ORCH.json');
+  const denialFile = path.join(d, 'denials', 'ORCH.json');
   try { fs.rmSync(denialFile, { force: true }); } catch (_e) { /* ignore */ }
   run(edit('scripts/budget.py'), { DEVTEAM_UNIT: 'ORCH' }, d); // ungated by default
   check('an ungated unit never gets a denial file', !fs.existsSync(denialFile));

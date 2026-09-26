@@ -4,7 +4,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from validate_plan import validate, globs_intersect, parse_owned_paths, _apply_registry  # noqa: E402
+from validate_plan import (  # noqa: E402
+    validate, globs_intersect, parse_owned_paths, _apply_registry, predict_dispatch_task,
+)
 
 FM = """---
 plan_version: 1.0
@@ -18,6 +20,7 @@ def task_block(
     tid="TASK-001", status="pending", assignee="GB", prio="high",
     owned="src/auth/**", branch="—", started="—", evidence="—",
     blocked="—", deps="—", upd_by="ORCH", upd_at="2026-07-12T10:00:00Z",
+    grants="—",
 ):
     return f"""
 ### {tid}
@@ -27,6 +30,7 @@ def task_block(
 **Priority:** {prio}
 **Spec_References:** specs/x.md
 **Owned_Paths:** {owned}
+**Protected_Grants:** {grants}
 **Depends_On:** {deps}
 **Description:** Do the thing.
 **Acceptance_Criteria:**
@@ -175,6 +179,57 @@ def test_shipped_plan_md_is_legal():
     repo_root = str(Path(__file__).resolve().parents[1])
     rep = validate(plan_path.read_text(encoding="utf-8"), registry_views=_apply_registry(repo_root))
     assert rep.ok, rep.errors
+
+
+def test_protected_grants_outside_owned_paths_fails():
+    rep = validate(FM + task_block(
+        owned="hooks/**, scripts/validate_plan.py",
+        grants="scripts/other.py",
+    ))
+    assert any("Protected_Grants entry 'scripts/other.py' is outside Owned_Paths" in e for e in rep.errors)
+
+
+def test_protected_grants_subset_passes_including_new_annotation():
+    rep = validate(FM + task_block(
+        owned="hooks/**, scripts/validate_plan.py (new)",
+        grants="hooks/lib.js, scripts/validate_plan.py (new)",
+    ))
+    assert rep.ok, rep.errors
+
+
+def test_protected_grants_wider_than_owned_fails():
+    rep = validate(FM + task_block(
+        owned="scripts/validate_plan.py",
+        grants="scripts/**",
+    ))
+    assert any("scripts/**" in e and "outside Owned_Paths" in e for e in rep.errors)
+
+
+def test_predict_dispatch_task_resume_and_pending(tmp_path):
+    pending = FM + task_block(tid="TASK-033", status="pending", prio="high", deps="—")
+    pending += task_block(tid="TASK-027", status="pending", prio="high", owned="hooks/**", deps="—")
+    (tmp_path / "PLAN.md").write_text(pending, encoding="utf-8")
+    # Same priority: lower task id wins, matching the builder claim rule.
+    assert predict_dispatch_task(str(tmp_path), "GB") == "TASK-027"
+
+    both = FM + task_block(
+        tid="TASK-338", status="in_progress", branch="task/TASK-338-gb",
+        started="2026-07-12T09:00:00Z",
+    )
+    both += task_block(
+        tid="TASK-332", status="in_progress", owned="other/**",
+        branch="task/TASK-332-gb", started="2026-07-12T09:00:00Z",
+    )
+    (tmp_path / "PLAN.md").write_text(both, encoding="utf-8")
+    # Two active tasks: do not pin the first block (H11).
+    assert predict_dispatch_task(str(tmp_path), "GB") == ""
+
+    one = FM + task_block(
+        tid="TASK-332", status="claimed", branch="task/TASK-332-gb",
+        started="2026-07-12T09:00:00Z",
+    )
+    (tmp_path / "PLAN.md").write_text(one, encoding="utf-8")
+    assert predict_dispatch_task(str(tmp_path), "GB") == "TASK-332"
 
 
 def test_owned_paths_new_annotation_is_not_part_of_glob():

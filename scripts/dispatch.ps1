@@ -554,7 +554,28 @@ Write-Host "[dispatch] Launching $Builder ($Id) in $Wt..." -ForegroundColor Gree
 # without this the firewall would silently treat S5 as unrestricted ORCH
 # instead of enforcing its Owned_Paths. Set for every builder regardless,
 # for consistency and to future-proof if GB/CX ever gain hook support.
+#
+# E-A.2/E-A.3: DEVTEAM_TASK is the session's task when we know exactly one
+# (strict-mode claim, or a unique legacy resume/pending candidate). More than
+# one claimed/in_progress task stays unset — pinning the first PLAN block is
+# the H11 bug. DEVTEAM_DELEGATED=1 marks every dispatched process so the
+# firewall can refuse autopilot.json writes.
+if (-not $TaskId) {
+    try {
+        $Predicted = (& $Py -c "import sys; sys.path.insert(0, 'scripts'); from validate_plan import predict_dispatch_task; print(predict_dispatch_task('.', '$Id') or '')" 2>$null | Out-String).Trim()
+        if ($Predicted) { $TaskId = $Predicted }
+    } catch {
+        Write-Warning "[dispatch] could not predict DEVTEAM_TASK ($($_.Exception.Message)); leaving it unset."
+    }
+}
 $env:DEVTEAM_UNIT = $Id
+$env:DEVTEAM_TASK = $TaskId
+$env:DEVTEAM_DELEGATED = "1"
+if ($TaskId) {
+    Write-Host "[dispatch] session env DEVTEAM_UNIT=$Id DEVTEAM_TASK=$TaskId DEVTEAM_DELEGATED=1" -ForegroundColor Cyan
+} else {
+    Write-Host "[dispatch] session env DEVTEAM_UNIT=$Id DEVTEAM_TASK unset (ambiguous or none) DEVTEAM_DELEGATED=1" -ForegroundColor Cyan
+}
 
 if ($ControlMode -eq "strict") {
     $DevteamDir = Join-Path $RepoRoot ".devteam\runs"
@@ -637,7 +658,9 @@ if ($ControlMode -eq "strict") {
         '# Safe to delete once the session has ended.',
         "`$ErrorActionPreference = 'Continue'",
         "Set-Location -LiteralPath '$Wt'",
-        "`$env:DEVTEAM_UNIT = '$Id'"
+        "`$env:DEVTEAM_UNIT = '$Id'",
+        "`$env:DEVTEAM_TASK = '$TaskId'",
+        "`$env:DEVTEAM_DELEGATED = '1'"
     )
     if ($AuthDir) { $RunnerLines += "`$env:CLAUDE_CONFIG_DIR = '$AuthDir'" }
     $RunnerLines += @(
