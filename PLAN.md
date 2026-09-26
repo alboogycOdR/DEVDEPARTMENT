@@ -946,12 +946,19 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Started_At:** 2026-09-26T15:00:00Z
 **Progress_Notes:**
 - [2026-09-26T15:01:00Z] [CX] Preflight: FILE scripts/sync_from_pack.py -> exists, 696 lines, 31006 bytes; NEW tests/test_sync_adopt.py (parent tests/ exists); GLOB tests/fixtures/adopt/** -> matches nothing yet (new territory). Beginning spec and implementation inspection.
+- [2026-09-26T15:15:00Z] [CX] Implemented conservative --adopt fingerprinting at 7db6801: historical Git-blob matches are recorded, diverged files remain legacy conflicts, and absent layers are checklist-only proposals. Focused tests pass; full pytest was still active without completion after several minutes and was stopped for a later clean rerun.
 **Artifacts:** —
-**Test_Evidence:** —
+**Artifacts:**
+- scripts/sync_from_pack.py
+- tests/test_sync_adopt.py
+**Test_Evidence:**
+- [2026-09-26T15:15:00Z] [CX] `python -m pytest -q tests/test_sync_from_pack.py tests/test_sync_adopt.py` — 59 passed in 4.22s.
+- [2026-09-26T15:15:00Z] [CX] `python scripts/sync_from_pack.py --pack . --project <tmp copy of rwc-mobile-connect> --adopt --dry-run` — exit 2 as expected for 7 legacy conflicts; report listed 109 absent layers only as proposed, non-installed adds. Original RWC checkout untouched.
+- [2026-09-26T15:15:00Z] [CX] `node hooks/run-tests.js` — 37 passed, 0 failed.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-26T15:01:00Z
+**Updated_At:** 2026-09-26T15:15:00Z
 
 ### TASK-027
 **Title:** Wave E E-A — hooks resolve main checkout; DEVTEAM_TASK; human-only config; Protected_Grants field
