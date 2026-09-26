@@ -55,6 +55,9 @@ REG_KV="$(python3 scripts/builder_registry.py resolve "$BUILDER" --repo "$REPO_R
   echo "[dispatch] ERROR: cannot resolve builder '$BUILDER' from the registry — refusing to dispatch." >&2
   exit 1
 }
+# Windows python emits CRLF; a trailing CR would end up inside every parsed value (e.g. 'grok<CR>').
+# Port of oikonomos d3f5fc08.
+REG_KV="${REG_KV//$'\r'/}"
 ID="";      CLI="";        MODEL="";      WORKTREE_SUFFIX=""
 SUFFIX="";  BRIEFING="";   AUTO_LOADS_CONTEXT="false"
 AUTH_MODE="default";       AUTH_VALUE=""
@@ -118,6 +121,11 @@ if [[ -d "$WT" ]]; then
   # just "a directory happens to be sitting there." Catches the case where
   # a foreign/stale directory occupies the expected path for any reason.
   REGISTERED_WORKTREES="$(git -C "$REPO_ROOT" worktree list --porcelain | awk '/^worktree /{ $1=""; sub(/^ /,""); print }')"
+  # Git for Windows prints C:/... while this shell's $WT is in MSYS form (/tmp/...); compare like with like.
+  # Port of oikonomos d3f5fc08.
+  if command -v cygpath >/dev/null 2>&1; then
+    REGISTERED_WORKTREES="$(while IFS= read -r _wt; do cygpath -u "$_wt"; done <<< "$REGISTERED_WORKTREES")"
+  fi
   if ! grep -qxF "$WT" <<< "$REGISTERED_WORKTREES"; then
     # Empty husk (Windows leftover after worktree remove while a handle is
     # held): nobody's work is here. Reclaim and fall through to create.
