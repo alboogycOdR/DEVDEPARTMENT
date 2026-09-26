@@ -140,6 +140,32 @@ def _version_number(value: object) -> tuple[int, ...]:
     return tuple(int(x) for x in match.group(1).split(".")) if match else ()
 
 
+def _version_sha(value: object) -> str | None:
+    """Extract the recorded Git object name from ``pack_version`` output."""
+    match = re.search(r"\+([0-9a-fA-F]+)$", str(value))
+    return match.group(1) if match else None
+
+
+def _is_ancestor(pack: Path, older: str) -> bool | None:
+    """Whether ``older`` is an ancestor of pack HEAD; None means unknown."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(pack), "merge-base", "--is-ancestor", older, "HEAD"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode == 0:
+        return True
+    return False if result.returncode == 1 else None
+
+
+def _behind_warning(installed: object, current: str, pack: Path, detail: str = "") -> str:
+    suffix = f" ({detail})" if detail else ""
+    return (f"framework {installed} behind pack {current}{suffix} — run: python "
+            f"{pack / 'scripts' / 'sync_from_pack.py'} --project .")
+
+
 def behind_pack(project: Path) -> str | None:
     """Return the operator action when a project's recorded pack is behind."""
     try:
@@ -150,10 +176,22 @@ def behind_pack(project: Path) -> str | None:
         return None
     if not pack_path or not installed:
         return None
-    current = pack_version(Path(pack_path))
+    pack = Path(pack_path)
+    current = pack_version(pack)
     if _version_number(installed) < _version_number(current):
-        return (f"framework {installed} behind pack {current} — run: python "
-                f"{Path(pack_path) / 'scripts' / 'sync_from_pack.py'} --project .")
+        return _behind_warning(installed, current, pack)
+    if _version_number(installed) != _version_number(current):
+        return None
+    installed_sha, current_sha = _version_sha(installed), _version_sha(current)
+    if not installed_sha or not current_sha or current_sha == "unknown":
+        return _behind_warning(installed, current, pack, "recorded pack commit is unknown")
+    if installed_sha == current_sha:
+        return None
+    ancestor = _is_ancestor(pack, installed_sha)
+    if ancestor is True:
+        return _behind_warning(installed, current, pack)
+    if ancestor is None:
+        return _behind_warning(installed, current, pack, "recorded pack commit is unknown")
     return None
 
 

@@ -198,6 +198,15 @@ class TestDryRunSafety:
 
 
 class TestDivergenceAndVersions:
+    def test_is_pack_repo_uses_tracked_role_and_fails_closed_when_unreadable(self, tmp_path, monkeypatch):
+        pack = make_pack(tmp_path, {})
+        monkeypatch.setattr(sfp_test_module, "REPO_ROOT", pack)
+        assert _is_pack_repo() is True
+        (pack / sfp.MANIFEST_NAME).write_text(json.dumps({"role": "project"}), encoding="utf-8")
+        assert _is_pack_repo() is False
+        monkeypatch.setattr(Path, "read_text", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("no read")))
+        assert _is_pack_repo() is False
+
     def test_diverged_report_is_unified_and_read_only(self, tmp_path):
         pack = make_pack(tmp_path, {"scripts/a.py": "pack\n"})
         proj = make_project(tmp_path, {"scripts/a.py": "project\n"})
@@ -214,6 +223,59 @@ class TestDivergenceAndVersions:
             "framework_version": "v1.0+abc", "sync": {"pack_path": str(pack)}})})
         monkeypatch.setattr(sfp, "pack_version", lambda _: "v9.0+def")
         assert "framework v1.0+abc behind pack v9.0+def" in sfp.behind_pack(project)
+
+    def test_behind_pack_detects_newer_commit_at_same_semver(self, tmp_path, monkeypatch):
+        pack = tmp_path / "pack"
+        pack.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "master", str(pack)], check=True)
+        subprocess.run(["git", "-C", str(pack), "config", "user.email", "t@example.com"], check=True)
+        subprocess.run(["git", "-C", str(pack), "config", "user.name", "T"], check=True)
+        (pack / "README.md").write_text("- v9.0 — current\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(pack), "add", "README.md"], check=True)
+        subprocess.run(["git", "-C", str(pack), "commit", "-qm", "old"], check=True)
+        old = subprocess.run(["git", "-C", str(pack), "rev-parse", "--short", "HEAD"], text=True,
+                             capture_output=True, check=True).stdout.strip()
+        (pack / "README.md").write_text("- v9.0 — current\nnew commit\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(pack), "commit", "-qam", "new"], check=True)
+        current = subprocess.run(["git", "-C", str(pack), "rev-parse", "--short", "HEAD"], text=True,
+                                 capture_output=True, check=True).stdout.strip()
+        project = make_project(tmp_path, {"autopilot.json": json.dumps({
+            "framework_version": f"v9.0+{old}", "sync": {"pack_path": str(pack)}})})
+        monkeypatch.setattr(sfp, "pack_version", lambda _: f"v9.0+{current}")
+        assert f"framework v9.0+{old} behind pack v9.0+{current}" in sfp.behind_pack(project)
+
+    def test_behind_pack_reports_unknown_same_version_sha(self, tmp_path, monkeypatch):
+        pack = tmp_path / "pack"
+        pack.mkdir()
+        project = make_project(tmp_path, {"autopilot.json": json.dumps({
+            "framework_version": "v9.0+deadbeef", "sync": {"pack_path": str(pack)}})})
+        monkeypatch.setattr(sfp, "pack_version", lambda _: "v9.0+cafebabe")
+        warning = sfp.behind_pack(project)
+        assert "recorded pack commit is unknown" in warning
+        assert "behind pack" in warning
+
+    def test_apply_stamps_framework_version_and_preserves_existing_settings(self, tmp_path, monkeypatch):
+        pack = make_pack(tmp_path, {"scripts/a.py": "same\n", "autopilot.json": "{}\n"})
+        project = make_project(tmp_path, {"scripts/a.py": "same\n", "autopilot.json": json.dumps({
+            "interval_seconds": 42, "sync": {"keep": "me"}})})
+        monkeypatch.setattr(sfp, "pack_version", lambda _: "v9.0+abcdef0")
+        sfp.run_sync(pack, project, apply=True)
+        cfg = json.loads((project / "autopilot.json").read_text(encoding="utf-8"))
+        assert cfg["framework_version"] == "v9.0+abcdef0"
+        assert cfg["sync"] == {"keep": "me", "pack_path": str(pack)}
+        assert cfg["interval_seconds"] == 42
+
+    def test_session_start_prints_behind_pack_warning(self, tmp_path):
+        project = make_project(tmp_path, {})
+        script = project / "scripts" / "sync_from_pack.py"
+        script.parent.mkdir()
+        script.write_text("print('framework v1.0+old behind pack v2.0+new')\n", encoding="utf-8")
+        result = subprocess.run(
+            ["node", str(REPO_ROOT / "hooks" / "session-start.js")], input="{}",
+            text=True, capture_output=True, check=True,
+            env={**os.environ, "CLAUDE_PROJECT_DIR": str(project), "DEVTEAM_UNIT": "CX"},
+        )
+        assert "framework v1.0+old behind pack v2.0+new" in result.stdout
 
 
 # ================================================================ --only ====
@@ -491,6 +553,9 @@ class TestManifestPathsAreLiteral:
         return {ln.strip() for ln in r.stdout.splitlines()
                 if ln.strip().startswith("tests/test_") and ln.strip().endswith(".py")}
 
+    # Ported from oikonomos d3f5fc08: this is pack-template-only even when
+    # the class is instantiated directly by a regression fixture.
+    @pack_self_test
     def test_every_shipped_test_file_is_registered(self):
         """A test suite that does not propagate is a test suite that silently
         stops protecting downstream projects.
