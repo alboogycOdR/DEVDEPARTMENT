@@ -555,3 +555,18 @@ class TestFreshClaimBranchFromBaseTip:
         wt_sha = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=wt, text=True).strip()
         assert wt_sha == foreign
+
+
+class TestAutopilotTickPortability:
+    """Port of oikonomos 7baeedf3: location-independent tick runner, no
+    oikonomos identifiers. Static checks — the script must not be executed
+    against the live checkout."""
+
+    def test_tick_script_resolves_repo_from_own_path_and_has_no_oikonomos_ids(self):
+        src = (REPO_ROOT / "scripts" / "autopilot-tick.ps1").read_text(encoding="utf-8")
+        assert "Split-Path -Parent $PSScriptRoot" in src
+        assert "Set-Location -LiteralPath $RepoRoot" in src
+        assert "supervisor.py --once" in src
+        low = src.lower()
+        for banned in ("oikonomos", "oik_", "cx9", r"e:\dell-projects"):
+            assert banned not in low, banned
