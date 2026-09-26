@@ -847,7 +847,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-024
 **Title:** Wave E E-0b — port oikonomos bceb8eb2, d3f5fc08, 7baeedf3, 3e8c3e79 (base-tip branch, portable tests, tick runner, env scrub)
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §0, §2 (E-0.1)
@@ -855,12 +855,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** —
 **Description:** Port four oikonomos commits (read-only source: `git -C C:/CLAUDECODE_TOOLSETS/oikonomos show <sha>`, pulled 2026-09-26; never write to that repo), one pack commit per origin SHA, each citing it. (1) bceb8eb2: dispatch.ps1 creates `task/<id>-<suffix>` from the base tip on a fresh claim — port to dispatch.ps1 AND mirror in dispatch.sh. (2) d3f5fc08: conftest bash redirect, CR stripping, cygpath handling; the hardened builder agent (.claude/agents/devteam-builder.md); the dispatch.sh and test_validate_plan.py portability edits. Its PLAN.md/REVIEW.md hunks are oikonomos state — not ported. Its 1-line tests/test_sync_from_pack.py hunk is NOT yours (TASK-025 owns that file and ports it). (3) 7baeedf3 + its origin 2484988: `scripts/autopilot-tick.ps1` does not exist in the pack — port the whole file as of 7baeedf3, location-independent, stripped of oikonomos names/roster. (4) 3e8c3e79 modified oikonomos's project-specific `test-isolated.ps1` (Postgres test DB — NOT ported; that is Wave G-C territory). Port only the portable idea: `scripts/test_env_scrub.py` removes operator env vars matching a configurable pattern (default covering DEVTEAM_*, TELEGRAM_*, SLACK_*, ANTHROPIC_*, OPENAI_*, GEMINI_*) from the test process, with the liveness check (fail if any match survives), wired into tests/conftest.py as a session fixture. **Protected-path grants (ORCH applies before dispatch):** scripts/dispatch.ps1, scripts/dispatch.sh, .claude/agents/devteam-builder.md, scripts/autopilot-tick.ps1, scripts/test_env_scrub.py.
 **Acceptance_Criteria:**
-- [ ] Four commits, each citing its origin SHA (bceb8eb2, d3f5fc08, 7baeedf3, 3e8c3e79); dossier lists every hunk not ported and why (spec §2 E-0.1, §16)
-- [ ] A fresh claim's task branch is created from the base-branch tip in both dispatch.ps1 and dispatch.sh, with a test in tests/test_dispatch_worktree.py using a tmp fixture repo (never the live checkout)
-- [ ] tests/conftest.py carries the bash-redirect/CR-strip/cygpath helpers; suites pass on Windows Git Bash
-- [ ] `scripts/autopilot-tick.ps1` runs from any working directory (resolves repo from its own location) and has no oikonomos identifiers
-- [ ] `scripts/test_env_scrub.py` scrubs matching vars and raises if any survive; tests prove both the scrub and the liveness failure; conftest invokes it
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+- [x] Four commits, each citing its origin SHA (bceb8eb2, d3f5fc08, 7baeedf3, 3e8c3e79); dossier lists every hunk not ported and why (spec §2 E-0.1, §16)
+- [x] A fresh claim's task branch is created from the base-branch tip in both dispatch.ps1 and dispatch.sh, with a test in tests/test_dispatch_worktree.py using a tmp fixture repo (never the live checkout)
+- [x] tests/conftest.py carries the bash-redirect/CR-strip/cygpath helpers; suites pass on Windows Git Bash
+- [x] `scripts/autopilot-tick.ps1` runs from any working directory (resolves repo from its own location) and has no oikonomos identifiers
+- [x] `scripts/test_env_scrub.py` scrubs matching vars and raises if any survive; tests prove both the scrub and the liveness failure; conftest invokes it
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-024-gb
 **Started_At:** 2026-09-26T14:23:00Z
 **Progress_Notes:**
@@ -878,12 +878,18 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   NEW    scripts/test_env_scrub.py  -> does not exist; parent scripts/ exists
   NEW    tests/test_test_env_scrub.py  -> does not exist; parent tests/ exists
 \  Paths match the task: six existing files, three NEW. Implementing four origin-SHA commits.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-26T14:43:50Z] [GB] Four origin-SHA commits on task/TASK-024-gb (231c75f bceb8eb2, df7498c d3f5fc08, 9a11d37 7baeedf3/2484988, 3b52f11 3e8c3e79). Territory vs master is exactly the 9 Owned_Paths. Not ported (also in dossier Work Log): d3f5fc08 PLAN.md + REVIEW.md (oikonomos state); d3f5fc08 tests/test_sync_from_pack.py (TASK-025); 7baeedf3 AUTOPILOT_LOG.md + PLAN.md; 3e8c3e79 test-isolated.ps1/Postgres (Wave G-C). Submitting needs_review.
+**Artifacts:**
+- [2026-09-26T14:43:50Z] [GB] scripts/dispatch.ps1, scripts/dispatch.sh, tests/test_dispatch_worktree.py (231c75f bceb8eb2)
+- [2026-09-26T14:43:50Z] [GB] tests/conftest.py, scripts/dispatch.sh, tests/test_validate_plan.py, .claude/agents/devteam-builder.md (df7498c d3f5fc08)
+- [2026-09-26T14:43:50Z] [GB] scripts/autopilot-tick.ps1 (9a11d37 7baeedf3)
+- [2026-09-26T14:43:50Z] [GB] scripts/test_env_scrub.py, tests/test_test_env_scrub.py, tests/conftest.py fixture (3b52f11 3e8c3e79)
+**Test_Evidence:**
+- [2026-09-26T14:43:50Z] [GB] `python -m pytest tests/test_dispatch_worktree.py::TestFreshClaimBranchFromBaseTip -q` -> 2 passed. `python -m pytest tests/test_test_env_scrub.py -q` -> 4 passed. `python -m pytest -q` -> 1052 passed, 1 failed in 244.40s: tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered wants tests/test_token_efficiency.py registered — that file landed with TASK-023 on master (65339cb) and is outside this territory (sync-manifest.json). Not introduced by TASK-024; git diff master...HEAD is the 9 Owned_Paths only. `node hooks/run-tests.js` -> 37 passed, 0 failed. ORCH: add tests/test_token_efficiency.py plus this task's new scripts/autopilot-tick.ps1, scripts/test_env_scrub.py, tests/test_test_env_scrub.py to sync-manifest.json at merge.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** GB
-**Updated_At:** 2026-09-26T14:32:00Z
+**Updated_At:** 2026-09-26T14:43:50Z
 
 ### TASK-025
 **Title:** Wave E E-0c — tracked role marker, --diverged report, legacy first-sync, version stamp
