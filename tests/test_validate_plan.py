@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from validate_plan import validate, globs_intersect  # noqa: E402
+from validate_plan import validate, globs_intersect, parse_owned_paths  # noqa: E402
 
 FM = """---
 plan_version: 1.0
@@ -170,3 +170,12 @@ def test_shipped_plan_md_is_legal():
     plan_path = Path(__file__).resolve().parents[1] / "PLAN.md"
     rep = validate(plan_path.read_text(encoding="utf-8"))
     assert rep.ok, rep.errors
+
+
+def test_owned_paths_new_annotation_is_not_part_of_glob():
+    # LOOP_HYGIENE E-F.5: " (new)" is an annotation; a "(new)" path in one task
+    # must still intersect the same bare path in another.
+    assert parse_owned_paths("scripts/a.py (new), tests/x/** (new), b.md") == [
+        "scripts/a.py", "tests/x/**", "b.md"]
+    assert globs_intersect(parse_owned_paths("scripts/a.py (new)"),
+                              parse_owned_paths("scripts/a.py"))

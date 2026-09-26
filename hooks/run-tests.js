@@ -124,6 +124,11 @@ test('ownedPathsOf splits comma territories', () => {
   assert.deepStrictEqual(lib.ownedPathsOf(t), ['lib/features/auth/**', 'test/auth/**']);
 });
 
+test('ownedPathsOf strips the (new) annotation', () => {
+  const t = { fields: { Owned_Paths: 'scripts/a.py (new), tests/b/** (new), c.md' } };
+  assert.deepStrictEqual(lib.ownedPathsOf(t), ['scripts/a.py', 'tests/b/**', 'c.md']);
+});
+
 test('pathInGlob prefix containment semantics', () => {
   assert.ok(lib.pathInGlob('lib/features/auth/login.dart', 'lib/features/auth/**'));
   assert.ok(lib.pathInGlob('lib/features/auth', 'lib/features/auth/**'));

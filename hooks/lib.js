@@ -110,7 +110,10 @@ const ACTIVE = new Set(['claimed', 'in_progress', 'needs_review']);
 function ownedPathsOf(task) {
   const raw = (task.fields.Owned_Paths || '').trim();
   if (EMPTY.has(raw.toLowerCase())) return [];
-  return raw.split(/[,\n]/).map((s) => s.trim()).filter((s) => s && !EMPTY.has(s.toLowerCase()));
+  // ' (new)' marks a path that must not exist yet (LOOP_HYGIENE E-F.5); it is an
+  // annotation, never part of the glob, or a builder is denied its own new file.
+  return raw.split(/[,\n]/).map((s) => s.trim().replace(/\s+\(new\)$/i, ''))
+    .filter((s) => s && !EMPTY.has(s.toLowerCase()));
 }
 
 /** Active tasks for a given unit. */

@@ -188,7 +188,10 @@ def globs_intersect(globs_a: list[str], globs_b: list[str]) -> bool:
 
 
 def parse_owned_paths(raw: str) -> list[str]:
-    return [p.strip() for p in re.split(r"[,\n]", raw) if p.strip() and p.strip() not in EMPTY_VALUES]
+    # " (new)" marks a path that must not exist yet (LOOP_HYGIENE E-F.5): an
+    # annotation, not part of the glob, so isolation checks compare the real path.
+    parts = (re.sub(r"\s+\(new\)$", "", p.strip(), flags=re.I) for p in re.split(r"[,\n]", raw))
+    return [p for p in parts if p and p not in EMPTY_VALUES]
 
 
 def validate(text: str, control_mode: str = "legacy",

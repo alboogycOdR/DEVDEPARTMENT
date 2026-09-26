@@ -59,7 +59,9 @@ def owned_paths_for(plan_text: str, task_id: str) -> list[str]:
     if not match:
         raise SystemExit(f"[preflight] {task_id} has no Owned_Paths line")
 
-    return [p.strip() for p in match.group(1).split(",") if p.strip() and p.strip() != "—"]
+    # " (new)" is an annotation (LOOP_HYGIENE E-F.5), not part of the path.
+    parts = (re.sub(r"\s+\(new\)$", "", p.strip(), flags=re.I) for p in match.group(1).split(","))
+    return [p for p in parts if p and p != "—"]
 
 
 def describe(root: Path, entry: str) -> list[str]:
