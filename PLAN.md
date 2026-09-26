@@ -887,7 +887,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-025
 **Title:** Wave E E-0c — tracked role marker, --diverged report, legacy first-sync, version stamp
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §2 (E-0.2–E-0.5)
@@ -906,17 +906,20 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Started_At:** 2026-09-26T14:07:00Z
 **Progress_Notes:**
 - [2026-09-26T14:38:00Z] [CX] Implemented tracked manifest role, conservative sync version stamping, read-only unified divergence report, and behind-pack warnings; ready for review at fda3830.
+- [2026-09-26T14:34:38Z] [CX] Addressed review rework in commits 82551df and a1a3100: ported d3f5fc08's pack-only registration guard, added role/version/session-start coverage, and detect same-semver pack commit drift.
 **Artifacts:** scripts/sync_from_pack.py; sync-manifest.json; tests/test_sync_from_pack.py; autopilot.json; .claude/commands/devteam-status.md; hooks/session-start.js
 **Test_Evidence:**
 - [2026-09-26T14:38:00Z] [CX] `python -m pytest tests/test_sync_from_pack.py -q` — 52 passed.
 - [2026-09-26T14:38:00Z] [CX] `node hooks/run-tests.js` — 37 passed, 0 failed.
 - [2026-09-26T14:38:00Z] [CX] `python -m pytest -q` — completed successfully (exit 0).
 - [2026-09-26T14:38:00Z] [CX] Read-only `--diverged` against KERYX and oikonomos completed; both `git status --short` outputs were unchanged before/after (KERYX had pre-existing modified/untracked files; oikonomos had pre-existing untracked files).
+- [2026-09-26T14:34:38Z] [CX] `python -m pytest tests/test_sync_from_pack.py -q` → 57 passed in 5.38s; `node hooks/run-tests.js` → 37 passed, 0 failed; `python -m pytest -q` → exit 0 (1,054 tests collected).
+- [2026-09-26T14:34:38Z] [CX] Read-only `--diverged`: KERYX → exit 0, 81 framework files diverged, git status unchanged (10 pre-existing entries); oikonomos → exit 0, 69 diverged, git status unchanged (4 pre-existing entries).
 **Review_Findings:**
 - [2026-09-26T14:27:46Z] [ORCH] REWORK (reviewer: claude-opus-5-5). Territory clean (6 files, all Owned_Paths). Required: (1) the d3f5fc08 hunk assigned to this task is not ported — `@pack_self_test` on `test_every_shipped_test_file_is_registered` (cite d3f5fc08 in the commit); (2) criterion 1 untested — add a test that `_is_pack_repo()` is False (self-tests skipped) when the manifest says `role: project`, True for `pack`, False for unreadable; (3) criterion 5 untested — assert a sync `--apply` writes `framework_version` (semver+SHA) and `sync.pack_path` into autopilot.json without altering other keys; add a Node test for the session-start behind-pack line; (4) behind_pack compares semver only, so a pack that advanced commits without a README bump is never reported behind — also compare SHAs (same semver, differing SHA where the recorded SHA is an ancestor of pack HEAD via `git merge-base --is-ancestor` → behind; unknown SHA → say so, don't claim current); test both; (5) evidence: record full-suite COUNTS (not 'exit 0') for both suites, and a one-line summary per real `--diverged` run (KERYX, oikonomos: number of diverged files) with the before/after `git status` comparison. Also: Started_At 14:07:00Z precedes this dispatch (14:20:39Z) — stamp real UTC (`date -u`). Not a finding: E-0.4 first-sync-overwrites-nothing is pre-existing and covered by test_legacy_project_no_baseline_is_conflict.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-26T14:27:46Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-26T14:34:38Z
 
 ### TASK-026
 **Title:** Wave E E-0d — no-manifest adopt path (sync_from_pack --adopt)
