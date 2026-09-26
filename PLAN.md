@@ -963,7 +963,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-027
 **Title:** Wave E E-A — hooks resolve main checkout; DEVTEAM_TASK; human-only config; Protected_Grants field
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §3 (E-A.1–4)
@@ -976,15 +976,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] A write to autopilot.json with `DEVTEAM_DELEGATED=1` is denied, and allowed with neither variable set (§3 Acceptance)
 - [ ] `Protected_Grants` outside Owned_Paths fails validate_plan; a grant on a done task no longer permits writes (E-A.4)
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-027-gb
+**Started_At:** 2026-09-26T14:56:30Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-26T13:49:25Z
+**Updated_By:** GB
+**Updated_At:** 2026-09-26T14:56:30Z
 
 ### TASK-028
 **Title:** Wave E E-B1 — review ledger (head-SHA keyed), backoff, review.lock, markers, atomic state + multi-tick harness
