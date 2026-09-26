@@ -988,7 +988,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-028
 **Title:** Wave E E-B1 — review ledger (head-SHA keyed), backoff, review.lock, markers, atomic state + multi-tick harness
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** S5
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H3/H7, §4 (E-B.1, E-B.2, E-B.6)
@@ -1004,15 +1004,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] P0 digest shows the behind-pack line when applicable (E-0.5)
 - [ ] Every tick/process/hour-based criterion is proven by a multi-tick or multi-process test with an advanced (fake) clock, never a single tick (spec §1 H7, §16)
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-028-s5
+**Started_At:** 2026-09-26T14:00:00Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-26T13:49:25Z
+**Updated_By:** S5
+**Updated_At:** 2026-09-26T14:00:00Z
 
 ### TASK-029
 **Title:** Wave E E-B2 — escalation ledger (H1), triage ledger (H2), one judgment-prompt form
