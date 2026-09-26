@@ -26,9 +26,8 @@ def _is_pack_repo() -> bool:
     """True when this checkout is the DEVDEPARTMENT pack itself, false when it
     is a project that vendored the pack.
 
-    A consuming project has `.devteam/sync_state.json` — written by
-    onboarding's baseline step and by every sync since. The pack is the source
-    and never syncs into itself, so it has none. `DEVTEAM_PACK_SELF_TESTS=1`
+    The tracked manifest is authoritative: a pack says ``role: pack`` and a
+    consuming checkout says ``role: project``. `DEVTEAM_PACK_SELF_TESTS=1`
     forces the pack answer for CI that runs from an unusual layout.
 
     Why this exists (oikonomos, 2026-08-16): the self-check tests below assert
@@ -44,7 +43,10 @@ def _is_pack_repo() -> bool:
     """
     if os.environ.get("DEVTEAM_PACK_SELF_TESTS") == "1":
         return True
-    return not (REPO_ROOT / ".devteam" / "sync_state.json").exists()
+    try:
+        return json.loads((REPO_ROOT / sfp.MANIFEST_NAME).read_text(encoding="utf-8")).get("role") == "pack"
+    except (OSError, json.JSONDecodeError):
+        return False
 
 
 pack_self_test = pytest.mark.skipif(
@@ -62,7 +64,7 @@ def make_pack(tmp_path: Path, files: dict[str, str],
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8", newline="\n")
     if manifest is None:
-        manifest = {"manifest_version": 1,
+        manifest = {"manifest_version": 1, "role": "pack",
                     "framework_owned": sorted(files.keys()),
                     "project_owned": ["PLAN.md"],
                     "merge_special": {}}
@@ -187,6 +189,31 @@ class TestDryRunSafety:
         proj = make_project(tmp_path, {"scripts/a.py": "x\n", "PLAN.md": "MY REAL PLAN\n"})
         sfp.run_sync(pack, proj, apply=True, adopt_pack=True)
         assert (proj / "PLAN.md").read_text() == "MY REAL PLAN\n"
+
+    def test_first_apply_marks_manifest_as_project(self, tmp_path):
+        pack = make_pack(tmp_path, {"scripts/a.py": "same\n", "autopilot.json": "{}\n"})
+        proj = make_project(tmp_path, {"scripts/a.py": "same\n", "autopilot.json": "{}\n"})
+        sfp.run_sync(pack, proj, apply=True)
+        assert json.loads((proj / sfp.MANIFEST_NAME).read_text())["role"] == "project"
+
+
+class TestDivergenceAndVersions:
+    def test_diverged_report_is_unified_and_read_only(self, tmp_path):
+        pack = make_pack(tmp_path, {"scripts/a.py": "pack\n"})
+        proj = make_project(tmp_path, {"scripts/a.py": "project\n"})
+        before = (proj / "scripts/a.py").read_bytes()
+        report = sfp.diverged_report(pack, proj)
+        assert "--- pack/scripts/a.py" in report and "+++ project/scripts/a.py" in report
+        assert (proj / "scripts/a.py").read_bytes() == before
+
+    def test_behind_pack_warns_for_older_recorded_version(self, tmp_path, monkeypatch):
+        pack = tmp_path / "pack"
+        pack.mkdir()
+        (pack / "README.md").write_text("- v9.0 — current\n", encoding="utf-8")
+        project = make_project(tmp_path, {"autopilot.json": json.dumps({
+            "framework_version": "v1.0+abc", "sync": {"pack_path": str(pack)}})})
+        monkeypatch.setattr(sfp, "pack_version", lambda _: "v9.0+def")
+        assert "framework v1.0+abc behind pack v9.0+def" in sfp.behind_pack(project)
 
 
 # ================================================================ --only ====
@@ -789,4 +816,3 @@ class TestShippedTestFileRegistrationIsBranchAware:
         assert inst._integration_branch_test_files() is None
         with pytest.raises(AssertionError, match="test_a.py"):
             inst.test_every_shipped_test_file_is_registered()
-

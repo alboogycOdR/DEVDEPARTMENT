@@ -1,5 +1,6 @@
 {
   "manifest_version": 1,
+  "role": "pack",
   "comment": "Declares pack-vs-project file ownership for scripts/sync_from_pack.py. framework_owned: the pack is the source of truth; sync updates these (with local-modification conflict detection via .devteam/sync_state.json). project_owned: the project's own state; sync NEVER touches these. merge_special: files that are part-pack part-project, handled by dedicated merge logic, never whole-file overwritten.",
   "framework_owned": [
     ".claude/agents/devteam-builder.md",

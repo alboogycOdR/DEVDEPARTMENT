@@ -16,6 +16,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 const lib = require('./lib.js');
 
 function lastProgressNote(task) {
@@ -27,6 +28,10 @@ function main() {
   const root = lib.repoRoot();
   const u = lib.unit() || 'UNKNOWN'; // null (unrecognized unit) is fine here — these hooks only label output
   const lines = [`[devteam session-start] Unit: ${u}. Re-read AGENTS.md and PLAN.md fresh from disk before acting.`];
+  const sync = spawnSync(process.env.PYTHON || 'python',
+    [path.join(root, 'scripts', 'sync_from_pack.py'), '--behind-pack', '--project', root],
+    { encoding: 'utf8', timeout: 5000 });
+  if (sync.status === 0 && sync.stdout.trim()) lines.push(`[devteam session-start] ${sync.stdout.trim()}`);
 
   if (fs.existsSync(path.join(root, 'STOP'))) {
     lines.push('[devteam session-start] STOP file present — autopilot halted; do not dispatch or auto-merge until it is removed.');
