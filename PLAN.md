@@ -871,7 +871,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-025
 **Title:** Wave E E-0c — tracked role marker, --diverged report, legacy first-sync, version stamp
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §2 (E-0.2–E-0.5)
@@ -886,15 +886,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Onboarding and every sync write `framework_version` (semver + SHA) into autopilot.json (E-0.5)
 - [ ] Read-only `--diverged` runs against the real KERYX and oikonomos checkouts recorded in Test_Evidence; `git status` of both repos unchanged before/after
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-025-cx
+**Started_At:** 2026-09-26T14:07:00Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-26T13:49:25Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-26T14:07:00Z
 
 ### TASK-026
 **Title:** Wave E E-0d — no-manifest adopt path (sync_from_pack --adopt)
