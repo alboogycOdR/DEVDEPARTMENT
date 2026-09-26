@@ -845,7 +845,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-024
 **Title:** Wave E E-0b — port oikonomos bceb8eb2, d3f5fc08, 7baeedf3, 3e8c3e79 (base-tip branch, portable tests, tick runner, env scrub)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §0, §2 (E-0.1)
@@ -859,15 +859,16 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] `scripts/autopilot-tick.ps1` runs from any working directory (resolves repo from its own location) and has no oikonomos identifiers
 - [ ] `scripts/test_env_scrub.py` scrubs matching vars and raises if any survive; tests prove both the scrub and the liveness failure; conftest invokes it
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
+**Branch:** task/TASK-024-gb
+**Started_At:** 2026-09-26T14:23:00Z
+**Progress_Notes:**
+- [2026-09-26T14:23:00Z] [GB] Claimed TASK-024 on task/TASK-024-gb. Next: preflight_paths, then port the four oikonomos SHAs (bceb8eb2, d3f5fc08, 7baeedf3, 3e8c3e79) as four pack commits.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-26T13:49:25Z
+**Updated_By:** GB
+**Updated_At:** 2026-09-26T14:23:00Z
 
 ### TASK-025
 **Title:** Wave E E-0c — tracked role marker, --diverged report, legacy first-sync, version stamp
