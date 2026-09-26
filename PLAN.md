@@ -963,7 +963,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-027
 **Title:** Wave E E-A — hooks resolve main checkout; DEVTEAM_TASK; human-only config; Protected_Grants field
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §3 (E-A.1–4)
@@ -971,10 +971,10 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-024, TASK-025
 **Description:** (1) `hooks/lib.js` `mainRoot()` via `git rev-parse --git-common-dir` (fallback repoRoot()), used for PLAN.md, autopilot.json and .devteam/** incl. gateguard denials; relPath stays worktree-relative. (2) dispatch.sh/.ps1 export `DEVTEAM_TASK=<id>` beside DEVTEAM_UNIT, and `DEVTEAM_DELEGATED=1`; session-start.js and the firewall treat DEVTEAM_TASK as the active task. (3) Firewall denies writes to autopilot.json / autopilot.local.json when DEVTEAM_UNIT or DEVTEAM_DELEGATED=1 is set. (The supervisor's own headless launches export DEVTEAM_DELEGATED in TASK-029, which owns supervisor.py then.) (4) Optional-in-spec, IN SCOPE here: `**Protected_Grants:**` task field (subset of Owned_Paths, ORCH-written only; validate_plan enforces subset), read by the firewall from the main-checkout PLAN.md, auto-expiring when the task leaves claimed/in_progress/needs_review; PROTECTED_EXCEPTIONS stays for permanent project exceptions. This removes the grant-edit/merge-master ritual for the rest of Wave E. Keep the ` (new)` suffix stripping ORCH added pre-wave. **Protected-path grants (ORCH applies before dispatch):** hooks/**, scripts/validate_plan.py, scripts/dispatch.sh, scripts/dispatch.ps1.
 **Acceptance_Criteria:**
-- [ ] Real-worktree Node tests: a claim visible only in the main checkout → allowed; the gateguard denial counter lands in the main checkout's .devteam/ (spec §3 Acceptance)
-- [ ] A session with `DEVTEAM_TASK=TASK-332` reports TASK-332 even when PLAN.md's first in-progress block for that unit is another task (§3 Acceptance)
-- [ ] A write to autopilot.json with `DEVTEAM_DELEGATED=1` is denied, and allowed with neither variable set (§3 Acceptance)
-- [ ] `Protected_Grants` outside Owned_Paths fails validate_plan; a grant on a done task no longer permits writes (E-A.4)
+- [x] Real-worktree Node tests: a claim visible only in the main checkout → allowed; the gateguard denial counter lands in the main checkout's .devteam/ (spec §3 Acceptance)
+- [x] A session with `DEVTEAM_TASK=TASK-332` reports TASK-332 even when PLAN.md's first in-progress block for that unit is another task (§3 Acceptance)
+- [x] A write to autopilot.json with `DEVTEAM_DELEGATED=1` is denied, and allowed with neither variable set (§3 Acceptance)
+- [x] `Protected_Grants` outside Owned_Paths fails validate_plan; a grant on a done task no longer permits writes (E-A.4)
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-027-gb
 **Started_At:** 2026-09-26T14:56:30Z
@@ -998,12 +998,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   FILE   scripts/dispatch.sh  -> exists, 426 line(s), 27052 bytes
   FILE   scripts/dispatch.ps1  -> exists, 695 line(s), 42411 bytes
   All six entries exist (hooks/** is 9 files; no NEW, no empty glob). Next: mainRoot() for PLAN.md/autopilot.json/.devteam, DEVTEAM_TASK + DEVTEAM_DELEGATED, human-only autopilot writes, Protected_Grants subset check.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-26T15:13:21Z] [GB] E-A.1–4 on task/TASK-027-gb @ 8a5b61c. mainRoot() via git-common-dir; DEVTEAM_TASK pinned only when unique (two active tasks stay unpinned so H11 is not cemented); DEVTEAM_DELEGATED=1; human-only autopilot.json and autopilot.local.json; Protected_Grants subset of Owned_Paths, ignored once the task is not active. Node suite green. Python suite has one pre-existing master failure outside this territory (tests/test_test_env_scrub.py not in sync-manifest.json — the registration TASK-024's approval asked ORCH to add). Fifth acceptance box left open for that reason. Ready for review.
+**Artifacts:**
+- [2026-09-26T15:13:21Z] [GB] hooks/lib.js, hooks/territory-firewall.js, hooks/session-start.js, hooks/pre-compact.js, hooks/session-end.js, hooks/gateguard.js, hooks/run-tests.js, scripts/validate_plan.py, scripts/dispatch.sh, scripts/dispatch.ps1, tests/test_validate_plan.py, tests/test_gateguard.js, dossiers/TASK-027.md (8a5b61c)
+**Test_Evidence:**
+- [2026-09-26T15:13:21Z] [GB] `node hooks/run-tests.js` → 42 passed, 0 failed (includes real-worktree claim-only-in-main allow + denial counter in main .devteam/gateguard/denials, DEVTEAM_TASK=TASK-332 not TASK-338, DEVTEAM_DELEGATED=1 deny / neither-var allow, done-task grant denied). `node tests/test_gateguard.js` → 39 passed, 0 failed. `python -m pytest tests/test_validate_plan.py -q` → 23 passed. `python -m pytest -q` → 1064 passed, 1 failed in 163.47s: tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered — tests/test_test_env_scrub.py is on master and not in sync-manifest.json framework_owned. Commit 8a5b61c is 12 files under Owned_Paths plus dossiers/TASK-027.md. sync-manifest.json was not touched; it is outside Owned_Paths.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** GB
-**Updated_At:** 2026-09-26T14:58:30Z
+**Updated_At:** 2026-09-26T15:13:21Z
 
 ### TASK-028
 **Title:** Wave E E-B1 — review ledger (head-SHA keyed), backoff, review.lock, markers, atomic state + multi-tick harness
