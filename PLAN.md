@@ -963,7 +963,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-027
 **Title:** Wave E E-A — hooks resolve main checkout; DEVTEAM_TASK; human-only config; Protected_Grants field
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §3 (E-A.1–4)
@@ -978,13 +978,32 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-027-gb
 **Started_At:** 2026-09-26T14:56:30Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-26T14:58:30Z] [GB] Preflight (c8b9872 filesystem check):
+[preflight] TASK-027 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-grok-DEVDEPARTMENT
+[preflight] 6 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+  GLOB   hooks/**  -> 9 file(s):
+           hooks/gateguard.js
+           hooks/hooks.json
+           hooks/lib.js
+           hooks/pre-compact.js
+           hooks/run-tests.js
+           hooks/secret-scan.js
+           hooks/session-end.js
+           hooks/session-start.js
+           hooks/territory-firewall.js
+  FILE   tests/test_gateguard.js  -> exists, 221 line(s), 9127 bytes
+  FILE   scripts/validate_plan.py  -> exists, 390 line(s), 17126 bytes
+  FILE   tests/test_validate_plan.py  -> exists, 186 line(s), 7493 bytes
+  FILE   scripts/dispatch.sh  -> exists, 426 line(s), 27052 bytes
+  FILE   scripts/dispatch.ps1  -> exists, 695 line(s), 42411 bytes
+  All six entries exist (hooks/** is 9 files; no NEW, no empty glob). Next: mainRoot() for PLAN.md/autopilot.json/.devteam, DEVTEAM_TASK + DEVTEAM_DELEGATED, human-only autopilot writes, Protected_Grants subset check.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** GB
-**Updated_At:** 2026-09-26T14:56:30Z
+**Updated_At:** 2026-09-26T14:58:30Z
 
 ### TASK-028
 **Title:** Wave E E-B1 — review ledger (head-SHA keyed), backoff, review.lock, markers, atomic state + multi-tick harness
