@@ -873,7 +873,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-025
 **Title:** Wave E E-0c — tracked role marker, --diverged report, legacy first-sync, version stamp
-**Status:** claimed
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §2 (E-0.2–E-0.5)
@@ -881,22 +881,27 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** —
 **Description:** Make sync real (items 2–5). (2) `sync-manifest.json` gains `"role": "pack"|"project"`; `tests/test_sync_from_pack.py::_is_pack_repo()` reads it (not the gitignored .devteam/sync_state.json); onboarding/first sync writes `project`. Also port the 1-line d3f5fc08 hunk to this test file (cite SHA). (3) `sync_from_pack.py --diverged`: read-only, lists framework-owned files differing between project and pack with a unified diff. (4) Legacy sync: empty/absent sync_state → every diverged framework-owned file is a conflict to review, never overwritten. (5) `framework_version` = pack semver + pack commit SHA, written into the project's autopilot.json on onboarding/every sync; `sync.pack_path` config key. Expose one function `behind_pack(project) -> str|None` returning `framework vX behind pack vY — run: python <pack>/scripts/sync_from_pack.py --project .`; call it from /devteam-status and hooks/session-start.js. (The P0-digest call is TASK-028's, which consumes this function.) Validate read-only against real copies: KERYX (C:/CLAUDECODE_TOOLSETS/walkietalkie-keryx, has manifest) and oikonomos (C:/CLAUDECODE_TOOLSETS/oikonomos) with `--diverged` only — NEVER write to those repos; paste the summary into Test_Evidence. **Protected-path grants (ORCH applies before dispatch):** scripts/sync_from_pack.py, autopilot.json, .claude/commands/devteam-status.md, hooks/session-start.js.
 **Acceptance_Criteria:**
-- [ ] Pack self-tests are skipped in a checkout whose manifest says `project` and run in the pack (spec §2 Acceptance)
-- [ ] `--diverged` on a fixture project lists exactly the modified framework files, with unified diffs, and writes nothing (§2 Acceptance; E-0.3)
-- [ ] The first sync on a fixture with an empty sync state overwrites nothing and reports conflicts (§2 Acceptance; E-0.4)
-- [ ] `/devteam-status` prints the behind-pack warning when the project's framework_version is behind `sync.pack_path`'s pack (§2 Acceptance; E-0.5); session-start hook prints the same line
-- [ ] Onboarding and every sync write `framework_version` (semver + SHA) into autopilot.json (E-0.5)
-- [ ] Read-only `--diverged` runs against the real KERYX and oikonomos checkouts recorded in Test_Evidence; `git status` of both repos unchanged before/after
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+- [x] Pack self-tests are skipped in a checkout whose manifest says `project` and run in the pack (spec §2 Acceptance)
+- [x] `--diverged` on a fixture project lists exactly the modified framework files, with unified diffs, and writes nothing (§2 Acceptance; E-0.3)
+- [x] The first sync on a fixture with an empty sync state overwrites nothing and reports conflicts (§2 Acceptance; E-0.4)
+- [x] `/devteam-status` prints the behind-pack warning when the project's framework_version is behind `sync.pack_path`'s pack (§2 Acceptance; E-0.5); session-start hook prints the same line
+- [x] Onboarding and every sync write `framework_version` (semver + SHA) into autopilot.json (E-0.5)
+- [x] Read-only `--diverged` runs against the real KERYX and oikonomos checkouts recorded in Test_Evidence; `git status` of both repos unchanged before/after
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-025-cx
 **Started_At:** 2026-09-26T14:07:00Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-26T14:38:00Z] [CX] Implemented tracked manifest role, conservative sync version stamping, read-only unified divergence report, and behind-pack warnings; ready for review at fda3830.
+**Artifacts:** scripts/sync_from_pack.py; sync-manifest.json; tests/test_sync_from_pack.py; autopilot.json; .claude/commands/devteam-status.md; hooks/session-start.js
+**Test_Evidence:**
+- [2026-09-26T14:38:00Z] [CX] `python -m pytest tests/test_sync_from_pack.py -q` — 52 passed.
+- [2026-09-26T14:38:00Z] [CX] `node hooks/run-tests.js` — 37 passed, 0 failed.
+- [2026-09-26T14:38:00Z] [CX] `python -m pytest -q` — completed successfully (exit 0).
+- [2026-09-26T14:38:00Z] [CX] Read-only `--diverged` against KERYX and oikonomos completed; both `git status --short` outputs were unchanged before/after (KERYX had pre-existing modified/untracked files; oikonomos had pre-existing untracked files).
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-26T14:07:00Z
+**Updated_At:** 2026-09-26T14:38:00Z
 
 ### TASK-026
 **Title:** Wave E E-0d — no-manifest adopt path (sync_from_pack --adopt)
