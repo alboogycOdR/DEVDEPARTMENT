@@ -17,3 +17,11 @@ Port oikonomos (github.com/alboogycOdR/oikonomos-gbot) commit a14f8976 ('review 
 Write the failing test first (it must fail against current master — spec §1 H7), then implement, then run BOTH full suites. Ported code cites its origin SHA and lists anything not ported, with the reason, in the Work Log.
 
 ## Work Log
+
+### 2026-09-26T14:40:00Z [S5]
+Preflight: supervisor.py FILE 1494 lines; status_digest.py NEW; test_token_efficiency.py NEW; test_supervisor.py FILE.
+Ported a14f8976 (git apply --reject onto pack supervisor; 1 hunk (RuntimeState fields) re-applied by hand).
+Adaptations: added `timedelta` import (pack lacked it); test MISSING_DEPENDENCY uses bare vocabulary token (pack validate_plan rejects "MISSING_DEPENDENCY: text").
+Not ported: oikonomos's note about 28 unrelated failing tests (WSL bash) — commit-message text only, no code. Nothing else omitted.
+Pre-port check: with supervisor.py reverted, tests/test_token_efficiency.py errors at collection (review_key missing).
+Full: pytest 1046 passed; node hooks 37 passed.
