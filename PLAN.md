@@ -887,7 +887,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-025
 **Title:** Wave E E-0c — tracked role marker, --diverged report, legacy first-sync, version stamp
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §2 (E-0.2–E-0.5)
@@ -917,9 +917,10 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-26T14:34:38Z] [CX] Read-only `--diverged`: KERYX → exit 0, 81 framework files diverged, git status unchanged (10 pre-existing entries); oikonomos → exit 0, 69 diverged, git status unchanged (4 pre-existing entries).
 **Review_Findings:**
 - [2026-09-26T14:27:46Z] [ORCH] REWORK (reviewer: claude-opus-5-5). Territory clean (6 files, all Owned_Paths). Required: (1) the d3f5fc08 hunk assigned to this task is not ported — `@pack_self_test` on `test_every_shipped_test_file_is_registered` (cite d3f5fc08 in the commit); (2) criterion 1 untested — add a test that `_is_pack_repo()` is False (self-tests skipped) when the manifest says `role: project`, True for `pack`, False for unreadable; (3) criterion 5 untested — assert a sync `--apply` writes `framework_version` (semver+SHA) and `sync.pack_path` into autopilot.json without altering other keys; add a Node test for the session-start behind-pack line; (4) behind_pack compares semver only, so a pack that advanced commits without a README bump is never reported behind — also compare SHAs (same semver, differing SHA where the recorded SHA is an ancestor of pack HEAD via `git merge-base --is-ancestor` → behind; unknown SHA → say so, don't claim current); test both; (5) evidence: record full-suite COUNTS (not 'exit 0') for both suites, and a one-line summary per real `--diverged` run (KERYX, oikonomos: number of diverged files) with the before/after `git status` comparison. Also: Started_At 14:07:00Z precedes this dispatch (14:20:39Z) — stamp real UTC (`date -u`). Not a finding: E-0.4 first-sync-overwrites-nothing is pre-existing and covered by test_legacy_project_no_baseline_is_conflict.
+- [2026-09-26T14:40:45Z] [ORCH] APPROVED on re-review (reviewer: claude-opus-5-5). Territory clean (6 files, all Owned_Paths; merge of master d66cfc5 carried no foreign changes). Rework items resolved: role-marker skip/run + fail-closed test; framework_version+pack_path stamp preserves other keys (tested); session-start behind-pack line tested (pytest drives the Node hook); behind_pack now SHA-aware (same semver + ancestor SHA -> behind; unknown SHA reported, not assumed current), tested both ways; evidence now has counts and real --diverged summaries (KERYX 81 diverged / oikonomos 69, git status unchanged). ORCH CORRECTION: first-review finding (1) was wrong — the d3f5fc08 @pack_self_test hunk WAS ported in fda3830 (commit message did not cite the SHA; minor). a1a3100 correctly registers TASK-023's tests/test_token_efficiency.py in the manifest. Independent re-run in worktree @a1a3100: pytest 1054 passed, node 37/0. Merged --no-ff 839ad21; branch deleted.
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-09-26T14:34:38Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-26T14:40:45Z
 
 ### TASK-026
 **Title:** Wave E E-0d — no-manifest adopt path (sync_from_pack --adopt)

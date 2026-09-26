@@ -205,9 +205,6 @@ const PROTECTED_EXCEPTIONS = [
   // TASK-024 (GB):
   'scripts/dispatch.ps1', 'scripts/dispatch.sh', '.claude/agents/devteam-builder.md',
   'scripts/autopilot-tick.ps1', 'scripts/test_env_scrub.py',
-  // TASK-025 (CX):
-  'scripts/sync_from_pack.py', 'autopilot.json', '.claude/commands/devteam-status.md',
-  'hooks/session-start.js',
 ];
 
 /**
