@@ -78,6 +78,15 @@ def _section(lines: list[str]) -> list[str]:
     return shown
 
 
+def _behind_pack_line(repo: Path) -> str | None:
+    """Return TASK-025's warning without allowing digest generation to fail."""
+    try:
+        from sync_from_pack import behind_pack
+        return behind_pack(repo)
+    except Exception:
+        return None
+
+
 def build(repo: Path, now: datetime, since: datetime | None = None) -> str:
     """The digest body WITHOUT the trailing local-time line (so it can be hashed for change detection)."""
     tasks = parse_tasks((repo / "PLAN.md").read_text(encoding="utf-8"), Report())
@@ -113,6 +122,8 @@ def build(repo: Path, now: datetime, since: datetime | None = None) -> str:
              "Queue:", *_section(queue),
              "Pending action:", *_section(pending_action),
              "Prod: not touched by the autopilot (deploys are manual)"]
+    if behind := _behind_pack_line(repo):
+        lines.append(behind)
     return "\n".join(lines)
 
 

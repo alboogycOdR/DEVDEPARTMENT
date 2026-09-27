@@ -49,19 +49,28 @@ def _repo_with(tmp_path, plan):
     return tmp_path
 
 
-def test_one_review_session_covers_all_waiting_tasks(tmp_path, monkeypatch):
-    plan = FM + task("TASK-001", status="needs_review") + task("TASK-002", status="needs_review", assignee="CX", owned="lib/b/**")
+def test_one_review_session_serves_oldest_waiting_task(tmp_path, monkeypatch):
+    plan = (FM + task("TASK-001", status="needs_review", upd_at="2026-07-12T19:00:00Z")
+            + task("TASK-002", status="needs_review", assignee="CX", owned="lib/b/**",
+                   upd_at="2026-07-12T19:50:00Z"))
     repo = _repo_with(tmp_path, plan)
     calls = []
-    monkeypatch.setattr(sup, "run_shell", lambda cmd, r: calls.append(cmd) or 0)
+    def review(cmd, review_repo):
+        calls.append(cmd)
+        review_repo.joinpath("PLAN.md").write_text(
+            plan.replace("**Status:** needs_review", "**Status:** done", 1), encoding="utf-8")
+        return 0
+    monkeypatch.setattr(sup, "run_shell", review)
     st = RuntimeState()
     actions = decide(plan, st, CFG, NOW)
-    assert kinds(actions).count("REVIEW") == 2
+    assert kinds(actions).count("REVIEW") == 1
+    assert actions[0].task_id == "TASK-001"
     execute(actions, CFG, st, repo, False, now=NOW)
-    assert len(calls) == 1                                   # ONE Opus session, not two
-    assert st.review_ledger["TASK-001"]["done"] and st.review_ledger["TASK-002"]["done"]
-    # ...and the next tick does not launch another
-    assert "REVIEW" not in kinds(decide(plan, st, CFG, NOW + timedelta(minutes=5)))
+    assert len(calls) == 1
+    assert st.review_ledger["TASK-001"]["done"]
+    assert "TASK-002" not in st.review_ledger
+    next_actions = decide(plan, st, CFG, NOW + timedelta(minutes=5))
+    assert kinds(next_actions) == ["REVIEW"] and next_actions[0].task_id == "TASK-002"
 
 
 def test_failed_review_session_is_recorded_for_backoff(tmp_path, monkeypatch):
@@ -72,7 +81,8 @@ def test_failed_review_session_is_recorded_for_backoff(tmp_path, monkeypatch):
     execute(decide(plan, st, CFG, NOW), CFG, st, repo, False, now=NOW)
     led = st.review_ledger["TASK-001"]
     assert led["done"] is False and led["fails"] == 1 and led["retry_after"]
-    assert "REVIEW" not in kinds(decide(plan, st, CFG, NOW + timedelta(minutes=5)))
+    assert "REVIEW" not in kinds(decide(plan, st, CFG, NOW + timedelta(minutes=4)))
+    assert "REVIEW" in kinds(decide(plan, st, CFG, NOW + timedelta(minutes=5)))
 
 
 def test_fresh_review_lock_prevents_a_second_session(tmp_path, monkeypatch):
