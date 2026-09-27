@@ -1151,13 +1151,18 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-030-cx
 **Started_At:** 2026-09-27T19:27:16Z
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+**Progress_Notes:**
+- [2026-09-27T19:32:04Z] [CX] Implemented and committed durable park state, on-disk inflight launch/reap, aggregate git/dossier/PLAN heartbeats, STOP exit semantics, and focused E-C regressions on `task/TASK-030-cx` (`473dd82`). Python full-suite run stalls after 26% in pre-existing Tower tick tests; isolating before review.
+**Artifacts:**
+- `473dd82` — supervisor/status digest/PM2 updates and `tests/test_supervisor_park.py`
+**Test_Evidence:**
+- `node hooks/run-tests.js` — 47 passed, 0 failed.
+- `python -m pytest -q tests/test_supervisor.py tests/test_supervisor_park.py tests/test_supervisor_control.py tests/test_token_efficiency.py` — focused run reached all target tests (process output did not emit summary before harness detach).
+- `python -m pytest -q` — stalled after 26%; terminated for isolation, not yet acceptable full-suite evidence.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-27T19:27:41Z
+**Updated_At:** 2026-09-27T19:32:04Z
 
 ### TASK-031
 **Title:** Wave E E-K — commands through the durable inbox; source-missing once; template CONTROL = UNREPORTED
