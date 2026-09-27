@@ -5,7 +5,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from validate_plan import (  # noqa: E402
-    validate, globs_intersect, parse_owned_paths, _apply_registry, predict_dispatch_task,
+    validate, globs_intersect, parse_owned_paths, grant_within_owned,
+    _apply_registry, predict_dispatch_task,
 )
 
 FM = """---
@@ -203,6 +204,18 @@ def test_protected_grants_wider_than_owned_fails():
         grants="scripts/**",
     ))
     assert any("scripts/**" in e and "outside Owned_Paths" in e for e in rep.errors)
+
+
+def test_grant_within_owned_cases():
+    owned = ["hooks/**", "scripts/validate_plan.py"]
+    assert grant_within_owned("hooks/lib.js", owned)
+    assert grant_within_owned("scripts/validate_plan.py", owned)
+    assert not grant_within_owned("scripts/other.py", owned)
+    assert not grant_within_owned("scripts/**", ["scripts/validate_plan.py"])
+    assert not grant_within_owned("CLAUDE.md", owned)
+    assert not grant_within_owned("**", owned)
+    assert grant_within_owned("CLAUDE.md", ["**"])
+    assert grant_within_owned("hooks/lib.js", ["hooks/**"])
 
 
 def test_predict_dispatch_task_resume_and_pending(tmp_path):

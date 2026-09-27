@@ -133,6 +133,19 @@ test('ownedPathsOf strips the (new) annotation', () => {
   assert.deepStrictEqual(lib.ownedPathsOf(t), ['scripts/a.py', 'tests/b/**', 'c.md']);
 });
 
+test('grantWithinOwned matches validate_plan.grant_within_owned cases', () => {
+  const owned = ['hooks/**', 'scripts/validate_plan.py'];
+  assert.ok(lib.grantWithinOwned('hooks/lib.js', owned));
+  assert.ok(lib.grantWithinOwned('scripts/validate_plan.py', owned));
+  assert.ok(lib.grantWithinOwned('scripts/validate_plan.py', ['scripts/validate_plan.py (new)'.replace(/\s+\(new\)$/i, '')]));
+  assert.ok(!lib.grantWithinOwned('scripts/other.py', owned));
+  assert.ok(!lib.grantWithinOwned('scripts/**', ['scripts/validate_plan.py']));
+  assert.ok(!lib.grantWithinOwned('CLAUDE.md', owned));
+  assert.ok(!lib.grantWithinOwned('**', owned), 'bare-wildcard grant is not a subset');
+  assert.ok(lib.grantWithinOwned('CLAUDE.md', ['**']), 'bare-wildcard owned covers every grant');
+  assert.ok(lib.grantWithinOwned('hooks/lib.js', ['hooks/**']));
+});
+
 test('pathInGlob prefix containment semantics', () => {
   assert.ok(lib.pathInGlob('lib/features/auth/login.dart', 'lib/features/auth/**'));
   assert.ok(lib.pathInGlob('lib/features/auth', 'lib/features/auth/**'));
@@ -218,7 +231,11 @@ test('firewall blocks GB write to .devteam/pending_amendments/** — Wave C', ()
 test('firewall allows GB write to PLAN.md in control.mode=legacy (default) — Wave I', () => {
   const repo = makeTempRepo();  // no strict flag -> legacy, same as today
   const r = runHook('territory-firewall.js',
-    { tool_input: { file_path: path.join(repo, 'PLAN.md'), content: 'x' } },
+    { tool_input: {
+        file_path: path.join(repo, 'PLAN.md'),
+        old_string: '**Status:** in_progress',
+        new_string: '**Status:** needs_review',
+      } },
     { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
   assert.strictEqual(r.code, 0, r.stderr);
 });
@@ -262,8 +279,12 @@ test('firewall resolves active task from .devteam/inflight/ when present — Wav
 
 test('firewall allows GB write to PLAN.md (block discipline is downstream)', () => {
   const repo = makeTempRepo();
+  const content = PLAN.replace(
+    '**Updated_At:** 2026-07-13T09:30:00Z',
+    '**Updated_At:** 2026-07-13T10:00:00Z'
+  );
   const r = runHook('territory-firewall.js',
-    { tool_input: { file_path: path.join(repo, 'PLAN.md'), content: 'x' } },
+    { tool_input: { file_path: path.join(repo, 'PLAN.md'), content } },
     { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
   assert.strictEqual(r.code, 0, r.stderr);
 });
@@ -565,6 +586,94 @@ test('Protected_Grants on an active task allow that path; a done task grant does
     { tool_input: { file_path: path.join(doneRepo, 'scripts/granted.py'), content: 'x' } },
     { CLAUDE_PROJECT_DIR: doneRepo, DEVTEAM_UNIT: 'GB', DEVTEAM_TASK: 'TASK-020' });
   assert.strictEqual(blocked.code, 2, blocked.stderr);
+});
+
+test('ORCH-authored grant inside Owned_Paths allows the write', () => {
+  const plan = PLAN.replace(
+    '**Owned_Paths:** lib/features/auth/**, test/auth/**',
+    '**Owned_Paths:** lib/features/auth/**, scripts/granted.py\n**Protected_Grants:** scripts/granted.py'
+  );
+  const repo = makeTempRepo({ plan });
+  const r = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'scripts/granted.py'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(r.code, 0, r.stderr);
+});
+
+test('grant outside Owned_Paths is ignored by the firewall', () => {
+  const plan = PLAN.replace(
+    '**Owned_Paths:** lib/features/auth/**, test/auth/**',
+    '**Owned_Paths:** lib/features/auth/**, test/auth/**\n**Protected_Grants:** CLAUDE.md, AGENTS.md'
+  );
+  const repo = makeTempRepo({ plan });
+  const claude = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'CLAUDE.md'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(claude.code, 2, claude.stderr);
+  assert.ok(claude.stderr.includes('protected path'), claude.stderr);
+  const agents = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'AGENTS.md'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(agents.code, 2, agents.stderr);
+});
+
+test('builder self-grant attempt on PLAN.md is denied in legacy mode', () => {
+  const repo = makeTempRepo();
+  const editGrant = runHook('territory-firewall.js',
+    { tool_input: {
+        file_path: path.join(repo, 'PLAN.md'),
+        old_string: '**Owned_Paths:** lib/features/auth/**, test/auth/**',
+        new_string: '**Owned_Paths:** lib/features/auth/**, test/auth/**\n**Protected_Grants:** CLAUDE.md',
+      } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(editGrant.code, 2, editGrant.stderr);
+  assert.ok(editGrant.stderr.includes('ORCH-only'), editGrant.stderr);
+
+  const editOwned = runHook('territory-firewall.js',
+    { tool_input: {
+        file_path: path.join(repo, 'PLAN.md'),
+        old_string: '**Owned_Paths:** lib/features/auth/**, test/auth/**',
+        new_string: '**Owned_Paths:** lib/features/auth/**, test/auth/**, CLAUDE.md',
+      } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(editOwned.code, 2, editOwned.stderr);
+
+  const writeGrant = PLAN.replace(
+    '**Owned_Paths:** lib/features/auth/**, test/auth/**',
+    '**Owned_Paths:** lib/features/auth/**, test/auth/**\n**Protected_Grants:** hooks/**'
+  );
+  const write = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'PLAN.md'), content: writeGrant } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(write.code, 2, write.stderr);
+
+  const multi = runHook('territory-firewall.js',
+    { tool_input: {
+        file_path: path.join(repo, 'PLAN.md'),
+        edits: [{
+          old_string: '**Owned_Paths:** lib/features/auth/**, test/auth/**',
+          new_string: '**Owned_Paths:** lib/features/auth/**, test/auth/**\n**Protected_Grants:** CLAUDE.md',
+        }],
+      } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(multi.code, 2, multi.stderr);
+});
+
+test('ORCH and interactive sessions may edit Protected_Grants and Owned_Paths', () => {
+  const repo = makeTempRepo();
+  const payload = {
+    tool_input: {
+      file_path: path.join(repo, 'PLAN.md'),
+      old_string: '**Owned_Paths:** lib/features/auth/**, test/auth/**',
+      new_string: '**Owned_Paths:** lib/features/auth/**, test/auth/**\n**Protected_Grants:** CLAUDE.md',
+    },
+  };
+  const orch = runHook('territory-firewall.js', payload,
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'ORCH' });
+  assert.strictEqual(orch.code, 0, orch.stderr);
+  const interactive = runHook('territory-firewall.js', payload,
+    { CLAUDE_PROJECT_DIR: repo });
+  assert.strictEqual(interactive.code, 0, interactive.stderr);
 });
 
 test('claim visible only in the main checkout is allowed; gateguard denials land there', () => {

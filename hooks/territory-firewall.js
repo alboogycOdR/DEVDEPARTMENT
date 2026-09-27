@@ -55,25 +55,33 @@ function main() {
 
   const mode = lib.controlMode();
 
-  // PLAN.md: legacy mode keeps today's behavior (block-level discipline
-  // stays downstream). Strict mode (Wave I): PLAN.md joins the protected
-  // set — the supervisor is the sole writer; builders report state via a
-  // devteam-control block instead.
+  // PLAN.md: strict mode — supervisor is the sole writer. Legacy mode
+  // still lets a builder edit its own block, but Protected_Grants and
+  // Owned_Paths are ORCH-only (a builder cannot self-grant a protected path).
   if (rel === 'PLAN.md') {
-    if (mode === 'legacy') return 0;
-    process.stderr.write(
-      `[territory-firewall] BLOCKED: PLAN.md is protected in control.mode=strict (Wave I). ` +
-      `The supervisor is the sole writer — emit a devteam-control block as the last thing ` +
-      `you print instead of editing PLAN.md directly. See docs/CONTROL.md.`
-    );
-    return 2;
+    if (mode === 'strict') {
+      process.stderr.write(
+        `[territory-firewall] BLOCKED: PLAN.md is protected in control.mode=strict (Wave I). ` +
+        `The supervisor is the sole writer — emit a devteam-control block as the last thing ` +
+        `you print instead of editing PLAN.md directly. See docs/CONTROL.md.`
+      );
+      return 2;
+    }
+    if (lib.builderChangedOrchOnlyFields(toolInput)) {
+      process.stderr.write(
+        `[territory-firewall] BLOCKED: Protected_Grants and Owned_Paths are ORCH-only fields. ` +
+        `A builder must not add or change those lines in PLAN.md.`
+      );
+      return 2;
+    }
+    return 0;
   }
 
   // PLAN.md and grants come from the main checkout, not this worktree (E-A.1).
   const planText = lib.readPlanText();
   const tasks = planText == null ? [] : lib.parsePlan(planText);
   const active = lib.sessionTasksFor(tasks, u);
-  const grantGlobs = active.flatMap(lib.protectedGrantsOf);
+  const grantGlobs = active.flatMap(lib.effectiveProtectedGrantsOf);
 
   // Hard-protected paths first. Permanent PROTECTED_EXCEPTIONS plus this
   // session's active-task Protected_Grants (a done task contributes none).

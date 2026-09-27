@@ -25,8 +25,12 @@ function repoRoot() {
  * `git rev-parse --git-common-dir` points at it, and its parent is the
  * checkout that holds the live PLAN.md / autopilot.json / .devteam.
  * Fallback is repoRoot() when git cannot answer (fixture repos, no git).
+ * Memoized per process and per repoRoot() so a hook that reads PLAN.md,
+ * autopilot.json and .devteam does not spawn git three times.
  */
-function mainRoot() {
+const _mainRootMemo = new Map();
+
+function computeMainRoot() {
   try {
     let out = execFileSync('git', ['-C', repoRoot(), 'rev-parse', '--git-common-dir'], {
       encoding: 'utf-8',
@@ -43,6 +47,14 @@ function mainRoot() {
   } catch (_e) {
     return repoRoot();
   }
+}
+
+function mainRoot() {
+  const key = repoRoot();
+  if (_mainRootMemo.has(key)) return _mainRootMemo.get(key);
+  const value = computeMainRoot();
+  _mainRootMemo.set(key, value);
+  return value;
 }
 
 /** autopilot.json and autopilot.local.json are human-session files (E-A.3). */
@@ -162,6 +174,32 @@ function protectedGrantsOf(task) {
   const status = (task.fields.Status || '').trim();
   if (!ACTIVE.has(status)) return [];
   return splitPathField(task.fields.Protected_Grants || '');
+}
+
+/**
+ * Port of validate_plan.grant_within_owned. Identical semantics:
+ * equal tokens pass; a more-specific grant passes when an owned glob
+ * covers it (`hooks/lib.js` under `hooks/**`); a wider grant fails
+ * (`scripts/**` is not inside `scripts/validate_plan.py`); a
+ * bare-wildcard grant fails; a bare-wildcard owned entry covers every grant.
+ */
+function grantWithinOwned(grant, owned) {
+  if (!Array.isArray(owned)) return false;
+  if (owned.includes(grant)) return true;
+  const gp = globPrefix(grant);
+  if (!gp) return false;
+  for (const entry of owned) {
+    const op = globPrefix(entry);
+    if (!op) return true;
+    if (gp === op || gp.startsWith(op + '/')) return true;
+  }
+  return false;
+}
+
+/** Active-task grants that actually sit inside that task's Owned_Paths. */
+function effectiveProtectedGrantsOf(task) {
+  const owned = ownedPathsOf(task);
+  return protectedGrantsOf(task).filter((g) => grantWithinOwned(g, owned));
 }
 
 /** Active tasks for a given unit. */
@@ -321,6 +359,73 @@ function readPlanText() {
   }
 }
 
+function firstString(obj, keys) {
+  if (!obj) return '';
+  for (const k of keys) {
+    if (typeof obj[k] === 'string') return obj[k];
+  }
+  return '';
+}
+
+function parsePlanLoose(text) {
+  const raw = text || '';
+  const src = /(?:^|\n)###\s+TASK-/.test(raw) ? raw : (`### TASK-SNIP\n${raw}`);
+  return parsePlan(src);
+}
+
+/** Canonical Owned_Paths / Protected_Grants values for before/after comparison. */
+function orchOnlySnapshot(text) {
+  return parsePlanLoose(text).map((t) => ({
+    id: t.task_id,
+    owned: ownedPathsOf(t).slice().sort().join('\n'),
+    grants: splitPathField(t.fields.Protected_Grants || '').slice().sort().join('\n'),
+  }));
+}
+
+function applyPlanEdits(original, edits) {
+  let text = original || '';
+  for (const e of edits || []) {
+    const oldS = firstString(e, ['old_string', 'old_str']);
+    const newS = firstString(e, ['new_string', 'new_str']);
+    if (!oldS) continue;
+    const idx = text.indexOf(oldS);
+    if (idx === -1) continue;
+    text = text.slice(0, idx) + newS + text.slice(idx + oldS.length);
+  }
+  return text;
+}
+
+/**
+ * True when a builder Edit/Write/MultiEdit of PLAN.md adds or changes a
+ * Protected_Grants or Owned_Paths field. Edit: old_string vs new_string.
+ * Write/MultiEdit: compare against the current main-checkout PLAN.md.
+ */
+function builderChangedOrchOnlyFields(toolInput) {
+  const oldSnippet = firstString(toolInput, ['old_string', 'old_str']);
+  const newSnippet = firstString(toolInput, ['new_string', 'new_str']);
+  const isMulti = Array.isArray(toolInput && toolInput.edits);
+  const isEdit = !isMulti && oldSnippet !== '';
+  const snap = (t) => JSON.stringify(orchOnlySnapshot(t));
+
+  if (isEdit) {
+    return snap(oldSnippet) !== snap(newSnippet);
+  }
+
+  const current = readPlanText() || '';
+  if (isMulti) {
+    if (snap(current) !== snap(applyPlanEdits(current, toolInput.edits))) return true;
+    for (const e of toolInput.edits) {
+      const o = firstString(e, ['old_string', 'old_str']);
+      const n = firstString(e, ['new_string', 'new_str']);
+      if (snap(o) !== snap(n)) return true;
+    }
+    return false;
+  }
+
+  const written = firstString(toolInput, ['content', 'file_text', 'file_content']);
+  return snap(current) !== snap(written);
+}
+
 /** Secret patterns (superset of ECC's sk-/ghp_/AKIA idea, tuned to reduce noise). */
 const SECRET_PATTERNS = [
   { name: 'Anthropic/OpenAI-style API key', re: /\bsk-[A-Za-z0-9_-]{16,}\b/ },
@@ -363,6 +468,7 @@ function filePathOf(toolInput) {
 
 module.exports = {
   repoRoot, mainRoot, unit, readStdinJson, relPath, parsePlan, ownedPathsOf, protectedGrantsOf,
+  grantWithinOwned, effectiveProtectedGrantsOf, builderChangedOrchOnlyFields,
   activeTasksFor, sessionTasksFor,
   globPrefix, pathInGlob, pathInAnyGlob, PROTECTED_FOR_BUILDERS, PROTECTED_EXCEPTIONS, pathInAnyException, findSecrets,
   writtenContentOf, filePathOf, EMPTY, ACTIVE, controlMode, activeTaskIdFor, knownUnits,
