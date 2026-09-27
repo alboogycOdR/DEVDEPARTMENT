@@ -2,7 +2,7 @@
 plan_version: 6.2
 last_updated: 2026-09-27T14:01:11Z
 overall_status: in_progress
-orchestrator_notes: "Wave E in progress (plan v6.2). OWNER DECISION 2026-09-27: Codex-only roster — every open task is Assigned_To CX; S5 and GB receive no work (S5 stopped mid-TASK-028; its WIP salvaged to .devteam/salvage/, local). Work is now serial on one builder. Done: 023, 024, 025. Active: 026 (CX, finishing full-suite run). Rework: 027 (security: builder self-grant via Protected_Grants) on task/TASK-027-cx. Next critical path: 028 -> 029 -> 030 -> 031. ORCH procedure change: full suites re-run on master after every real merge (e8fa1f7 fixed a red master that a pre-merge temp-worktree check could not see). Reviews on claude-opus-5-5. Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md. Decompose record: docs/handovers/2026-09-26-wave-e-decompose.md."
+orchestrator_notes: "Wave E in progress (plan v6.2). OWNER DECISION 2026-09-27: GB and CX build; S5 receives no work. GB has its original tasks back (027 rework, 032, 033, 034, 036, 037, 042); S5's former tasks (028, 030, 041, 043) are CX's (S5 stopped mid-TASK-028; its WIP salvaged to .devteam/salvage/, local). Two builders in parallel. Done: 023, 024, 025. Active: 026 (CX, finishing full-suite run). Rework: 027 (GB; security: builder self-grant via Protected_Grants) on task/TASK-027-gb. Next critical path: 028 -> 029 -> 030 -> 031. ORCH procedure change: full suites re-run on master after every real merge (e8fa1f7 fixed a red master that a pre-merge temp-worktree check could not see). Reviews on claude-opus-5-5. Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md. Decompose record: docs/handovers/2026-09-26-wave-e-decompose.md."
 ---
 
 # Project Plan
@@ -968,7 +968,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 ### TASK-027
 **Title:** Wave E E-A — hooks resolve main checkout; DEVTEAM_TASK; human-only config; Protected_Grants field
 **Status:** in_progress
-**Assigned_To:** CX
+**Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §3 (E-A.1–4)
 **Owned_Paths:** hooks/**, tests/test_gateguard.js, scripts/validate_plan.py, tests/test_validate_plan.py, scripts/dispatch.sh, scripts/dispatch.ps1
@@ -980,7 +980,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [x] A write to autopilot.json with `DEVTEAM_DELEGATED=1` is denied, and allowed with neither variable set (§3 Acceptance)
 - [x] `Protected_Grants` outside Owned_Paths fails validate_plan; a grant on a done task no longer permits writes (E-A.4)
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** task/TASK-027-cx
+**Branch:** task/TASK-027-gb
 **Started_At:** 2026-09-26T14:56:30Z
 **Progress_Notes:**
 - [2026-09-26T14:58:30Z] [GB] Preflight (c8b9872 filesystem check):
@@ -1008,10 +1008,10 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Test_Evidence:**
 - [2026-09-26T15:13:21Z] [GB] `node hooks/run-tests.js` → 42 passed, 0 failed (includes real-worktree claim-only-in-main allow + denial counter in main .devteam/gateguard/denials, DEVTEAM_TASK=TASK-332 not TASK-338, DEVTEAM_DELEGATED=1 deny / neither-var allow, done-task grant denied). `node tests/test_gateguard.js` → 39 passed, 0 failed. `python -m pytest tests/test_validate_plan.py -q` → 23 passed. `python -m pytest -q` → 1064 passed, 1 failed in 163.47s: tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered — tests/test_test_env_scrub.py is on master and not in sync-manifest.json framework_owned. Commit 8a5b61c is 12 files under Owned_Paths plus dossiers/TASK-027.md. sync-manifest.json was not touched; it is outside Owned_Paths.
 **Review_Findings:**
-- [2026-09-27T14:00:54Z] [ORCH] REWORK (reviewer: claude-opus-5-5) — reassigned GB -> CX (owner decision 2026-09-27: Codex-only roster); continue on branch task/TASK-027-cx (GB's 8a5b61c renamed, history kept). Verified: territory clean (12 Owned_Paths files + dossier); merged onto master in a temp worktree: pytest 1065 passed, hooks 42/0, gateguard 39/0; mainRoot(), DEVTEAM_TASK narrowing, human-only config and grant expiry all correct and tested. GB also correctly found a master defect (unregistered test file), fixed by ORCH in e8fa1f7. REQUIRED (security): Protected_Grants moved grants from a protected code file (hooks/lib.js) into PLAN.md, which builders can edit in legacy mode, and the firewall applies them straight from the live file with no subset check — a builder can add `**Protected_Grants:** CLAUDE.md` (or hooks/**) to its own block and immediately write that path. Fix both halves: (1) the firewall applies a grant only if it lies within that same task's Owned_Paths (port validate_plan.grant_within_owned to lib.js; identical semantics, tested against the same cases); (2) in legacy mode the firewall denies a builder write to PLAN.md that adds or changes a `**Protected_Grants:**` or `**Owned_Paths:**` line (Edit: compare old_string vs new_string; Write/MultiEdit: compare against the current main-checkout PLAN.md), with a clear message that these fields are ORCH-only. Tests: builder self-grant attempt denied; ORCH-authored grant inside Owned_Paths allows the write; grant outside Owned_Paths ignored by the firewall; ORCH/interactive edits to those fields unaffected. Also: memoize mainRoot() per process (it spawns git on every call, several times per hook); re-run both full suites and tick criterion 5 with counts (master is green since e8fa1f7).
+- [2026-09-27T14:00:54Z] [ORCH] REWORK (reviewer: claude-opus-5-5) — stays with GB (owner decision 2026-09-27: GB and CX build, S5 does not); continue on branch task/TASK-027-gb. Verified: territory clean (12 Owned_Paths files + dossier); merged onto master in a temp worktree: pytest 1065 passed, hooks 42/0, gateguard 39/0; mainRoot(), DEVTEAM_TASK narrowing, human-only config and grant expiry all correct and tested. GB also correctly found a master defect (unregistered test file), fixed by ORCH in e8fa1f7. REQUIRED (security): Protected_Grants moved grants from a protected code file (hooks/lib.js) into PLAN.md, which builders can edit in legacy mode, and the firewall applies them straight from the live file with no subset check — a builder can add `**Protected_Grants:** CLAUDE.md` (or hooks/**) to its own block and immediately write that path. Fix both halves: (1) the firewall applies a grant only if it lies within that same task's Owned_Paths (port validate_plan.grant_within_owned to lib.js; identical semantics, tested against the same cases); (2) in legacy mode the firewall denies a builder write to PLAN.md that adds or changes a `**Protected_Grants:**` or `**Owned_Paths:**` line (Edit: compare old_string vs new_string; Write/MultiEdit: compare against the current main-checkout PLAN.md), with a clear message that these fields are ORCH-only. Tests: builder self-grant attempt denied; ORCH-authored grant inside Owned_Paths allows the write; grant outside Owned_Paths ignored by the firewall; ORCH/interactive edits to those fields unaffected. Also: memoize mainRoot() per process (it spawns git on every call, several times per hook); re-run both full suites and tick criterion 5 with counts (master is green since e8fa1f7).
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-27T14:00:54Z
+**Updated_At:** 2026-09-27T14:03:08Z
 
 ### TASK-028
 **Title:** Wave E E-B1 — review ledger (head-SHA keyed), backoff, review.lock, markers, atomic state + multi-tick harness
@@ -1125,7 +1125,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 ### TASK-032
 **Title:** Wave E E-D — plan archive, notes cap, generated REVIEW tallies, machine-readable REVIEW.md
 **Status:** pending
-**Assigned_To:** CX
+**Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §6 (E-D)
 **Owned_Paths:** scripts/plan_archive.py (new), tests/test_plan_archive.py (new), scripts/team_stats.py, tests/test_team_stats.py (new), scripts/maintenance.py, tests/test_maintenance.py, scripts/validate_plan.py, tests/test_validate_plan.py, tests/fixtures/plan_archive/** (new)
@@ -1145,12 +1145,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-27T14:00:33Z
+**Updated_At:** 2026-09-27T14:03:08Z
 
 ### TASK-033
 **Title:** Wave E E-E — plan_commit stamps Updated_At from the clock; tests isolated from the live checkout
 **Status:** pending
-**Assigned_To:** CX
+**Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H5, §7 (E-E)
 **Owned_Paths:** scripts/plan_commit.sh, scripts/plan_commit.ps1, tests/test_plan_commit.py
@@ -1169,12 +1169,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-27T14:00:33Z
+**Updated_At:** 2026-09-27T14:03:08Z
 
 ### TASK-034
 **Title:** Wave E E-F1 — plan_commit compare-and-swap, idempotent claim, legacy-mode blackboard guard
 **Status:** pending
-**Assigned_To:** CX
+**Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H4, §8 (E-F.1, E-F.2, E-F.6)
 **Owned_Paths:** scripts/plan_commit.sh, scripts/plan_commit.ps1, tests/test_plan_commit.py, scripts/plan_guard.py, tests/test_plan_guard.py
@@ -1195,7 +1195,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-27T14:00:33Z
+**Updated_At:** 2026-09-27T14:03:08Z
 
 ### TASK-035
 **Title:** Wave E E-F2 — verified claim, pinned base, dirty-PLAN refusal, strict Owned_Paths grammar, strict-by-default onboarding
@@ -1225,7 +1225,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 ### TASK-036
 **Title:** Wave E E-G — bookkeeping push policy (every | batch | merge_only)
 **Status:** pending
-**Assigned_To:** CX
+**Assigned_To:** GB
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §9 (E-G)
 **Owned_Paths:** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/control.py, tests/test_control.py, tests/test_plan_commit.py, scripts/push_policy.py (new), tests/test_push_policy.py (new), scripts/supervisor.py
@@ -1246,12 +1246,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-27T14:00:33Z
+**Updated_At:** 2026-09-27T14:03:08Z
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
 **Status:** pending
-**Assigned_To:** CX
+**Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.1–3, E-H.5)
 **Owned_Paths:** scripts/dispatch.ps1, scripts/worktree.ps1, .github/workflows/** (new), .gitattributes, tests/test_dispatch_worktree.py, tests/test_worktree_ps1.py (new)
@@ -1270,7 +1270,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-27T14:00:33Z
+**Updated_At:** 2026-09-27T14:03:08Z
 
 ### TASK-038
 **Title:** Wave E E-H2 — CLI launch smoke test in harness-audit
@@ -1373,7 +1373,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 ### TASK-042
 **Title:** Wave E E-J3 — review rules into the command file, clock-stamped verdicts, frontmatter freshness, untracked-work detector
 **Status:** pending
-**Assigned_To:** CX
+**Assigned_To:** GB
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §12 (E-J.4, E-J.7, E-J.8), §6 (review timestamp bullet)
 **Owned_Paths:** scripts/plan_health.py (new), tests/test_plan_health.py (new), .claude/commands/devteam-review.md, .claude/commands/devteam-status.md, .claude/commands/devteam-decompose.md, hooks/session-start.js, autopilot.json
@@ -1392,7 +1392,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-27T14:00:33Z
+**Updated_At:** 2026-09-27T14:03:08Z
 
 ### TASK-043
 **Title:** Wave E exit — scripted exit-criteria scenario (10 × --once then accelerated 12 h --loop)
