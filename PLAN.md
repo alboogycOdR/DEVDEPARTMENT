@@ -967,7 +967,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-027
 **Title:** Wave E E-A — hooks resolve main checkout; DEVTEAM_TASK; human-only config; Protected_Grants field
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §3 (E-A.1–4)
@@ -979,7 +979,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [x] A session with `DEVTEAM_TASK=TASK-332` reports TASK-332 even when PLAN.md's first in-progress block for that unit is another task (§3 Acceptance)
 - [x] A write to autopilot.json with `DEVTEAM_DELEGATED=1` is denied, and allowed with neither variable set (§3 Acceptance)
 - [x] `Protected_Grants` outside Owned_Paths fails validate_plan; a grant on a done task no longer permits writes (E-A.4)
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-027-gb
 **Started_At:** 2026-09-26T14:56:30Z
 **Progress_Notes:**
@@ -1003,15 +1003,36 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   FILE   scripts/dispatch.ps1  -> exists, 695 line(s), 42411 bytes
   All six entries exist (hooks/** is 9 files; no NEW, no empty glob). Next: mainRoot() for PLAN.md/autopilot.json/.devteam, DEVTEAM_TASK + DEVTEAM_DELEGATED, human-only autopilot writes, Protected_Grants subset check.
 - [2026-09-26T15:13:21Z] [GB] E-A.1–4 on task/TASK-027-gb @ 8a5b61c. mainRoot() via git-common-dir; DEVTEAM_TASK pinned only when unique (two active tasks stay unpinned so H11 is not cemented); DEVTEAM_DELEGATED=1; human-only autopilot.json and autopilot.local.json; Protected_Grants subset of Owned_Paths, ignored once the task is not active. Node suite green. Python suite has one pre-existing master failure outside this territory (tests/test_test_env_scrub.py not in sync-manifest.json — the registration TASK-024's approval asked ORCH to add). Fifth acceptance box left open for that reason. Ready for review.
+- [2026-09-27T14:14:14Z] [GB] Resumed TASK-027 rework on task/TASK-027-gb. Merged master (e8fa1f7 suite-green). Preflight (c8b9872 filesystem check):
+[preflight] TASK-027 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-grok-DEVDEPARTMENT
+[preflight] 6 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+  GLOB   hooks/**  -> 9 file(s):
+           hooks/gateguard.js
+           hooks/hooks.json
+           hooks/lib.js
+           hooks/pre-compact.js
+           hooks/run-tests.js
+           hooks/secret-scan.js
+           hooks/session-end.js
+           hooks/session-start.js
+           hooks/territory-firewall.js
+  FILE   tests/test_gateguard.js  -> exists, 223 line(s), 9241 bytes
+  FILE   scripts/validate_plan.py  -> exists, 474 line(s), 20404 bytes
+  FILE   tests/test_validate_plan.py  -> exists, 241 line(s), 9609 bytes
+  FILE   scripts/dispatch.sh  -> exists, 448 line(s), 27949 bytes
+  FILE   scripts/dispatch.ps1  -> exists, 718 line(s), 43623 bytes
+- [2026-09-27T14:14:14Z] [GB] Rework @ dde56fb: grantWithinOwned ported to lib.js; firewall applies only in-Owned_Paths grants; legacy builder PLAN.md Edit/Write/MultiEdit that adds/changes Protected_Grants or Owned_Paths is denied (ORCH-only message); mainRoot() memoized per process per repoRoot(). Submitting needs_review.
 **Artifacts:**
 - [2026-09-26T15:13:21Z] [GB] hooks/lib.js, hooks/territory-firewall.js, hooks/session-start.js, hooks/pre-compact.js, hooks/session-end.js, hooks/gateguard.js, hooks/run-tests.js, scripts/validate_plan.py, scripts/dispatch.sh, scripts/dispatch.ps1, tests/test_validate_plan.py, tests/test_gateguard.js, dossiers/TASK-027.md (8a5b61c)
+- [2026-09-27T14:14:14Z] [GB] hooks/lib.js, hooks/territory-firewall.js, hooks/run-tests.js, tests/test_validate_plan.py, dossiers/TASK-027.md (dde56fb)
 **Test_Evidence:**
 - [2026-09-26T15:13:21Z] [GB] `node hooks/run-tests.js` → 42 passed, 0 failed (includes real-worktree claim-only-in-main allow + denial counter in main .devteam/gateguard/denials, DEVTEAM_TASK=TASK-332 not TASK-338, DEVTEAM_DELEGATED=1 deny / neither-var allow, done-task grant denied). `node tests/test_gateguard.js` → 39 passed, 0 failed. `python -m pytest tests/test_validate_plan.py -q` → 23 passed. `python -m pytest -q` → 1064 passed, 1 failed in 163.47s: tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered — tests/test_test_env_scrub.py is on master and not in sync-manifest.json framework_owned. Commit 8a5b61c is 12 files under Owned_Paths plus dossiers/TASK-027.md. sync-manifest.json was not touched; it is outside Owned_Paths.
+- [2026-09-27T14:14:14Z] [GB] `node hooks/run-tests.js` → 47 passed, 0 failed (builder self-grant denied; ORCH-authored in-Owned_Paths grant allows write; grant outside Owned_Paths ignored; ORCH/interactive field edits allowed; grantWithinOwned cases). `node tests/test_gateguard.js` → 39 passed, 0 failed. `python -m pytest tests/test_validate_plan.py -q` → 24 passed. `python -m pytest -q` → 1066 passed in 230.11s.
 **Review_Findings:**
 - [2026-09-27T14:00:54Z] [ORCH] REWORK (reviewer: claude-opus-5-5) — stays with GB (owner decision 2026-09-27: GB and CX build, S5 does not); continue on branch task/TASK-027-gb. Verified: territory clean (12 Owned_Paths files + dossier); merged onto master in a temp worktree: pytest 1065 passed, hooks 42/0, gateguard 39/0; mainRoot(), DEVTEAM_TASK narrowing, human-only config and grant expiry all correct and tested. GB also correctly found a master defect (unregistered test file), fixed by ORCH in e8fa1f7. REQUIRED (security): Protected_Grants moved grants from a protected code file (hooks/lib.js) into PLAN.md, which builders can edit in legacy mode, and the firewall applies them straight from the live file with no subset check — a builder can add `**Protected_Grants:** CLAUDE.md` (or hooks/**) to its own block and immediately write that path. Fix both halves: (1) the firewall applies a grant only if it lies within that same task's Owned_Paths (port validate_plan.grant_within_owned to lib.js; identical semantics, tested against the same cases); (2) in legacy mode the firewall denies a builder write to PLAN.md that adds or changes a `**Protected_Grants:**` or `**Owned_Paths:**` line (Edit: compare old_string vs new_string; Write/MultiEdit: compare against the current main-checkout PLAN.md), with a clear message that these fields are ORCH-only. Tests: builder self-grant attempt denied; ORCH-authored grant inside Owned_Paths allows the write; grant outside Owned_Paths ignored by the firewall; ORCH/interactive edits to those fields unaffected. Also: memoize mainRoot() per process (it spawns git on every call, several times per hook); re-run both full suites and tick criterion 5 with counts (master is green since e8fa1f7).
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-27T14:03:08Z
+**Updated_By:** GB
+**Updated_At:** 2026-09-27T14:14:14Z
 
 ### TASK-028
 **Title:** Wave E E-B1 — review ledger (head-SHA keyed), backoff, review.lock, markers, atomic state + multi-tick harness
