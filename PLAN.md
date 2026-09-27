@@ -2,7 +2,7 @@
 plan_version: 6.2
 last_updated: 2026-09-27T14:01:11Z
 overall_status: in_progress
-orchestrator_notes: "Wave E in progress (plan v6.2). OWNER DECISION 2026-09-27: GB and CX build; S5 receives no work. GB has its original tasks back (027 rework, 032, 033, 034, 036, 037, 042); S5's former tasks (028, 030, 041, 043) are CX's (S5 stopped mid-TASK-028; its WIP salvaged to .devteam/salvage/, local). Two builders in parallel. Done: 023, 024, 025. Active: 026 (CX, finishing full-suite run). Rework: 027 (GB; security: builder self-grant via Protected_Grants) on task/TASK-027-gb. Next critical path: 028 -> 029 -> 030 -> 031. ORCH procedure change: full suites re-run on master after every real merge (e8fa1f7 fixed a red master that a pre-merge temp-worktree check could not see). Reviews on claude-opus-5-5. Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md. Decompose record: docs/handovers/2026-09-26-wave-e-decompose.md."
+orchestrator_notes: "Wave E in progress (plan v6.2). OWNER DECISION 2026-09-27: GB and CX build; S5 receives no work. GB has its original tasks back (027 rework, 032, 033, 034, 036, 037, 042); S5's former tasks (028, 030, 041, 043) are CX's (S5 stopped mid-TASK-028; its WIP salvaged to .devteam/salvage/, local). Two builders in parallel. Done: 023, 024, 025. Active: 026 (CX, finishing full-suite run). Rework: 027 (GB; security: builder self-grant via Protected_Grants) on task/TASK-027-gb. Next critical path: 028 -> 029 -> 030 -> 031. ORCH merge procedure: register any new framework files in sync-manifest.json, then re-run full suites on master after every real merge (e8fa1f7 fixed a red master that a pre-merge temp-worktree check could not see). Reviews on claude-opus-5-5. Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md. Decompose record: docs/handovers/2026-09-26-wave-e-decompose.md."
 ---
 
 # Project Plan
@@ -931,7 +931,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-026
 **Title:** Wave E E-0d — no-manifest adopt path (sync_from_pack --adopt)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §2 (E-0.6)
@@ -967,10 +967,11 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-27T13:57:57Z] [CX] `node hooks/run-tests.js` — 37 passed, 0 failed.
 - [2026-09-27T13:57:57Z] [CX] `python scripts/sync_from_pack.py --pack . --project <tmp copy of rwc-mobile-connect> --adopt --dry-run` — exit 2 as expected; 9 `diverged`, 107 absent-layer proposed adds; original RWC checkout status was unchanged (pre-existing dirty state retained).
 - [2026-09-27T14:20:41Z] [CX] After merging master: `python -m pytest -q` — 1062 passed, 1 failed in 191.27s; sole failure `TestEmptyHuskReclaim::test_dotfile_only_directory_is_refused_by_dispatch_ps1` in tests/test_dispatch_worktree.py (outside territory). `node hooks/run-tests.js` — 37 passed, 0 failed.
-**Review_Findings:** —
+**Review_Findings:**
+- [2026-09-27T14:40:22Z] [ORCH] APPROVED first-pass (reviewer: claude-opus-5-5); the earlier block was Codex-environment-specific, not a defect. Territory clean (sync_from_pack.py, tests/test_sync_adopt.py). --adopt never copies a framework file; --apply writes only the manifest (role: project + per-file matches vX/diverged/absent records) and the version stamp; absent layers stay checklist-only; real rwc tmp-copy dry run: 9 diverged, 107 proposed adds, original repo untouched. Merged-tree check: pytest 1068, hooks 47/0, gateguard 39/0. Post-merge on master: 1 failure — the new tests/test_sync_adopt.py was unregistered in sync-manifest.json (branch-aware check cannot see it pre-merge); ORCH registered it at merge -> master 1068 passed. Non-blocking (backlog): fingerprinting runs `git show` per historical commit per file — a blob-hash lookup (git hash-object + rev-list --objects) would be far cheaper; matching is byte-exact, so a CRLF working copy of an LF-stored file reads as diverged — normalise line endings before comparing. Merged --no-ff 8f6f239; branch deleted.
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-09-27T14:27:38Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-27T14:40:22Z
 
 ### TASK-027
 **Title:** Wave E E-A — hooks resolve main checkout; DEVTEAM_TASK; human-only config; Protected_Grants field

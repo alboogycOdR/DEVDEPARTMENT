@@ -122,7 +122,8 @@
     "scripts/status_digest.py",
     "scripts/test_env_scrub.py",
     "tests/test_test_env_scrub.py",
-    "scripts/autopilot-tick.ps1"
+    "scripts/autopilot-tick.ps1",
+    "tests/test_sync_adopt.py"
   ],
   "project_owned": [
     "PLAN.md",
