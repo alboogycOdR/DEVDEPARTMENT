@@ -270,6 +270,14 @@ def test_judgment_model_default_is_opus():
     assert DEFAULT_CONFIG["judgment_model"] == "claude-opus-4-8"
 
 
+def test_judgment_prompt_is_explicit_and_never_starts_with_a_slash():
+    for command, args in (("devteam-review", "Review only TASK-001."),
+                          ("devteam-status", "Triage TASK-001.")):
+        prompt = sup.judgment_prompt(command, args)
+        assert prompt.startswith(f"Read .claude/commands/{command}.md")
+        assert not prompt.startswith("/")
+
+
 def test_triage_unblock_uses_judgment_model(monkeypatch):
     """Scope triage is architectural judgment — must run on the judgment_model
     (opus-4-8), never the S5 builder's own model."""
@@ -346,8 +354,8 @@ class TestDispatchCmdCwdIndependence:
             def poll(self):
                 return None
 
-        def fake_popen(cmd, shell=True, cwd=None):
-            launched.append(cmd)
+        def fake_popen(cmd, shell=True, cwd=None, env=None):
+            launched.append((cmd, env))
             return _Proc()
 
         monkeypatch.setattr(sup.subprocess, "Popen", fake_popen)
@@ -361,7 +369,8 @@ class TestDispatchCmdCwdIndependence:
             now=datetime(2026, 8, 5, tzinfo=timezone.utc), inflight=inflight,
         )
         assert len(launched) == 1
-        assert "CX" in launched[0]
+        assert "CX" in launched[0][0]
+        assert launched[0][1]["DEVTEAM_DELEGATED"] == "1"
 
 
 class _FinishedDispatch:

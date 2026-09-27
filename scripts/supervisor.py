@@ -19,6 +19,7 @@ Config: autopilot.json in repo root (created with defaults on first run).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import queue
@@ -98,8 +99,7 @@ DEFAULT_CONFIG = {
     "max_dispatch_failures": 2,
     "digest_hours": 4,
     "notify_channels": ["console", "file"],
-    # review uses sonnet-5 per ORCH model discipline table (CLAUDE.md 1020f7a)
-    "review_cmd": "claude -p \"/devteam-review\" --model claude-opus-4-8 --dangerously-skip-permissions",
+    "review_cmd": "claude -p \"Read .claude/commands/devteam-review.md and execute the review workflow end-to-end now for every task with Status: needs_review.\" --model claude-opus-4-8 --dangerously-skip-permissions",
     # Model for the autopilot's OTHER headless judgment calls (scoped /approve
     # reviews, blocked-task triage). One key, consumed everywhere, so the
     # discipline table in CLAUDE.md never has to be hunted down across
@@ -108,6 +108,11 @@ DEFAULT_CONFIG = {
     # (see CLAUDE.md "ORCH model discipline" for the full decision record).
     "judgment_model": "claude-opus-4-8",
     "review": {"max_backoff_minutes": 120, "lock_stale_minutes": 90},
+    "escalation": {"renotify_hours": {"P2": 4, "P1": 1}},
+    "max_triage_attempts": 1,
+    # Existing projects do not acquire content-change notifications merely by
+    # updating the pack; the on-disk digest remains available either way.
+    "status_digest": {"send": False},
     "dispatch_cmd": _DISPATCH_DEFAULTS,
     "builders": ["GB", "CX", "S5"],
     "autonomy_level": 2,
@@ -191,8 +196,10 @@ class RuntimeState:
     # Token-efficiency pass (ported from oikonomos a14f8976). A review is a full Opus session; without
     # memory the supervisor relaunched one per needs_review task on every tick.
     review_ledger: dict[str, dict] = field(default_factory=dict)    # task_id -> {key, done, fails, retry_after}
-    escalated: dict[str, str] = field(default_factory=dict)         # escalation key -> UTC ts of last P2 notify
-    triage_counts: dict[str, int] = field(default_factory=dict)     # task_id -> MISSING_DEPENDENCY triage attempts
+    escalated: dict[str, str] = field(default_factory=dict)         # escalation key -> UTC ts of last notify
+    escalation_held: dict[str, str] = field(default_factory=dict)   # escalation key -> UTC ts of last held marker
+    halt_mtime: str = ""                                             # STOP file mtime already logged
+    triage_counts: dict[str, dict[str, int]] = field(default_factory=dict)  # task_id -> reason -> attempts
     last_status_digest_ts: str = ""                                 # scripted status digest throttle
     _corrupt_note: str = field(default="", repr=False, compare=False)
 
@@ -258,22 +265,79 @@ def review_backoff_minutes(fails: int, cfg: dict) -> float:
 _DIGITS = re.compile(r"\d+")
 
 
+def _reason_prefix(detail: str) -> str:
+    match = re.search(r"(?:blocked:\s*|repeated\s+)([A-Z][A-Z_]+)", detail)
+    if match:
+        return match.group(1)
+    for reason in ("SPEC_AMBIGUITY", "OWNERSHIP_CONFLICT", "MISSING_DEPENDENCY", "TOOLING_FAILURE"):
+        if reason in detail:
+            return reason
+    return "OTHER"
+
+
 def escalation_key(action: "Action") -> str:
-    """Stable identity of a P2 escalation: task plus its message with digits masked, so a counter
-    or a minute count changing does not make the same problem look new."""
-    return f"{action.task_id or '-'}|{_DIGITS.sub('#', action.detail[:70])}"
+    """Stable H1 identity: kind, task, reason and digit-masked detail."""
+    return "|".join((action.kind, action.task_id or "-", _reason_prefix(action.detail),
+                     _DIGITS.sub("#", action.detail)))
+
+
+def _renotify_hours(action: "Action", cfg: dict) -> float:
+    values = (cfg.get("escalation") or {}).get("renotify_hours", {})
+    fallback = 1 if action.kind == "ESCALATE_P1" else 4
+    if isinstance(values, dict):
+        return float(values.get("P1" if action.kind == "ESCALATE_P1" else "P2", fallback))
+    return float(values or fallback)
 
 
 def _dedupe_escalations(actions: list, state: "RuntimeState", cfg: dict, now: datetime) -> list:
-    hours = float(cfg.get("escalate_repeat_hours", 24))
+    """Apply H1's durable escalation ledger and emit one held marker per hold period."""
     out = []
+    active = set()
     for a in actions:
-        if a.kind == "ESCALATE_P2":
+        if a.kind in ("ESCALATE_P1", "ESCALATE_P2"):
+            key = escalation_key(a)
+            active.add(key)
             last = _parse_ts(state.escalated.get(escalation_key(a), ""))
-            if last is not None and (now - last).total_seconds() < hours * 3600:
+            hold_seconds = _renotify_hours(a, cfg) * 3600
+            if last is not None and (now - last).total_seconds() < hold_seconds:
+                held = _parse_ts(state.escalation_held.get(key, ""))
+                if held is None or (now - held).total_seconds() >= hold_seconds:
+                    out.append(Action("ESCALATION_HELD", f"{a.kind} key={key}"))
+                    state.escalation_held[key] = now.strftime(UTC_FMT)
                 continue
         out.append(a)
+    # Conditions no longer selected this tick are gone; their next appearance is new.
+    for key in (set(state.escalated) - active):
+        if key.startswith("STATUS_DIGEST|"):
+            continue
+        state.escalated.pop(key, None)
+        state.escalation_held.pop(key, None)
     return out
+
+
+def judgment_prompt(command: str, args: str = "") -> str:
+    """One safe prompt form for all supervisor-launched judgment sessions."""
+    suffix = f" {args.strip()}" if args.strip() else ""
+    return f"Read .claude/commands/{command}.md and execute it end-to-end now.{suffix}"
+
+
+def _triage_attempt(state: "RuntimeState", task_id: str, reason: str) -> int:
+    counts = state.triage_counts.setdefault(task_id, {})
+    # Gracefully migrate state written by the short-lived pre-H2 shape.
+    if not isinstance(counts, dict):
+        counts = {"MISSING_DEPENDENCY": int(counts)}
+        state.triage_counts[task_id] = counts
+    if reason == "OWNERSHIP_CONFLICT" and reason not in counts:
+        # v4.8 wrote this one category separately; preserve its retry budget
+        # when loading an existing supervisor state file.
+        counts[reason] = int(state.conflict_counts.get(task_id, 0))
+    return int(counts.get(reason, 0))
+
+
+def _triage_ceiling(reason: str, cfg: dict) -> int:
+    if reason == "MISSING_DEPENDENCY":
+        return 2
+    return int(cfg.get("max_triage_attempts", 1))
 
 
 def is_muted(state: "RuntimeState", now: datetime) -> bool:
@@ -318,6 +382,7 @@ def _active_builders(cfg: dict) -> list:
 
 def decide(plan_text: str, state: RuntimeState, cfg: dict,
            now: datetime | None = None, stop_file_exists: bool = False,
+           stop_file_mtime: str = "",
            dossier_heartbeats: dict[str, datetime] | None = None,
            usage: dict | None = None,
            stagnation_signal: dict[str, dict] | None = None,
@@ -352,7 +417,7 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
     actions: list[Action] = []
 
     if stop_file_exists:
-        return [Action("HALT", "STOP file present in repo root — halting per safety rail #3")]
+        return [Action("HALT", f"STOP file present in repo root — halting per safety rail #3 mtime={stop_file_mtime}")]
 
     # 1. Protocol legality gate
     rep: Report = validate(plan_text, control_mode)
@@ -388,38 +453,35 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
         oldest = min(review_candidates, key=lambda task: _parse_ts(task.get("Updated_At")) or far_future)
         actions.append(Action("REVIEW", f"{oldest.task_id} awaiting review", task_id=oldest.task_id))
 
-    # 3. Blocked triage
+    # 3. Blocked triage. H2 owns a separate counter per reason, never the
+    # stale-heartbeat counter: they describe different retry domains.
     for t in real:
         if t.get("Status") != "blocked":
             continue
         reason = t.get("Blocked_Reason")
+        prefix = _reason_prefix(reason)
         if reason.startswith("SPEC_AMBIGUITY"):
             actions.append(Action("ESCALATE_P2", f"{t.task_id} blocked: SPEC_AMBIGUITY — human answer needed",
                                   task_id=t.task_id))
-        elif reason.startswith("OWNERSHIP_CONFLICT"):
-            n = state.conflict_counts.get(t.task_id, 0)
-            if n >= 1:
+        elif prefix in ("OWNERSHIP_CONFLICT", "MISSING_DEPENDENCY", "TOOLING_FAILURE"):
+            n = _triage_attempt(state, t.task_id, prefix)
+            ceiling = _triage_ceiling(prefix, cfg)
+            if n >= ceiling:
                 actions.append(Action("ESCALATE_P2",
-                                      f"{t.task_id} blocked: repeated OWNERSHIP_CONFLICT — territory design needs human eyes",
+                                      f"{t.task_id} blocked: {prefix} unresolved after {n} triage attempts — needs human eyes",
                                       task_id=t.task_id))
             else:
                 actions.append(Action("TRIAGE_UNBLOCK",
-                                      f"{t.task_id}: ORCH to re-carve territories and unblock (attempt 1)",
+                                      f"{t.task_id} blocked: {prefix} triage attempt {n + 1}",
                                       task_id=t.task_id))
-        elif reason.startswith("MISSING_DEPENDENCY"):
-            if state.triage_counts.get(t.task_id, 0) >= 2:
-                actions.append(Action("ESCALATE_P2",
-                                      f"{t.task_id} blocked: MISSING_DEPENDENCY unresolved after 2 triage attempts - needs human eyes",
-                                      task_id=t.task_id))
-            else:
-                actions.append(Action("TRIAGE_UNBLOCK", f"{t.task_id}: ORCH to re-sequence dependencies",
-                                      task_id=t.task_id))
-        elif reason.startswith("TOOLING_FAILURE"):
-            n = state.stale_resets.get(t.task_id, 0)
-            kind = "ESCALATE_P2" if n >= 1 else "TRIAGE_UNBLOCK"
-            actions.append(Action(kind, f"{t.task_id} blocked: TOOLING_FAILURE (retry {n + 1})", task_id=t.task_id))
         else:
             actions.append(Action("ESCALATE_P2", f"{t.task_id} blocked: {reason}", task_id=t.task_id))
+
+    # A counter has meaning only while the task remains blocked. Prune it when
+    # the blackboard transitions the task out of that state.
+    blocked_ids = {t.task_id for t in real if t.get("Status") == "blocked"}
+    for task_id in set(state.triage_counts) - blocked_ids:
+        state.triage_counts.pop(task_id, None)
 
     # 4. Stale heartbeat detection
     for t in real:
@@ -546,7 +608,9 @@ def log_line(repo: Path, text: str) -> None:
 
 def run_shell(cmd: str, repo: Path) -> int:
     print(f"  $ {cmd}")
-    return subprocess.run(cmd, shell=True, cwd=repo).returncode
+    env = dict(os.environ)
+    env["DEVTEAM_DELEGATED"] = "1"
+    return subprocess.run(cmd, shell=True, cwd=repo, env=env).returncode
 
 
 def refresh_plan_from_head(repo: Path) -> None:
@@ -584,7 +648,9 @@ def launch_shell_bg(cmd: str, repo: Path) -> subprocess.Popen:
     claim commit lands (Status: claimed/in_progress), decide() already skips
     that unit on its own, with or without inflight tracking."""
     print(f"  $ {cmd}  (background)")
-    return subprocess.Popen(cmd, shell=True, cwd=repo)
+    env = dict(os.environ)
+    env["DEVTEAM_DELEGATED"] = "1"
+    return subprocess.Popen(cmd, shell=True, cwd=repo, env=env)
 
 
 def reap_inflight(inflight: dict[str, tuple[subprocess.Popen, str, str]], cfg: dict,
@@ -740,7 +806,11 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
             continue
         line = f"{a.kind}: {a.detail}"
         print(f"[tick] {line}")
-        log_line(repo, line)
+        halt_mtime = a.detail.rsplit("mtime=", 1)[-1] if a.kind == "HALT" and "mtime=" in a.detail else ""
+        if a.kind != "HALT" or halt_mtime != state.halt_mtime:
+            log_line(repo, line)
+            if a.kind == "HALT":
+                state.halt_mtime = halt_mtime
         if dry_run:
             continue
 
@@ -748,6 +818,7 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
             halt = True
         elif a.kind == "ESCALATE_P1":
             notify(cfg, "P1", a.detail, repo)   # P1 is NEVER muted — safety rail, not a preference
+            state.escalated[escalation_key(a)] = now.strftime(UTC_FMT)
             halt = True
         elif a.kind == "ESCALATE_P2":
             if is_muted(state, now):
@@ -774,9 +845,9 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
             # Wave A-remainder /approve: same review_cmd, but scoped explicitly to one
             # task (unlike the generic REVIEW action, which lets /devteam-review pick
             # whatever's needs_review on its own).
-            scoped_prompt = f"/devteam-review {a.task_id}"
             jm = cfg.get("judgment_model", DEFAULT_CONFIG["judgment_model"])
-            rc = run_shell(f"claude -p {shlex.quote(scoped_prompt)} --model {jm} --dangerously-skip-permissions", repo)
+            prompt = judgment_prompt("devteam-review", f"Review only {a.task_id}.")
+            rc = run_shell(f"claude -p {shlex.quote(prompt)} --model {jm} --dangerously-skip-permissions", repo)
             if rc == 0:
                 state.reviews_since_distill += 1
                 txt = (repo / "PLAN.md").read_text(encoding="utf-8")
@@ -792,17 +863,21 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
             state.busy_units[a.unit] = a.task_id or ""
             state.dispatch_log = budget.record_dispatch(state.dispatch_log, now)
         elif a.kind == "TRIAGE_UNBLOCK" and a.task_id:
-            if "OWNERSHIP_CONFLICT" in a.detail:
-                state.conflict_counts[a.task_id] = state.conflict_counts.get(a.task_id, 0) + 1
-            elif "re-sequence dependencies" in a.detail:
-                state.triage_counts[a.task_id] = state.triage_counts.get(a.task_id, 0) + 1
+            reason = _reason_prefix(a.detail)
+            counts = state.triage_counts.setdefault(a.task_id, {})
+            if not isinstance(counts, dict):
+                counts = {"MISSING_DEPENDENCY": int(counts)}
+                state.triage_counts[a.task_id] = counts
+            counts[reason] = int(counts.get(reason, 0)) + 1
+            if reason == "OWNERSHIP_CONFLICT":
+                state.conflict_counts[a.task_id] = counts[reason]
             # Scope triage = architectural judgment → judgment_model (opus-4-8) per
             # ORCH model discipline in CLAUDE.md — must NOT share a model with the
             # S5 builder (sonnet-5) whose blocked tasks it may be triaging.
-            triage_prompt = (f"/devteam-status then triage blocked task {a.task_id} per protocol section 7: "
-                             f"resolve and unblock if within ORCH authority; otherwise leave blocked and state why.")
             jm = cfg.get("judgment_model", DEFAULT_CONFIG["judgment_model"])
-            run_shell(f"claude -p {shlex.quote(triage_prompt)} --model {jm} --dangerously-skip-permissions", repo)
+            prompt = judgment_prompt("devteam-status",
+                                     f"Triage blocked task {a.task_id} per protocol section 7; resolve and unblock if within ORCH authority, otherwise leave it blocked and state why.")
+            run_shell(f"claude -p {shlex.quote(prompt)} --model {jm} --dangerously-skip-permissions", repo)
         elif a.kind == "REDISPATCH_STALE" and a.task_id and a.unit:
             state.stale_resets[a.task_id] = state.stale_resets.get(a.task_id, 0) + 1
             # Protocol §10a: do NOT reset the task to pending. The builder's own
@@ -836,7 +911,20 @@ def maybe_status_digest(repo: Path, cfg: dict, state: RuntimeState, now: datetim
         if last is not None and (now - last).total_seconds() < minutes * 60:
             return
         import status_digest
-        status_digest.run(repo, cfg, now=now, send=True)
+        # The digest script always writes STATUS.md, but notification belongs
+        # to this process so it shares H1's durable ledger rather than sending
+        # once per new supervisor process.
+        digest = status_digest.run(repo, cfg, now=now, send=False)
+        if bool((cfg.get("status_digest") or {}).get("send", False)):
+            body = digest.rsplit("\nLocal time:", 1)[0]
+            key = "STATUS_DIGEST|-|STATUS_DIGEST|" + hashlib.sha1(body.encode("utf-8")).hexdigest()
+            if key not in state.escalated:
+                notify(cfg, "P0", digest, repo)
+                state.escalated[key] = now.strftime(UTC_FMT)
+                # A changed digest is a new condition; retaining old hashes
+                # would grow state without bound and serves no de-dup purpose.
+                for old in [k for k in state.escalated if k.startswith("STATUS_DIGEST|") and k != key]:
+                    state.escalated.pop(old, None)
         state.last_status_digest_ts = now.strftime(UTC_FMT)
     except Exception as exc:
         print(f"[status_digest] skipped this tick (non-fatal): {exc}", file=sys.stderr)
@@ -1412,6 +1500,7 @@ def load_config(repo: Path) -> dict:
     cfg["learning"] = {**DEFAULT_CONFIG["learning"], **cfg.get("learning", {})}
     cfg["control"] = {**DEFAULT_CONFIG["control"], **cfg.get("control", {})}
     cfg["review"] = {**DEFAULT_CONFIG["review"], **cfg.get("review", {})}
+    cfg["status_digest"] = {**DEFAULT_CONFIG["status_digest"], **cfg.get("status_digest", {})}
     cfg["usage"] = {**DEFAULT_CONFIG["usage"], **cfg.get("usage", {})}
     cfg["tower"] = {**DEFAULT_CONFIG["tower"], **cfg.get("tower", {})}
     cfg["slack"] = {**DEFAULT_CONFIG["slack"], **cfg.get("slack", {})}
@@ -1643,8 +1732,10 @@ def main(argv: list[str]) -> int:
             except Exception as exc:
                 print(f"[review] branch heads unavailable (non-fatal): {exc}", file=sys.stderr)
                 head_shas = {}
+            stop_path = repo / "STOP"
+            stop_mtime = str(stop_path.stat().st_mtime_ns) if stop_path.exists() else ""
             actions = queue_actions + inbox_actions + decide(plan_text, state, cfg, now=now,
-                                          stop_file_exists=(repo / "STOP").exists(),
+                                          stop_file_exists=stop_path.exists(), stop_file_mtime=stop_mtime,
                                           dossier_heartbeats=dossier_heartbeats,
                                           usage=usage,
                                           stagnation_signal=stagnation_signal,

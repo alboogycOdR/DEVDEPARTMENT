@@ -17,3 +17,6 @@ Escalation ledger: key `kind|task_id|reason_prefix|digit-masked detail` (masking
 Write the failing test first (it must fail against current master — spec §1 H7), then implement, then run BOTH full suites. Ported code cites its origin SHA and lists anything not ported, with the reason, in the Work Log.
 
 ## Work Log
+
+- [2026-09-27T16:00:00Z] [CX] Preflight: `scripts/supervisor.py` (1704 lines, 87862 bytes), `scripts/status_digest.py` (184 lines, 7100 bytes), `tests/test_supervisor.py` (820 lines, 37416 bytes), `tests/test_supervisor_ledgers.py` (134 lines, 6302 bytes), `tests/test_supervisor_telegram.py` (311 lines, 13824 bytes), and `autopilot.json` (146 lines, 5403 bytes) all exist and are within TASK-029 territory.
+- [2026-09-27T16:00:00Z] [CX] SB-8 root cause: `decide()` uses `state.stale_resets` for `TOOLING_FAILURE`, but `execute(TRIAGE_UNBLOCK)` does not increment that state (it only increments `conflict_counts` or `triage_counts` for a text-specific MISSING_DEPENDENCY path). Consequently a durable state file survives a `--once` boundary but still has no TOOLING_FAILURE attempt count, so every new process chooses and logs attempt 1. This is the stale_resets mix-up, not state loss. The regression will drive two ticks through one persisted RuntimeState and require exactly one triage followed by a P2.
