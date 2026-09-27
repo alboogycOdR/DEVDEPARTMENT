@@ -1088,7 +1088,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-029
 **Title:** Wave E E-B2 — escalation ledger (H1), triage ledger (H2), one judgment-prompt form
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H1/H2, §4 (E-B.3–E-B.5), docs/reviews/LIVE_CHECKS_2026-09.md (slash row)
@@ -1126,10 +1126,11 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Test_Evidence:** —
 - [2026-09-27T18:05:00Z] [CX] `python -m py_compile scripts/supervisor.py scripts/status_digest.py` passed; `python -m pytest tests/test_supervisor_ledgers.py -k "escalation or p1_ledger or tooling or stop or status_digest" -q` → 5 passed, 7 deselected; `python -m pytest tests/test_supervisor.py -k "judgment or triage or ownership" -q` → 4 passed, 58 deselected; `node hooks/run-tests.js` → 47 passed, 0 failed. `python -m pytest -q` was stopped after exceeding its normal window without completing; do not treat full-suite acceptance as met.
 - [2026-09-27T19:16:49Z] [CX] `python -m pytest tests/test_supervisor.py tests/test_supervisor_ledgers.py tests/test_supervisor_maintenance.py -q` → 93 passed in 96.95s; `python -m pytest -q` → 1081 passed in 197.54s; `node hooks/run-tests.js` → 47 passed, 0 failed; `git diff --check master...HEAD` → clean.
-**Review_Findings:** —
+**Review_Findings:**
+- [2026-09-27T19:26:34Z] [ORCH] APPROVED first-pass (reviewer: claude-opus-5-5). Territory clean (supervisor.py, autopilot.json, tests, own dossier). SB-8 root cause recorded: decide() read state.stale_resets for TOOLING_FAILURE but execute(TRIAGE_UNBLOCK) never incremented it, so every --once process logged 'attempt 1' — a counter mix-up, not state loss; the regression reproduces it. Escalation ledger: 3 SPEC_AMBIGUITY tasks over 30 fake-clock ticks -> 3 P2s + 3 ESCALATION_HELD, re-sent at +4h; frozen task P1 at 0 and +60 min only; TOOLING_FAILURE triage once then one P2; HALT once per STOP mtime; judgment_prompt() explicit form, no -p argument starts with '/', supervisor launches carry DEVTEAM_DELEGATED=1; status digest routed through a content ledger, template ships status_digest.send=false (off for new projects too — conservative). Fail-before: all 6 new tests fail against master's supervisor. Merged-tree 1081/47/39; post-merge on master: see commit. Note (not rework): the P1 and STOP tests use a few checkpoints rather than a full tick sweep — equivalent semantics. Merged --no-ff e65e27b; branch deleted.
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-09-27T19:16:49Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-27T19:26:34Z
 
 ### TASK-030
 **Title:** Wave E E-C — durable park state, git heartbeat, on-disk in-flight tracking
