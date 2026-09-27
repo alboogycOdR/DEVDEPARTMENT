@@ -1045,7 +1045,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-028
 **Title:** Wave E E-B1 — review ledger (head-SHA keyed), backoff, review.lock, markers, atomic state + multi-tick harness
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H3/H7, §4 (E-B.1, E-B.2, E-B.6)
@@ -1081,9 +1081,10 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-27T15:43:00Z] [CX] Rework tests: `python -m pytest tests/test_supervisor.py tests/test_supervisor_ledgers.py tests/test_token_efficiency.py -q` → 54 passed; `node hooks/run-tests.js` → 47 passed, 0 failed; `git diff --check` → clean. Full `python -m pytest -q` was re-started and progressed through 26%; its prior documented Codex-sandbox-only dispatch failure remains outside TASK-028's Owned_Paths.
 **Review_Findings:**
 - [2026-09-27T15:39:14Z] [ORCH] REWORK — small (reviewer: claude-opus-5-5). Strong work: territory clean (5 files); merged-tree pytest 1073, hooks 47/0, gateguard 39/0; fail-before check — 4 of 5 new ledger tests fail against master's supervisor (the 5th, the two-process lock, passes pre-change because TASK-023's port already added a lock: expected). Backoff 0/5/15/35 over 30 fake-clock ticks, head-SHA reset via a real git bump, markers and two real --once processes are all properly demonstrated. REQUIRED (criterion 5 is implemented but untested): (1) a test that a corrupt state file produces exactly ONE P2 notification (and the STATE_CORRUPT log line) when the supervisor starts — drive main()/--once, not RuntimeState.load alone; (2) a test that `--dry-run` leaves an existing state file byte-identical (and does not quarantine a corrupt one). Carried forward (not rework): 'oldest first' orders by Updated_At, which is still model-written until TASK-033 lands — acceptable for now.
+- [2026-09-27T15:47:25Z] [ORCH] APPROVED on re-review (reviewer: claude-opus-5-5). Rework adds exactly the two missing tests, both through the real --once entry point as subprocesses: corrupt state -> exactly one P2 + one STATE_CORRUPT line + one quarantined copy; --dry-run leaves healthy and corrupt state byte-identical with no quarantine. Earlier evidence stands: fail-before 4/5 against old supervisor; merged-tree 1073/47/39. Post-merge on master 53bf19f (new tests/test_supervisor_ledgers.py + tests/tick_harness.py registered in sync-manifest.json): pytest 1075 passed, hooks 47/0, gateguard 39/0. Carried forward: oldest-first uses model-written Updated_At until TASK-033. Merged --no-ff 53bf19f; branch deleted.
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-09-27T15:43:00Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-27T15:47:25Z
 
 ### TASK-029
 **Title:** Wave E E-B2 — escalation ledger (H1), triage ledger (H2), one judgment-prompt form
