@@ -25,6 +25,8 @@ module.exports = {
       args: "--loop --interval 300",
       cwd: __dirname + "/..",
       autorestart: true,
+      // STOP is intentional operator control, not a crash for PM2 to restart.
+      stop_exit_codes: [3],
       max_restarts: 10,
       min_uptime: "30s",
       restart_delay: 5000,

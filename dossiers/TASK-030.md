@@ -17,3 +17,5 @@
 Write the failing test first (it must fail against current master — spec §1 H7), then implement, then run BOTH full suites. Ported code cites its origin SHA and lists anything not ported, with the reason, in the Work Log.
 
 ## Work Log
+
+- Implemented durable `P1`/`WAVE_DONE` park state, persisted `.devteam/inflight` launch records and cross-process reaping, plus aggregate git/dossier/PLAN heartbeats. Added focused E-C regression coverage.
