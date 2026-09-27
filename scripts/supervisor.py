@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import queue
 import re
 import shlex
@@ -106,6 +107,7 @@ DEFAULT_CONFIG = {
     # IS sonnet-5 — same-model review shares the maker's failure distribution
     # (see CLAUDE.md "ORCH model discipline" for the full decision record).
     "judgment_model": "claude-opus-4-8",
+    "review": {"max_backoff_minutes": 120, "lock_stale_minutes": 90},
     "dispatch_cmd": _DISPATCH_DEFAULTS,
     "builders": ["GB", "CX", "S5"],
     "autonomy_level": 2,
@@ -192,20 +194,39 @@ class RuntimeState:
     escalated: dict[str, str] = field(default_factory=dict)         # escalation key -> UTC ts of last P2 notify
     triage_counts: dict[str, int] = field(default_factory=dict)     # task_id -> MISSING_DEPENDENCY triage attempts
     last_status_digest_ts: str = ""                                 # scripted status digest throttle
+    _corrupt_note: str = field(default="", repr=False, compare=False)
 
     @classmethod
-    def load(cls, path: Path) -> "RuntimeState":
+    def load(cls, path: Path, quarantine: bool = True) -> "RuntimeState":
         if path.exists():
             try:
                 raw = json.loads(path.read_text(encoding="utf-8"))
-                known = {f.name for f in _dc_fields(cls)}
+                if not isinstance(raw, dict):
+                    raise TypeError("state root is not an object")
+                known = {f.name for f in _dc_fields(cls) if not f.name.startswith("_")}
                 return cls(**{k: v for k, v in raw.items() if k in known})
-            except (json.JSONDecodeError, TypeError):
-                pass
+            except (json.JSONDecodeError, TypeError, UnicodeDecodeError) as exc:
+                state = cls()
+                if quarantine:
+                    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                    aside = path.with_name(f"{path.stem}.corrupt-{stamp}{path.suffix}")
+                    try:
+                        os.replace(path, aside)
+                        state._corrupt_note = f"{path.name} was corrupt ({exc}); renamed to {aside.name}"
+                    except OSError as move_exc:
+                        state._corrupt_note = f"{path.name} was corrupt ({exc}) and could not be quarantined ({move_exc})"
+                return state
         return cls()
 
     def save(self, path: Path) -> None:
-        path.write_text(json.dumps(self.__dict__, indent=2), encoding="utf-8")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        data = {key: value for key, value in self.__dict__.items() if not key.startswith("_")}
+        try:
+            temporary.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
 
 def _parse_ts(value: str) -> datetime | None:
@@ -222,6 +243,16 @@ def review_key(task: "Task") -> str:
     import hashlib
     raw = "\x1f".join(task.get(f) for f in ("Test_Evidence", "Review_Findings", "Artifacts", "Branch"))
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def ledger_key(task: "Task", head_shas: dict[str, str] | None) -> str:
+    """Submission identity: its branch head, with a safe plan-text fallback."""
+    return (head_shas or {}).get(task.task_id) or review_key(task)
+
+
+def review_backoff_minutes(fails: int, cfg: dict) -> float:
+    cap = float((cfg.get("review") or {}).get("max_backoff_minutes", 120))
+    return min(5.0 * (2 ** max(0, fails - 1)), cap)
 
 
 _DIGITS = re.compile(r"\d+")
@@ -289,7 +320,8 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
            now: datetime | None = None, stop_file_exists: bool = False,
            dossier_heartbeats: dict[str, datetime] | None = None,
            usage: dict | None = None,
-           stagnation_signal: dict[str, dict] | None = None) -> list[Action]:
+           stagnation_signal: dict[str, dict] | None = None,
+           head_shas: dict[str, str] | None = None) -> list[Action]:
     """Pure decision engine: plan + runtime state -> ordered list of actions for this tick.
 
     dossier_heartbeats (Wave I, control.mode=strict): task_id -> latest
@@ -335,6 +367,7 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
         return [Action("IDLE", "No real tasks in plan")]
 
     # 2. Rework-loop guardrail + reviews
+    review_candidates: list[Task] = []
     for t in real:
         if t.get("Status") == "needs_review":
             if state.rework_counts.get(t.task_id, 0) >= cfg["max_rework"]:
@@ -343,13 +376,17 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
                                       task_id=t.task_id))
             else:
                 led = state.review_ledger.get(t.task_id) or {}
-                if led.get("key") == review_key(t):
+                if led.get("key") == ledger_key(t, head_shas):
                     if led.get("done"):
                         continue                       # this exact submission was already reviewed
                     retry = _parse_ts(led.get("retry_after", ""))
                     if retry is not None and now < retry:
                         continue                       # last attempt failed: back off
-                actions.append(Action("REVIEW", f"{t.task_id} awaiting review", task_id=t.task_id))
+                review_candidates.append(t)
+    if review_candidates:
+        far_future = datetime.max.replace(tzinfo=timezone.utc)
+        oldest = min(review_candidates, key=lambda task: _parse_ts(task.get("Updated_At")) or far_future)
+        actions.append(Action("REVIEW", f"{oldest.task_id} awaiting review", task_id=oldest.task_id))
 
     # 3. Blocked triage
     for t in real:
@@ -588,6 +625,108 @@ def reap_inflight(inflight: dict[str, tuple[subprocess.Popen, str, str]], cfg: d
         time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
 
 
+def _git_head_sha(repo: Path, branch: str) -> str:
+    """Return a task branch's HEAD, without making a missing branch fatal."""
+    if not branch or branch in ("—", "-"):
+        return ""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"], cwd=repo,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _review_head_shas(repo: Path, plan_text: str) -> dict[str, str]:
+    return {
+        task.task_id: sha
+        for task in parse_tasks(plan_text, Report())
+        if task.get("Status") == "needs_review"
+        if (sha := _git_head_sha(repo, task.get("Branch")))
+    }
+
+
+def _lock_started(lock: Path) -> datetime | None:
+    try:
+        raw = json.loads(lock.read_text(encoding="utf-8"))
+        return _parse_ts(raw.get("start", "")) if isinstance(raw, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _acquire_review_lock(repo: Path, cfg: dict, now: datetime) -> str | None:
+    """Atomically acquire the cross-process review lock, reclaiming stale locks."""
+    lock = repo / ".devteam" / "review.lock"
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    stale_minutes = float((cfg.get("review") or {}).get("lock_stale_minutes", 90))
+    for _ in range(2):
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            started = _lock_started(lock)
+            if started is not None:
+                age = (now - started).total_seconds() / 60.0
+            else:
+                try:
+                    age = (time.time() - lock.stat().st_mtime) / 60.0
+                except OSError:
+                    continue
+            if age < stale_minutes:
+                return f"a review session is already running (lock {int(age)}m old)"
+            log_line(repo, f"REVIEW_LOCK_STALE: taking over {int(age)}m-old review.lock")
+            lock.unlink(missing_ok=True)
+            continue
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump({"pid": os.getpid(), "start": now.strftime(UTC_FMT)}, stream)
+        return None
+    return "could not acquire review.lock"
+
+
+def _run_review(action: Action, cfg: dict, state: RuntimeState, repo: Path, now: datetime) -> None:
+    """Execute one selected review and persist a head-SHA keyed retry ledger entry."""
+    import uuid
+    busy = _acquire_review_lock(repo, cfg, now)
+    if busy:
+        log_line(repo, f"REVIEW_SKIPPED: {busy}")
+        return
+    plan_path = repo / "PLAN.md"
+    session = uuid.uuid4().hex[:8]
+    started = time.monotonic()
+    try:
+        before = {task.task_id: task for task in parse_tasks(plan_path.read_text(encoding="utf-8"), Report())}
+        target = before.get(action.task_id)
+        sha = _git_head_sha(repo, target.get("Branch")) if target else ""
+        key = sha or (review_key(target) if target else "")
+        log_line(repo, f"REVIEW_START task={action.task_id} sha={sha or '-'} session={session}")
+        result = run_shell(cfg["review_cmd"], repo)
+    finally:
+        (repo / ".devteam" / "review.lock").unlink(missing_ok=True)
+    after = {task.task_id: task for task in parse_tasks(plan_path.read_text(encoding="utf-8"), Report())}
+    status = after.get(action.task_id).get("Status") if action.task_id in after else ""
+    verdict = {"done": "approved", "in_progress": "rework"}.get(status, "none") if result == 0 else "none"
+    if result == 0:
+        state.reviews_since_distill += 1
+        for task_id, before_task in before.items():
+            after_task = after.get(task_id)
+            if before_task.get("Status") == "needs_review" and after_task and after_task.get("Status") == "in_progress":
+                state.rework_counts[task_id] = state.rework_counts.get(task_id, 0) + 1
+    ledger = state.review_ledger.setdefault(action.task_id, {})
+    ledger["key"] = key
+    if verdict == "none":
+        ledger["done"] = False
+        ledger["fails"] = int(ledger.get("fails", 0)) + 1
+        wait = review_backoff_minutes(ledger["fails"], cfg)
+        ledger["retry_after"] = (now + timedelta(minutes=wait)).strftime(UTC_FMT)
+        if result == 0:
+            log_line(repo, f"REVIEW_NO_VERDICT: {action.task_id} retry in {int(wait)}m unless head moves")
+    else:
+        ledger.update(done=True, fails=0)
+        ledger.pop("retry_after", None)
+    log_line(repo, f"REVIEW_END task={action.task_id} verdict={verdict} duration={int(time.monotonic() - started)}s")
+
+
 def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, dry_run: bool,
             now: datetime | None = None,
             inflight: dict[str, tuple[subprocess.Popen, str, str]] | None = None) -> bool:
@@ -629,44 +768,8 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
                 notify(cfg, "P0", detail, repo)
             halt = True
         elif a.kind == "REVIEW":
-            # review_cmd reviews EVERY needs_review task in one session, so one run per tick covers
-            # all REVIEW actions; the others in the same tick are already covered.
             review_ran = True
-            peers = [x for x in actions if x.kind == "REVIEW" and x.task_id]
-            lock = repo / ".devteam" / "review.lock"
-            lock_age_min = (time.time() - lock.stat().st_mtime) / 60.0 if lock.exists() else None
-            if lock_age_min is not None and lock_age_min < float(cfg.get("review_lock_minutes", 90)):
-                log_line(repo, f"REVIEW_SKIPPED: a review session is already running (lock {int(lock_age_min)}m old)")
-                continue
-            plan_before = parse_tasks((repo / "PLAN.md").read_text(encoding="utf-8"), Report())
-            keys = {t.task_id: review_key(t) for t in plan_before}
-            lock.parent.mkdir(parents=True, exist_ok=True)
-            lock.write_text(now.strftime(UTC_FMT), encoding="utf-8")
-            try:
-                rc = run_shell(cfg["review_cmd"], repo)
-            finally:
-                lock.unlink(missing_ok=True)
-            if rc == 0:
-                state.reviews_since_distill += 1
-            after = {t.task_id: t for t in parse_tasks((repo / "PLAN.md").read_text(encoding="utf-8"), Report())}
-            for x in peers:
-                led = state.review_ledger.setdefault(x.task_id, {})
-                led["key"] = keys.get(x.task_id, "")
-                if rc == 0:
-                    led["done"] = True
-                    led["fails"] = 0
-                    led.pop("retry_after", None)
-                    t_after = after.get(x.task_id)
-                    if t_after is not None and t_after.get("Status") == "in_progress":
-                        state.rework_counts[x.task_id] = state.rework_counts.get(x.task_id, 0) + 1
-                    elif t_after is not None and t_after.get("Status") == "needs_review":
-                        log_line(repo, f"REVIEW_NO_VERDICT: {x.task_id} still needs_review after a clean review session; "
-                                       f"it will not be re-reviewed until it is resubmitted")
-                else:
-                    led["done"] = False
-                    led["fails"] = int(led.get("fails", 0)) + 1
-                    wait_min = min(15 * (2 ** (led["fails"] - 1)), 240)
-                    led["retry_after"] = (now + timedelta(minutes=wait_min)).strftime(UTC_FMT)
+            _run_review(a, cfg, state, repo, now)
         elif a.kind == "REVIEW_TG" and a.task_id:
             # Wave A-remainder /approve: same review_cmd, but scoped explicitly to one
             # task (unlike the generic REVIEW action, which lets /devteam-review pick
@@ -1308,6 +1411,7 @@ def load_config(repo: Path) -> dict:
     cfg["budget"] = {**DEFAULT_CONFIG["budget"], **cfg.get("budget", {})}
     cfg["learning"] = {**DEFAULT_CONFIG["learning"], **cfg.get("learning", {})}
     cfg["control"] = {**DEFAULT_CONFIG["control"], **cfg.get("control", {})}
+    cfg["review"] = {**DEFAULT_CONFIG["review"], **cfg.get("review", {})}
     cfg["usage"] = {**DEFAULT_CONFIG["usage"], **cfg.get("usage", {})}
     cfg["tower"] = {**DEFAULT_CONFIG["tower"], **cfg.get("tower", {})}
     cfg["slack"] = {**DEFAULT_CONFIG["slack"], **cfg.get("slack", {})}
@@ -1432,7 +1536,10 @@ def main(argv: list[str]) -> int:
     if args.interval:
         cfg["interval_seconds"] = args.interval
     state_path = repo / ".autopilot_state.json"
-    state = RuntimeState.load(state_path)
+    state = RuntimeState.load(state_path, quarantine=not args.dry_run)
+    if state._corrupt_note:
+        log_line(repo, f"STATE_CORRUPT: {state._corrupt_note}")
+        notify(cfg, "P2", f"supervisor state file was corrupt: {state._corrupt_note}", repo)
 
     tg_listener, tg_queue, wave_event = _start_tg_listener(repo, cfg)
     slack_listener, slack_queue = _start_slack_listener(cfg)
@@ -1531,17 +1638,24 @@ def main(argv: list[str]) -> int:
             except Exception as exc:
                 print(f"[circuit_breaker] skipped this tick (non-fatal): {exc}", file=sys.stderr)
                 stagnation_signal = {}
+            try:
+                head_shas = _review_head_shas(repo, plan_text)
+            except Exception as exc:
+                print(f"[review] branch heads unavailable (non-fatal): {exc}", file=sys.stderr)
+                head_shas = {}
             actions = queue_actions + inbox_actions + decide(plan_text, state, cfg, now=now,
                                           stop_file_exists=(repo / "STOP").exists(),
                                           dossier_heartbeats=dossier_heartbeats,
                                           usage=usage,
-                                          stagnation_signal=stagnation_signal)
+                                          stagnation_signal=stagnation_signal,
+                                          head_shas=head_shas)
             keep_going = execute(actions, cfg, state, repo, args.dry_run, now=now, inflight=inflight)
             if args.once and not args.dry_run:
                 # A normal loop reaps on its next tick. A single-tick run has
                 # no next tick, so wait briefly for dispatch's fast outcome.
                 reap_inflight(inflight, cfg, state, repo, datetime.now(timezone.utc), wait_seconds=3.0)
-            state.save(state_path)
+            if not args.dry_run:
+                state.save(state_path)
 
             # v4: publish Mission Control board (throttled; a dead board never blocks a wave)
             if not args.dry_run:
