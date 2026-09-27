@@ -1,8 +1,8 @@
 ---
-plan_version: 6.2
-last_updated: 2026-09-27T14:01:11Z
+plan_version: 6.3
+last_updated: 2026-09-27T19:07:45Z
 overall_status: in_progress
-orchestrator_notes: "Wave E in progress (plan v6.2). OWNER DECISION 2026-09-27: GB and CX build; S5 receives no work. GB has its original tasks back (027 rework, 032, 033, 034, 036, 037, 042); S5's former tasks (028, 030, 041, 043) are CX's (S5 stopped mid-TASK-028; its WIP salvaged to .devteam/salvage/, local). Two builders in parallel. Done: 023, 024, 025. Active: 026 (CX, finishing full-suite run). Rework: 027 (GB; security: builder self-grant via Protected_Grants) on task/TASK-027-gb. Next critical path: 028 -> 029 -> 030 -> 031. KNOWN ENV ISSUE: TestEmptyHuskReclaim fails only inside Codex sessions — CX records it and submits; ORCH verifies; root cause is TASK-037's. ORCH merge procedure: register any new framework files in sync-manifest.json, then re-run full suites on master after every real merge (e8fa1f7 fixed a red master that a pre-merge temp-worktree check could not see). Reviews on claude-opus-5-5. Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md. Decompose record: docs/handovers/2026-09-26-wave-e-decompose.md."
+orchestrator_notes: "Wave E in progress (plan v6.3). OWNER DECISIONS 2026-09-27: all build tasks go to CX; S5 receives no work; GB's Grok Build balance is exhausted (HTTP 402), so GB is idle too. S5 and GB WIP salvaged locally under .devteam/salvage/ (TASK-028-s5-wip*, TASK-032-gb-wip/). Work is serial on CX. Done: 023-028. Active: 029 (CX). Next critical path: 030 -> 031. KNOWN ENV ISSUE: TestEmptyHuskReclaim fails only inside Codex sessions; CX records it and submits; ORCH verifies; root cause is TASK-037's. ORCH merge procedure: register new framework files in sync-manifest.json, then re-run the full suites on master after every real merge. Reviews on claude-opus-5-5. Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md. Decompose record: docs/handovers/2026-09-26-wave-e-decompose.md."
 ---
 
 # Project Plan
@@ -1186,8 +1186,8 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-032
 **Title:** Wave E E-D — plan archive, notes cap, generated REVIEW tallies, machine-readable REVIEW.md
-**Status:** claimed
-**Assigned_To:** GB
+**Status:** pending
+**Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §6 (E-D)
 **Owned_Paths:** scripts/plan_archive.py (new), tests/test_plan_archive.py (new), scripts/team_stats.py, tests/test_team_stats.py (new), scripts/maintenance.py, tests/test_maintenance.py, scripts/validate_plan.py, tests/test_validate_plan.py, tests/fixtures/plan_archive/** (new), dossiers/TASK-032.md
@@ -1200,20 +1200,21 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] validate_plan warns over notes_max_chars and over 150 KB; `--review` rejects a verdict table split by a blank line; team_stats flags :00:00Z stamps (E-D bullets)
 - [ ] Archived task IDs satisfy Depends_On in validate_plan, control and instincts
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** task/TASK-032-gb
-**Started_At:** 2026-09-27T14:28:24Z
-**Progress_Notes:** —
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:**
+- [2026-09-27T19:07:45Z] [ORCH] Reassigned GB -> CX (owner decision 2026-09-27: all build tasks to CX; GB's Grok Build balance is exhausted, HTTP 402). GB never committed. Its unreviewed WIP is kept as optional reference in the main checkout at .devteam/salvage/TASK-032-gb-wip/ (modified.patch = maintenance/team_stats/validate_plan + their tests; new/ = plan_archive.py, test_plan_archive.py, test_team_stats.py, fixtures/plan_archive/sample_plan.md). Treat it as an untrusted draft: verify against the spec; start from a fresh branch task/TASK-032-cx.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-27T15:50:01Z
+**Updated_At:** 2026-09-27T19:07:45Z
 
 ### TASK-033
 **Title:** Wave E E-E — plan_commit stamps Updated_At from the clock; tests isolated from the live checkout
 **Status:** pending
-**Assigned_To:** GB
+**Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H5, §7 (E-E)
 **Owned_Paths:** scripts/plan_commit.sh, scripts/plan_commit.ps1, tests/test_plan_commit.py, dossiers/TASK-033.md
@@ -1233,12 +1234,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-27T15:50:01Z
+**Updated_At:** 2026-09-27T19:07:45Z
 
 ### TASK-034
 **Title:** Wave E E-F1 — plan_commit compare-and-swap, idempotent claim, legacy-mode blackboard guard
 **Status:** pending
-**Assigned_To:** GB
+**Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H4, §8 (E-F.1, E-F.2, E-F.6)
 **Owned_Paths:** scripts/plan_commit.sh, scripts/plan_commit.ps1, tests/test_plan_commit.py, scripts/plan_guard.py, tests/test_plan_guard.py, dossiers/TASK-034.md
@@ -1260,7 +1261,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-27T15:50:01Z
+**Updated_At:** 2026-09-27T19:07:45Z
 
 ### TASK-035
 **Title:** Wave E E-F2 — verified claim, pinned base, dirty-PLAN refusal, strict Owned_Paths grammar, strict-by-default onboarding
@@ -1291,7 +1292,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 ### TASK-036
 **Title:** Wave E E-G — bookkeeping push policy (every | batch | merge_only)
 **Status:** pending
-**Assigned_To:** GB
+**Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §9 (E-G)
 **Owned_Paths:** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/control.py, tests/test_control.py, tests/test_plan_commit.py, scripts/push_policy.py (new), tests/test_push_policy.py (new), scripts/supervisor.py, dossiers/TASK-036.md
@@ -1313,12 +1314,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-27T15:50:01Z
+**Updated_At:** 2026-09-27T19:07:45Z
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
 **Status:** pending
-**Assigned_To:** GB
+**Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.1–3, E-H.5)
 **Owned_Paths:** scripts/dispatch.ps1, scripts/worktree.ps1, .github/workflows/** (new), .gitattributes, tests/test_dispatch_worktree.py, tests/test_worktree_ps1.py (new), dossiers/TASK-037.md
@@ -1338,7 +1339,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-27T15:50:01Z
+**Updated_At:** 2026-09-27T19:07:45Z
 
 ### TASK-038
 **Title:** Wave E E-H2 — CLI launch smoke test in harness-audit
@@ -1445,7 +1446,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 ### TASK-042
 **Title:** Wave E E-J3 — review rules into the command file, clock-stamped verdicts, frontmatter freshness, untracked-work detector
 **Status:** pending
-**Assigned_To:** GB
+**Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §12 (E-J.4, E-J.7, E-J.8), §6 (review timestamp bullet)
 **Owned_Paths:** scripts/plan_health.py (new), tests/test_plan_health.py (new), .claude/commands/devteam-review.md, .claude/commands/devteam-status.md, .claude/commands/devteam-decompose.md, hooks/session-start.js, autopilot.json, dossiers/TASK-042.md
@@ -1465,7 +1466,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-27T15:50:01Z
+**Updated_At:** 2026-09-27T19:07:45Z
 
 ### TASK-043
 **Title:** Wave E exit — scripted exit-criteria scenario (10 × --once then accelerated 12 h --loop)
