@@ -270,6 +270,14 @@ def test_judgment_model_default_is_opus():
     assert DEFAULT_CONFIG["judgment_model"] == "claude-opus-4-8"
 
 
+def test_judgment_prompt_is_explicit_and_never_starts_with_a_slash():
+    for command, args in (("devteam-review", "Review only TASK-001."),
+                          ("devteam-status", "Triage TASK-001.")):
+        prompt = sup.judgment_prompt(command, args)
+        assert prompt.startswith(f"Read .claude/commands/{command}.md")
+        assert not prompt.startswith("/")
+
+
 def test_triage_unblock_uses_judgment_model(monkeypatch):
     """Scope triage is architectural judgment — must run on the judgment_model
     (opus-4-8), never the S5 builder's own model."""
@@ -362,6 +370,7 @@ class TestDispatchCmdCwdIndependence:
         )
         assert len(launched) == 1
         assert "CX" in launched[0]
+        assert "DEVTEAM_DELEGATED=1" in launched[0]
 
 
 class _FinishedDispatch:

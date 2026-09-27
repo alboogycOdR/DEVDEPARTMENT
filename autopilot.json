@@ -3,7 +3,17 @@
   "stale_minutes": 90,
   "max_rework": 2,
   "max_dispatch_failures": 2,
+  "max_triage_attempts": 1,
   "digest_hours": 4,
+  "escalation": {
+    "renotify_hours": {
+      "P2": 4,
+      "P1": 1
+    }
+  },
+  "status_digest": {
+    "send": false
+  },
   "notify_channels": [
     "console",
     "file",

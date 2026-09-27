@@ -132,3 +132,74 @@ def test_two_once_processes_share_an_exclusive_review_lock(tmp_path):
     first.communicate(timeout=30)
     assert runs.read_text(encoding="utf-8").splitlines() == ["run"]
     assert "REVIEW_SKIPPED" in (repo / "AUTOPILOT_LOG.md").read_text(encoding="utf-8")
+
+
+def test_escalation_ledger_holds_p2s_and_renotifies_after_four_hours(tmp_path, monkeypatch):
+    plan = FM + task(tid="TASK-001", status="blocked", blocked="SPEC_AMBIGUITY",
+                     branch="task/TASK-001-gb", started="2026-09-27T10:00:00Z") \
+           + task(tid="TASK-002", status="blocked", blocked="SPEC_AMBIGUITY",
+                  branch="task/TASK-002-cx", started="2026-09-27T10:00:00Z", owned="lib/b/**") \
+           + task(tid="TASK-003", status="blocked", blocked="SPEC_AMBIGUITY",
+                  branch="task/TASK-003-s5", started="2026-09-27T10:00:00Z", owned="lib/c/**")
+    sent = []
+    monkeypatch.setattr(sup, "notify", lambda _cfg, priority, message, _repo: sent.append((priority, message)))
+    state, clock = sup.RuntimeState(), FakeClock(NOW)
+    results = run_ticks(make_fixture_repo(tmp_path, plan), CFG, state, clock, 30,
+                        interval_minutes=5, plan_text=plan)
+    assert len([x for x in sent if x[0] == "P2"]) == 3
+    assert sum(a.kind == "ESCALATION_HELD" for r in results for a in r.actions) == 3
+
+    later = NOW.replace(hour=16)
+    actions = sup.decide(plan, state, CFG, later)
+    assert len([a for a in actions if a.kind == "ESCALATE_P2"]) == 3
+
+
+def test_p1_ledger_renotifies_only_after_one_hour(tmp_path, monkeypatch):
+    plan = FM + task(status="needs_review")
+    sent = []
+    monkeypatch.setattr(sup, "notify", lambda _cfg, priority, message, _repo: sent.append(priority))
+    state = sup.RuntimeState(rework_counts={"TASK-001": CFG["max_rework"]})
+    repo = make_fixture_repo(tmp_path, plan)
+    for offset in (0, 5, 60):
+        now = NOW + __import__("datetime").timedelta(minutes=offset)
+        sup.execute(sup.decide(plan, state, CFG, now), CFG, state, repo, False, now)
+    assert sent == ["P1", "P1"]
+
+
+def test_tooling_failure_triage_is_durable_and_attempt_is_real(tmp_path, monkeypatch):
+    plan = FM + task(status="blocked", blocked="TOOLING_FAILURE",
+                     branch="task/TASK-001-gb", started="2026-09-27T10:00:00Z")
+    repo = make_fixture_repo(tmp_path, plan)
+    calls = []
+    monkeypatch.setattr(sup, "run_shell", lambda cmd, _repo: calls.append(cmd) or 0)
+    state = sup.RuntimeState()
+    first = sup.decide(plan, state, CFG, NOW)
+    assert first[0].kind == "TRIAGE_UNBLOCK" and "attempt 1" in first[0].detail
+    sup.execute(first, CFG, state, repo, False, NOW)
+    second = sup.decide(plan, state, CFG, NOW.replace(minute=5))
+    assert [a.kind for a in second] == ["ESCALATE_P2"]
+    assert state.triage_counts == {"TASK-001": {"TOOLING_FAILURE": 1}}
+    assert len(calls) == 1
+
+
+def test_stop_mtime_logs_once_until_file_changes(tmp_path):
+    repo = make_fixture_repo(tmp_path, FM + task())
+    state = sup.RuntimeState()
+    first = sup.decide(FM + task(), state, CFG, NOW, stop_file_exists=True, stop_file_mtime="one")
+    second = sup.decide(FM + task(), state, CFG, NOW + __import__("datetime").timedelta(hours=3), stop_file_exists=True, stop_file_mtime="one")
+    third = sup.decide(FM + task(), state, CFG, NOW + __import__("datetime").timedelta(hours=6), stop_file_exists=True, stop_file_mtime="two")
+    sup.execute(first, CFG, state, repo, False, NOW)
+    sup.execute(second, CFG, state, repo, False, NOW)
+    sup.execute(third, CFG, state, repo, False, NOW)
+    assert (repo / "AUTOPILOT_LOG.md").read_text(encoding="utf-8").count("HALT:") == 2
+
+
+def test_status_digest_send_uses_durable_content_ledger(tmp_path, monkeypatch):
+    repo = make_fixture_repo(tmp_path, FM + task())
+    sent = []
+    monkeypatch.setattr(sup, "notify", lambda _cfg, priority, message, _repo: sent.append((priority, message)))
+    cfg = {**CFG, "status_digest_minutes": 0, "status_digest": {"send": True}}
+    state = sup.RuntimeState()
+    sup.maybe_status_digest(repo, cfg, state, NOW)
+    sup.maybe_status_digest(repo, cfg, state, NOW.replace(minute=5))
+    assert [priority for priority, _ in sent] == ["P0"]
