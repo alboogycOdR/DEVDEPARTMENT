@@ -1157,7 +1157,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-032
 **Title:** Wave E E-D — plan archive, notes cap, generated REVIEW tallies, machine-readable REVIEW.md
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §6 (E-D)
@@ -1171,15 +1171,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] validate_plan warns over notes_max_chars and over 150 KB; `--review` rejects a verdict table split by a blank line; team_stats flags :00:00Z stamps (E-D bullets)
 - [ ] Archived task IDs satisfy Depends_On in validate_plan, control and instincts
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-032-gb
+**Started_At:** 2026-09-27T14:28:24Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-27T14:03:08Z
+**Updated_By:** GB
+**Updated_At:** 2026-09-27T14:28:24Z
 
 ### TASK-033
 **Title:** Wave E E-E — plan_commit stamps Updated_At from the clock; tests isolated from the live checkout
