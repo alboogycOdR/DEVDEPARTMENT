@@ -1134,7 +1134,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-030
 **Title:** Wave E E-C — durable park state, git heartbeat, on-disk in-flight tracking
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H3/H5, §5 (E-C.1–3)
@@ -1157,7 +1157,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-27T19:27:16Z
+**Updated_At:** 2026-09-27T19:27:41Z
 
 ### TASK-031
 **Title:** Wave E E-K — commands through the durable inbox; source-missing once; template CONTROL = UNREPORTED
