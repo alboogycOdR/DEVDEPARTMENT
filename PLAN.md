@@ -1088,7 +1088,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-029
 **Title:** Wave E E-B2 — escalation ledger (H1), triage ledger (H2), one judgment-prompt form
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H1/H2, §4 (E-B.3–E-B.5), docs/reviews/LIVE_CHECKS_2026-09.md (slash row)
@@ -1097,13 +1097,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-028
 **Description:** Escalation ledger: key `kind|task_id|reason_prefix|digit-masked detail` (masking per a14f8976); send on first sight or change; re-send after `escalation.renotify_hours` (4 for P2, 1 for P1); otherwise `ESCALATION_HELD` once per hold period; HALT from a STOP file logs once per STOP-file mtime; clear key when the condition goes. Triage ledger `triage_counts[task_id][reason_prefix]` incremented in the executor for EVERY reason, logged detail shows real attempt number, ceiling `max_triage_attempts` (1; OWNERSHIP_CONFLICT 1; MISSING_DEPENDENCY 2), then one P2 via the escalation ledger; resets when the task leaves blocked. BEFORE coding the triage fix, investigate oikonomos SB-8 ('attempt 1 forever'): state loss between --once processes vs the stale_resets mix-up — record the finding in the dossier; the regression test reproduces whichever it was. One `judgment_prompt(command, args)` helper renders the explicit 'Read .claude/commands/<cmd>.md and execute …' form for review, REVIEW_TG and triage; no -p argument starts with `/` (LIVE_CHECKS: Git Bash rewrites a leading slash into a Windows path). Fix DEFAULT_CONFIG review_cmd and its stale comment; every supervisor headless launch exports `DEVTEAM_DELEGATED=1`. Carried from TASK-023 review: maybe_status_digest currently ships ON and notifies on each content change — route its sends through the escalation ledger and default `status_digest.send` to false for existing projects (true for new), per ask-don't-auto-flip; test it. **Protected-path grants (ORCH applies before dispatch):** scripts/supervisor.py, scripts/status_digest.py, autopilot.json.
 **Acceptance_Criteria:**
-- [ ] 30 ticks with three SPEC_AMBIGUITY tasks produce 3 P2s, not 90; a frozen max_rework task produces 1 P1, and a second only after 1 h (spec §4 Acceptance)
-- [ ] A STOP file present for 6 h logs HALT once (§4 Acceptance)
-- [ ] A TOOLING_FAILURE triage runs once, logs 'attempt 1', and the next tick emits one P2 (§4 Acceptance)
-- [ ] SB-8 root cause recorded in the dossier and reproduced by a failing-before test (E-B.4)
-- [ ] No `-p` argument built by supervisor.py begins with `/`; review, REVIEW_TG and triage share one helper; supervisor-launched sessions carry DEVTEAM_DELEGATED=1 (E-B.5, E-A.3)
-- [ ] Every tick/process/hour-based criterion is proven by a multi-tick or multi-process test with an advanced (fake) clock, never a single tick (spec §1 H7, §16)
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+- [x] 30 ticks with three SPEC_AMBIGUITY tasks produce 3 P2s, not 90; a frozen max_rework task produces 1 P1, and a second only after 1 h (spec §4 Acceptance)
+- [x] A STOP file present for 6 h logs HALT once (§4 Acceptance)
+- [x] A TOOLING_FAILURE triage runs once, logs 'attempt 1', and the next tick emits one P2 (§4 Acceptance)
+- [x] SB-8 root cause recorded in the dossier and reproduced by a failing-before test (E-B.4)
+- [x] No `-p` argument built by supervisor.py begins with `/`; review, REVIEW_TG and triage share one helper; supervisor-launched sessions carry DEVTEAM_DELEGATED=1 (E-B.5, E-A.3)
+- [x] Every tick/process/hour-based criterion is proven by a multi-tick or multi-process test with an advanced (fake) clock, never a single tick (spec §1 H7, §16)
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-029-cx
 **Started_At:** 2026-09-27T15:48:10Z
 **Progress_Notes:**
@@ -1120,14 +1120,16 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
     FILE   tests/test_supervisor_telegram.py  -> exists, 311 line(s), 13824 bytes
     FILE   autopilot.json  -> exists, 146 line(s), 5403 bytes
   [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
+- [2026-09-27T19:16:49Z] [CX] Final verification passed and TASK-029 is ready for review: full Python suite 1081 passed in 197.54s; Node suite 47 passed. Final commit `2995eda` scopes `DEVTEAM_DELEGATED=1` to each background shell child, preserving compatibility with existing maintenance-test Popen stubs.
 **Artifacts:** —
 - [2026-09-27T18:05:00Z] [CX] autopilot.json; dossiers/TASK-029.md; scripts/supervisor.py; tests/test_supervisor.py; tests/test_supervisor_ledgers.py
 **Test_Evidence:** —
 - [2026-09-27T18:05:00Z] [CX] `python -m py_compile scripts/supervisor.py scripts/status_digest.py` passed; `python -m pytest tests/test_supervisor_ledgers.py -k "escalation or p1_ledger or tooling or stop or status_digest" -q` → 5 passed, 7 deselected; `python -m pytest tests/test_supervisor.py -k "judgment or triage or ownership" -q` → 4 passed, 58 deselected; `node hooks/run-tests.js` → 47 passed, 0 failed. `python -m pytest -q` was stopped after exceeding its normal window without completing; do not treat full-suite acceptance as met.
+- [2026-09-27T19:16:49Z] [CX] `python -m pytest tests/test_supervisor.py tests/test_supervisor_ledgers.py tests/test_supervisor_maintenance.py -q` → 93 passed in 96.95s; `python -m pytest -q` → 1081 passed in 197.54s; `node hooks/run-tests.js` → 47 passed, 0 failed; `git diff --check master...HEAD` → clean.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-27T18:05:00Z
+**Updated_At:** 2026-09-27T19:16:49Z
 
 ### TASK-030
 **Title:** Wave E E-C — durable park state, git heartbeat, on-disk in-flight tracking
