@@ -15,7 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import supervisor as sup  # noqa: E402
 from test_supervisor import FM, kinds, task  # noqa: E402
 from tick_harness import (FakeClock, bump_branch, git_branch_head, make_fixture_repo,
-                          make_git_fixture_repo, review_launch_times, run_ticks)  # noqa: E402
+                          make_git_fixture_repo, review_launch_times, run_once_subprocess,
+                          run_ticks)  # noqa: E402
 
 
 NOW = datetime(2026, 9, 27, 12, tzinfo=timezone.utc)
@@ -66,6 +67,44 @@ def test_markers_and_atomic_corrupt_state_handling(tmp_path, monkeypatch):
     recovered.save(path)
     assert json.loads(path.read_text(encoding="utf-8"))
     assert not list(repo.glob("*.tmp"))
+
+
+def test_once_quarantines_corrupt_state_and_sends_one_p2(tmp_path):
+    """The real --once entry point reports corrupt durable state exactly once."""
+    repo = make_git_fixture_repo(tmp_path, FM + task())
+    (repo / "autopilot.json").write_text(json.dumps({"notify_channels": []}), encoding="utf-8")
+    (repo / ".autopilot_state.json").write_text("not-json", encoding="utf-8")
+
+    result = run_once_subprocess(repo)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.count("[P2] supervisor state file was corrupt:") == 1
+    log = (repo / "AUTOPILOT_LOG.md").read_text(encoding="utf-8")
+    assert log.count("STATE_CORRUPT:") == 1
+    assert len(list(repo.glob(".autopilot_state.corrupt-*.json"))) == 1
+    assert json.loads((repo / ".autopilot_state.json").read_text(encoding="utf-8"))
+
+
+def test_dry_run_preserves_state_bytes_and_never_quarantines_corruption(tmp_path):
+    """--dry-run must not modify either healthy or corrupt on-disk state."""
+    repo = make_git_fixture_repo(tmp_path, FM + task())
+    (repo / "autopilot.json").write_text(json.dumps({"notify_channels": []}), encoding="utf-8")
+    state_path = repo / ".autopilot_state.json"
+    state_path.write_bytes(b'{\n  "last_digest_ts": "kept-exactly"\n}\n')
+    healthy_bytes = state_path.read_bytes()
+
+    healthy = run_once_subprocess(repo, ["--dry-run"])
+
+    assert healthy.returncode == 0, healthy.stderr
+    assert state_path.read_bytes() == healthy_bytes
+
+    corrupt_bytes = b"not-json\r\n"
+    state_path.write_bytes(corrupt_bytes)
+    corrupt = run_once_subprocess(repo, ["--dry-run"])
+
+    assert corrupt.returncode == 0, corrupt.stderr
+    assert state_path.read_bytes() == corrupt_bytes
+    assert not list(repo.glob(".autopilot_state.corrupt-*.json"))
 
 
 def test_digest_includes_behind_pack_warning(tmp_path, monkeypatch):
