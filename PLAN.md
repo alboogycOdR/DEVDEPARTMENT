@@ -1045,7 +1045,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-028
 **Title:** Wave E E-B1 — review ledger (head-SHA keyed), backoff, review.lock, markers, atomic state + multi-tick harness
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H3/H7, §4 (E-B.1, E-B.2, E-B.6)
@@ -1067,12 +1067,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Progress_Notes:**
 - [2026-09-27T14:00:33Z] [ORCH] Reassigned S5 -> CX (owner decision 2026-09-27: Codex-only roster). S5 was stopped mid-task after a usage-limit death; it never committed. Its unreviewed WIP is kept as optional reference at .devteam/salvage/ in the main checkout (TASK-028-s5-wip.patch = supervisor/status_digest/test_token_efficiency diff; TASK-028-s5-wip.tick_harness.py and TASK-028-s5-wip.test_supervisor_ledgers.py = its new files). Treat it as untrusted draft: verify every line against the spec; start from a fresh branch task/TASK-028-cx.
 - [2026-09-27T14:41:33Z] [CX] Claimed TASK-028 on task/TASK-028-cx. Next: inspect the Wave E §4 specification, existing supervisor/runtime state, and the retained S5 draft as untrusted reference; implement the reusable tick harness first.
+- [2026-09-27T14:42:30Z] [CX] Preflight complete: verified all six Owned_Paths and read the E-B specification. The retained S5 patch is a reference only; its review-ledger, locking, state-atomicity, marker, and digest ideas will be independently validated with multi-tick/process tests.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-27T14:41:33Z
+**Updated_At:** 2026-09-27T14:42:30Z
 
 ### TASK-029
 **Title:** Wave E E-B2 — escalation ledger (H1), triage ledger (H2), one judgment-prompt form
