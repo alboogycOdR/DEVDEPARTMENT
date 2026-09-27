@@ -191,7 +191,79 @@ def parse_owned_paths(raw: str) -> list[str]:
     # " (new)" marks a path that must not exist yet (LOOP_HYGIENE E-F.5): an
     # annotation, not part of the glob, so isolation checks compare the real path.
     parts = (re.sub(r"\s+\(new\)$", "", p.strip(), flags=re.I) for p in re.split(r"[,\n]", raw))
-    return [p for p in parts if p and p not in EMPTY_VALUES]
+    return [p for p in parts if p and p.lower() not in EMPTY_VALUES]
+
+
+def _glob_prefix(glob: str) -> str:
+    for i, ch in enumerate(glob):
+        if ch in "*?[":
+            return glob[:i].rstrip("/")
+    return glob.rstrip("/")
+
+
+def grant_within_owned(grant: str, owned: list[str]) -> bool:
+    """True when a Protected_Grants entry is a subset of Owned_Paths.
+
+    Equal tokens pass. A more-specific grant passes when an owned glob
+    covers it (`hooks/lib.js` under `hooks/**`). A wider grant fails
+    (`scripts/**` is not inside `scripts/validate_plan.py`).
+    """
+    if grant in owned:
+        return True
+    gp = _glob_prefix(grant)
+    if not gp:
+        return False
+    for entry in owned:
+        op = _glob_prefix(entry)
+        if not op:
+            return True
+        if gp == op or gp.startswith(op + "/"):
+            return True
+    return False
+
+
+_PRIORITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
+
+def _deps_done(task: Task, by_id: dict[str, Task]) -> bool:
+    raw = task.get("Depends_On")
+    if task.is_empty("Depends_On"):
+        return True
+    for dep in re.split(r"[,\s]+", raw):
+        if re.match(r"^TASK-[A-Z0-9-]+$", dep):
+            other = by_id.get(dep)
+            if other is None or other.get("Status") != "done":
+                return False
+    return True
+
+
+def predict_dispatch_task(repo: str = ".", unit: str = "") -> str:
+    """Task id dispatch should export as DEVTEAM_TASK, or '' when it must not pin.
+
+    One claimed/in_progress task for the unit is that task. More than one is
+    ambiguous (H11: the first PLAN block is not necessarily this session) and
+    returns '' so the firewall keeps every active territory. With nothing to
+    resume, the highest-priority pending task whose dependencies are done
+    wins; ties break by task id, matching the builder's claim rule.
+    Fail-open: any read/parse error returns ''.
+    """
+    try:
+        text = (Path(repo) / "PLAN.md").read_text(encoding="utf-8")
+        tasks = parse_tasks(text, Report())
+        by_id = {t.task_id: t for t in tasks}
+        mine = [t for t in tasks if t.get("Assigned_To") == unit]
+        resuming = [t for t in mine if t.get("Status") in ("in_progress", "claimed")]
+        if len(resuming) == 1:
+            return resuming[0].task_id
+        if len(resuming) > 1:
+            return ""
+        pending = [t for t in mine if t.get("Status") == "pending" and _deps_done(t, by_id)]
+        if not pending:
+            return ""
+        pending.sort(key=lambda t: (_PRIORITY_ORDER.get(t.get("Priority"), 9), t.task_id))
+        return pending[0].task_id
+    except Exception:
+        return ""
 
 
 def validate(text: str, control_mode: str = "legacy",
@@ -276,6 +348,18 @@ def validate(text: str, control_mode: str = "legacy",
                 expected = f"task/{t.task_id}{branch_suffix[assignee]}"
                 if branch != expected:
                     rep.error(f"{ctx}: Branch '{branch}' should be '{expected}' for assignee {assignee}")
+
+        # E-A.4: Protected_Grants is optional and must be a subset of Owned_Paths.
+        # A missing field or an em-dash is fine. A done task may still carry
+        # the field; the firewall ignores it once the task leaves the active set.
+        if not t.is_empty("Protected_Grants"):
+            owned = parse_owned_paths(t.get("Owned_Paths"))
+            for grant in parse_owned_paths(t.get("Protected_Grants")):
+                if not grant_within_owned(grant, owned):
+                    rep.error(
+                        f"{ctx}: Protected_Grants entry '{grant}' is outside Owned_Paths "
+                        f"({t.get('Owned_Paths') or 'none'})"
+                    )
 
         # Dependencies exist
         deps = t.get("Depends_On")

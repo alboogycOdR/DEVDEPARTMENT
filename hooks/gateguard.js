@@ -144,7 +144,7 @@ function isExempt(rel) {
 
 function stateFile(sessionId) {
   const dir = process.env.GATEGUARD_STATE_DIR ||
-    path.join(lib.repoRoot(), '.devteam', 'gateguard');
+    path.join(lib.mainRoot(), '.devteam', 'gateguard');
   const safe = String(sessionId || 'default').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64);
   return path.join(dir, safe + '.json');
 }
@@ -192,9 +192,19 @@ function saveState(file, state) {
  * Fail-open and silent: telemetry must never affect the gate's own verdict
  * or be allowed to throw.
  */
+function denialDir() {
+  // GATEGUARD_STATE_DIR isolates the suite from the live checkout. Unset
+  // (every real session) the counter is in the main checkout, which is what
+  // supervisor.py reads — a worktree-local file never reaches it (E-A.1).
+  if (process.env.GATEGUARD_STATE_DIR) {
+    return path.join(process.env.GATEGUARD_STATE_DIR, 'denials');
+  }
+  return path.join(lib.mainRoot(), '.devteam', 'gateguard', 'denials');
+}
+
 function bumpDenialCounter(unit) {
   try {
-    const dir = path.join(lib.repoRoot(), '.devteam', 'gateguard', 'denials');
+    const dir = denialDir();
     const file = path.join(dir, unit + '.json');
     let count = 0;
     try { count = JSON.parse(fs.readFileSync(file, 'utf-8')).count || 0; } catch (_e) { /* start at 0 */ }
@@ -325,7 +335,7 @@ function main() {
 
     let taskId = null;
     try {
-      const planText = fs.readFileSync(path.join(lib.repoRoot(), 'PLAN.md'), 'utf-8');
+      const planText = fs.readFileSync(path.join(lib.mainRoot(), 'PLAN.md'), 'utf-8');
       taskId = lib.activeTaskIdFor(lib.parsePlan(planText), u);
     } catch (_e) { /* no plan yet — prompts fall back to generic wording */ }
 

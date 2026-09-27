@@ -391,7 +391,29 @@ fi
 # without this the firewall would silently treat S5 as unrestricted ORCH
 # instead of enforcing its Owned_Paths. Set for every builder regardless,
 # for consistency and to future-proof if GB/CX ever gain hook support.
+#
+# E-A.2/E-A.3: DEVTEAM_TASK is the session's task when we know exactly one
+# (strict-mode claim, or a unique legacy resume/pending candidate). More than
+# one claimed/in_progress task stays unset — pinning the first PLAN block is
+# the H11 bug. DEVTEAM_DELEGATED=1 marks every dispatched process so the
+# firewall can refuse autopilot.json writes.
+if [[ -z "${TASK_ID}" ]]; then
+  TASK_ID="$(python3 -c "
+import sys
+sys.path.insert(0, 'scripts')
+from validate_plan import predict_dispatch_task
+print(predict_dispatch_task('.', '$ID') or '')
+" 2>/dev/null || true)"
+  TASK_ID="${TASK_ID//$'\r'/}"
+fi
 export DEVTEAM_UNIT="$ID"
+export DEVTEAM_TASK="$TASK_ID"
+export DEVTEAM_DELEGATED=1
+if [[ -n "$TASK_ID" ]]; then
+  echo "[dispatch] session env DEVTEAM_UNIT=$ID DEVTEAM_TASK=$TASK_ID DEVTEAM_DELEGATED=1"
+else
+  echo "[dispatch] session env DEVTEAM_UNIT=$ID DEVTEAM_TASK unset (ambiguous or none) DEVTEAM_DELEGATED=1"
+fi
 
 echo "[dispatch] Launching $BUILDER ($ID) in $WT..."
 if [[ "$CONTROL_MODE" == "strict" ]]; then

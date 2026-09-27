@@ -98,7 +98,11 @@ function runHook(script, payload, env) {
   // is exactly when the suite gates a needs_review submission (TASK-002 hit
   // this live). Tests that need a unit set it explicitly via `env`.
   const base = { ...process.env, ...env };
-  if (!env || !('DEVTEAM_UNIT' in env)) delete base.DEVTEAM_UNIT;
+  // Scrub session pins the same way as DEVTEAM_UNIT: a builder dispatch now
+  // exports all three, and a test that does not set them must see them unset.
+  for (const key of ['DEVTEAM_UNIT', 'DEVTEAM_TASK', 'DEVTEAM_DELEGATED']) {
+    if (!env || !(key in env)) delete base[key];
+  }
   try {
     const stdout = execFileSync(process.execPath, [path.join(HOOKS_DIR, script)], {
       input: JSON.stringify(payload),
@@ -127,6 +131,19 @@ test('ownedPathsOf splits comma territories', () => {
 test('ownedPathsOf strips the (new) annotation', () => {
   const t = { fields: { Owned_Paths: 'scripts/a.py (new), tests/b/** (new), c.md' } };
   assert.deepStrictEqual(lib.ownedPathsOf(t), ['scripts/a.py', 'tests/b/**', 'c.md']);
+});
+
+test('grantWithinOwned matches validate_plan.grant_within_owned cases', () => {
+  const owned = ['hooks/**', 'scripts/validate_plan.py'];
+  assert.ok(lib.grantWithinOwned('hooks/lib.js', owned));
+  assert.ok(lib.grantWithinOwned('scripts/validate_plan.py', owned));
+  assert.ok(lib.grantWithinOwned('scripts/validate_plan.py', ['scripts/validate_plan.py (new)'.replace(/\s+\(new\)$/i, '')]));
+  assert.ok(!lib.grantWithinOwned('scripts/other.py', owned));
+  assert.ok(!lib.grantWithinOwned('scripts/**', ['scripts/validate_plan.py']));
+  assert.ok(!lib.grantWithinOwned('CLAUDE.md', owned));
+  assert.ok(!lib.grantWithinOwned('**', owned), 'bare-wildcard grant is not a subset');
+  assert.ok(lib.grantWithinOwned('CLAUDE.md', ['**']), 'bare-wildcard owned covers every grant');
+  assert.ok(lib.grantWithinOwned('hooks/lib.js', ['hooks/**']));
 });
 
 test('pathInGlob prefix containment semantics', () => {
@@ -214,7 +231,11 @@ test('firewall blocks GB write to .devteam/pending_amendments/** — Wave C', ()
 test('firewall allows GB write to PLAN.md in control.mode=legacy (default) — Wave I', () => {
   const repo = makeTempRepo();  // no strict flag -> legacy, same as today
   const r = runHook('territory-firewall.js',
-    { tool_input: { file_path: path.join(repo, 'PLAN.md'), content: 'x' } },
+    { tool_input: {
+        file_path: path.join(repo, 'PLAN.md'),
+        old_string: '**Status:** in_progress',
+        new_string: '**Status:** needs_review',
+      } },
     { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
   assert.strictEqual(r.code, 0, r.stderr);
 });
@@ -258,8 +279,12 @@ test('firewall resolves active task from .devteam/inflight/ when present — Wav
 
 test('firewall allows GB write to PLAN.md (block discipline is downstream)', () => {
   const repo = makeTempRepo();
+  const content = PLAN.replace(
+    '**Updated_At:** 2026-07-13T09:30:00Z',
+    '**Updated_At:** 2026-07-13T10:00:00Z'
+  );
   const r = runHook('territory-firewall.js',
-    { tool_input: { file_path: path.join(repo, 'PLAN.md'), content: 'x' } },
+    { tool_input: { file_path: path.join(repo, 'PLAN.md'), content } },
     { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
   assert.strictEqual(r.code, 0, r.stderr);
 });
@@ -462,6 +487,245 @@ test('session-end appends audit line and refreshes checkpoint', () => {
   assert.ok(log.includes('SESSION_END unit=ORCH'));
   assert.ok(log.includes('in_progress:1'));
   assert.ok(fs.existsSync(path.join(repo, '.devteam', 'CHECKPOINT.md')));
+});
+
+// ---------------------------------------------------- E-A (TASK-027) --------
+test('DEVTEAM_TASK reports that task, not the first in_progress block', () => {
+  const plan = PLAN.replace(
+    '### TASK-020',
+    `### TASK-338
+**Title:** Wrong first block
+**Status:** in_progress
+**Assigned_To:** GB
+**Priority:** high
+**Spec_References:** specs/x.md
+**Owned_Paths:** lib/other/**
+**Depends_On:** —
+**Description:** d
+**Acceptance_Criteria:**
+- [ ] c
+**Branch:** task/TASK-338-gb
+**Started_At:** 2026-07-13T09:00:00Z
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** GB
+**Updated_At:** 2026-07-13T09:30:00Z
+
+### TASK-332
+**Title:** The dispatched task
+**Status:** in_progress
+**Assigned_To:** GB
+**Priority:** high
+**Spec_References:** specs/x.md
+**Owned_Paths:** lib/features/auth/**
+**Depends_On:** —
+**Description:** d
+**Acceptance_Criteria:**
+- [ ] c
+**Branch:** task/TASK-332-gb
+**Started_At:** 2026-07-13T09:00:00Z
+**Progress_Notes:**
+- [2026-07-13T09:30:00Z] [GB] pinned note.
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** GB
+**Updated_At:** 2026-07-13T09:30:00Z
+
+### TASK-020`
+  );
+  const repo = makeTempRepo({ plan });
+  const r = runHook('session-start.js', {}, {
+    CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB', DEVTEAM_TASK: 'TASK-332',
+  });
+  assert.strictEqual(r.code, 0, r.stderr);
+  assert.ok(r.stdout.includes('TASK-332'), r.stdout);
+  assert.ok(r.stdout.includes('pinned note'), r.stdout);
+  assert.ok(!r.stdout.includes('TASK-338'), 'must not banner the earlier in_progress block');
+});
+
+test('autopilot.json write denied when DEVTEAM_DELEGATED=1 and allowed with neither variable', () => {
+  const repo = makeTempRepo();
+  const denied = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'autopilot.json'), content: '{"control":{"mode":"strict"}}' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_DELEGATED: '1' });
+  assert.strictEqual(denied.code, 2, denied.stderr);
+  assert.ok(denied.stderr.includes('human session'), denied.stderr);
+  const localDenied = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'autopilot.local.json'), content: '{}' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(localDenied.code, 2, localDenied.stderr);
+  const allowed = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'autopilot.json'), content: '{}' } },
+    { CLAUDE_PROJECT_DIR: repo });
+  assert.strictEqual(allowed.code, 0, allowed.stderr);
+  const other = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'anything.txt'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_DELEGATED: '1' });
+  assert.strictEqual(other.code, 0, other.stderr);
+});
+
+test('Protected_Grants on an active task allow that path; a done task grant does not', () => {
+  const activePlan = PLAN.replace(
+    '**Owned_Paths:** lib/features/auth/**, test/auth/**',
+    '**Owned_Paths:** lib/features/auth/**, scripts/granted.py\n**Protected_Grants:** scripts/granted.py'
+  );
+  const repo = makeTempRepo({ plan: activePlan });
+  const ok = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'scripts/granted.py'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(ok.code, 0, ok.stderr);
+
+  const donePlan = activePlan.replace('**Status:** in_progress', '**Status:** done');
+  const doneRepo = makeTempRepo({ plan: donePlan });
+  const blocked = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(doneRepo, 'scripts/granted.py'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: doneRepo, DEVTEAM_UNIT: 'GB', DEVTEAM_TASK: 'TASK-020' });
+  assert.strictEqual(blocked.code, 2, blocked.stderr);
+});
+
+test('ORCH-authored grant inside Owned_Paths allows the write', () => {
+  const plan = PLAN.replace(
+    '**Owned_Paths:** lib/features/auth/**, test/auth/**',
+    '**Owned_Paths:** lib/features/auth/**, scripts/granted.py\n**Protected_Grants:** scripts/granted.py'
+  );
+  const repo = makeTempRepo({ plan });
+  const r = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'scripts/granted.py'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(r.code, 0, r.stderr);
+});
+
+test('grant outside Owned_Paths is ignored by the firewall', () => {
+  const plan = PLAN.replace(
+    '**Owned_Paths:** lib/features/auth/**, test/auth/**',
+    '**Owned_Paths:** lib/features/auth/**, test/auth/**\n**Protected_Grants:** CLAUDE.md, AGENTS.md'
+  );
+  const repo = makeTempRepo({ plan });
+  const claude = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'CLAUDE.md'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(claude.code, 2, claude.stderr);
+  assert.ok(claude.stderr.includes('protected path'), claude.stderr);
+  const agents = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'AGENTS.md'), content: 'x' } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(agents.code, 2, agents.stderr);
+});
+
+test('builder self-grant attempt on PLAN.md is denied in legacy mode', () => {
+  const repo = makeTempRepo();
+  const editGrant = runHook('territory-firewall.js',
+    { tool_input: {
+        file_path: path.join(repo, 'PLAN.md'),
+        old_string: '**Owned_Paths:** lib/features/auth/**, test/auth/**',
+        new_string: '**Owned_Paths:** lib/features/auth/**, test/auth/**\n**Protected_Grants:** CLAUDE.md',
+      } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(editGrant.code, 2, editGrant.stderr);
+  assert.ok(editGrant.stderr.includes('ORCH-only'), editGrant.stderr);
+
+  const editOwned = runHook('territory-firewall.js',
+    { tool_input: {
+        file_path: path.join(repo, 'PLAN.md'),
+        old_string: '**Owned_Paths:** lib/features/auth/**, test/auth/**',
+        new_string: '**Owned_Paths:** lib/features/auth/**, test/auth/**, CLAUDE.md',
+      } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(editOwned.code, 2, editOwned.stderr);
+
+  const writeGrant = PLAN.replace(
+    '**Owned_Paths:** lib/features/auth/**, test/auth/**',
+    '**Owned_Paths:** lib/features/auth/**, test/auth/**\n**Protected_Grants:** hooks/**'
+  );
+  const write = runHook('territory-firewall.js',
+    { tool_input: { file_path: path.join(repo, 'PLAN.md'), content: writeGrant } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(write.code, 2, write.stderr);
+
+  const multi = runHook('territory-firewall.js',
+    { tool_input: {
+        file_path: path.join(repo, 'PLAN.md'),
+        edits: [{
+          old_string: '**Owned_Paths:** lib/features/auth/**, test/auth/**',
+          new_string: '**Owned_Paths:** lib/features/auth/**, test/auth/**\n**Protected_Grants:** CLAUDE.md',
+        }],
+      } },
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'GB' });
+  assert.strictEqual(multi.code, 2, multi.stderr);
+});
+
+test('ORCH and interactive sessions may edit Protected_Grants and Owned_Paths', () => {
+  const repo = makeTempRepo();
+  const payload = {
+    tool_input: {
+      file_path: path.join(repo, 'PLAN.md'),
+      old_string: '**Owned_Paths:** lib/features/auth/**, test/auth/**',
+      new_string: '**Owned_Paths:** lib/features/auth/**, test/auth/**\n**Protected_Grants:** CLAUDE.md',
+    },
+  };
+  const orch = runHook('territory-firewall.js', payload,
+    { CLAUDE_PROJECT_DIR: repo, DEVTEAM_UNIT: 'ORCH' });
+  assert.strictEqual(orch.code, 0, orch.stderr);
+  const interactive = runHook('territory-firewall.js', payload,
+    { CLAUDE_PROJECT_DIR: repo });
+  assert.strictEqual(interactive.code, 0, interactive.stderr);
+});
+
+test('claim visible only in the main checkout is allowed; gateguard denials land there', () => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'devteam-ea-'));
+  const main = path.join(parent, 'main');
+  const wt = path.join(parent, 'wt');
+  fs.mkdirSync(main);
+  const git = (args, cwd) => execFileSync('git', args, { cwd, stdio: 'ignore' });
+  try {
+    git(['init', '-q', '-b', 'master'], main);
+    git(['config', 'user.email', 't@example.com'], main);
+    git(['config', 'user.name', 'T'], main);
+    const stale = PLAN.replace('**Status:** in_progress', '**Status:** pending')
+      .replace('**Assigned_To:** GB', '**Assigned_To:** TBD');
+    fs.writeFileSync(path.join(main, 'PLAN.md'), stale, 'utf-8');
+    fs.writeFileSync(path.join(main, 'autopilot.json'), '{}\n', 'utf-8');
+    git(['add', 'PLAN.md', 'autopilot.json'], main);
+    git(['commit', '-q', '-m', 'init'], main);
+    git(['worktree', 'add', '--detach', wt, 'HEAD'], main);
+    // Uncommitted claim exists only in the main checkout working tree.
+    fs.writeFileSync(path.join(main, 'PLAN.md'), PLAN, 'utf-8');
+    assert.ok(fs.readFileSync(path.join(wt, 'PLAN.md'), 'utf-8').includes('**Status:** pending'));
+
+    const allowed = runHook('territory-firewall.js',
+      { tool_input: { file_path: path.join(wt, 'lib/features/auth/login.dart'), content: 'x' } },
+      { CLAUDE_PROJECT_DIR: wt, DEVTEAM_UNIT: 'GB', GATEGUARD_STATE_DIR: '' });
+    assert.strictEqual(allowed.code, 0, allowed.stderr);
+
+    const denied = runHook('gateguard.js',
+      { tool_name: 'Edit', session_id: 'ea', tool_input: { file_path: path.join(wt, 'lib/features/auth/login.dart') } },
+      { CLAUDE_PROJECT_DIR: wt, DEVTEAM_UNIT: 'GB', GATEGUARD_STATE_DIR: '' });
+    assert.strictEqual(denied.code, 2, denied.stderr);
+    const counter = path.join(main, '.devteam', 'gateguard', 'denials', 'GB.json');
+    assert.ok(fs.existsSync(counter), 'denial counter must land in the main checkout');
+    assert.ok(!fs.existsSync(path.join(wt, '.devteam', 'gateguard', 'denials', 'GB.json')),
+      'worktree must not receive the denial counter');
+  } finally {
+    try { git(['worktree', 'remove', '--force', wt], main); } catch (_e) { /* best effort */ }
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test('dispatch exports DEVTEAM_TASK and DEVTEAM_DELEGATED beside DEVTEAM_UNIT', () => {
+  const root = path.join(HOOKS_DIR, '..');
+  const sh = fs.readFileSync(path.join(root, 'scripts', 'dispatch.sh'), 'utf-8');
+  const ps = fs.readFileSync(path.join(root, 'scripts', 'dispatch.ps1'), 'utf-8');
+  assert.ok(sh.includes('export DEVTEAM_TASK="$TASK_ID"'), 'dispatch.sh DEVTEAM_TASK');
+  assert.ok(sh.includes('export DEVTEAM_DELEGATED=1'), 'dispatch.sh DEVTEAM_DELEGATED');
+  assert.ok(ps.includes('$env:DEVTEAM_TASK = $TaskId'), 'dispatch.ps1 DEVTEAM_TASK');
+  assert.ok(ps.includes('$env:DEVTEAM_DELEGATED = "1"'), 'dispatch.ps1 DEVTEAM_DELEGATED');
+  assert.ok(ps.includes("`$env:DEVTEAM_TASK = '$TaskId'"), 'detached runner DEVTEAM_TASK');
+  assert.ok(ps.includes("`$env:DEVTEAM_DELEGATED = '1'"), 'detached runner DEVTEAM_DELEGATED');
 });
 
 // ------------------------------------------------------------------ report --

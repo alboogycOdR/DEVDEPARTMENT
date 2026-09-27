@@ -17,11 +17,12 @@ const lib = require('./lib.js');
 
 function main() {
   const root = lib.repoRoot();
+  const main = lib.mainRoot();
   const u = lib.unit() || 'UNKNOWN'; // null (unrecognized unit) is fine here — these hooks only label output
   const ts = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 
   let summary = 'no PLAN.md';
-  const planPath = path.join(root, 'PLAN.md');
+  const planPath = path.join(main, 'PLAN.md');
   if (fs.existsSync(planPath)) {
     const tasks = lib.parsePlan(fs.readFileSync(planPath, 'utf-8'))
       .filter((t) => !((t.fields.Title || '').toUpperCase().includes('EXAMPLE')));

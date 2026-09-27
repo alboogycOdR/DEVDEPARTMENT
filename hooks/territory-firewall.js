@@ -16,8 +16,6 @@
  */
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
 const lib = require('./lib.js');
 
 function main() {
@@ -40,28 +38,55 @@ function main() {
     );
     return 2;
   }
-  if (u === 'ORCH') return 0;
 
   const rel = lib.relPath(target);
-  const mode = lib.controlMode();
-
-  // PLAN.md: legacy mode keeps today's behavior (block-level discipline
-  // stays downstream). Strict mode (Wave I): PLAN.md joins the protected
-  // set — the supervisor is the sole writer; builders report state via a
-  // devteam-control block instead.
-  if (rel === 'PLAN.md') {
-    if (mode === 'legacy') return 0;
+  // E-A.3: config is human-only. Checked before the ORCH short-circuit so a
+  // delegated session (DEVTEAM_DELEGATED=1, unit unset → ORCH) is still denied.
+  // Grants cannot override this.
+  if (lib.isHumanOnlyConfig(rel) && lib.sessionIsDelegated()) {
     process.stderr.write(
-      `[territory-firewall] BLOCKED: PLAN.md is protected in control.mode=strict (Wave I). ` +
-      `The supervisor is the sole writer — emit a devteam-control block as the last thing ` +
-      `you print instead of editing PLAN.md directly. See docs/CONTROL.md.`
+      `[territory-firewall] BLOCKED: ${rel} is writable only by a human session. ` +
+      `A process with DEVTEAM_UNIT set or DEVTEAM_DELEGATED=1 must not change autopilot config. ` +
+      `Unset both variables (interactive ORCH) to edit it.`
     );
     return 2;
   }
+  if (u === 'ORCH') return 0;
 
-  // Hard-protected paths first.
+  const mode = lib.controlMode();
+
+  // PLAN.md: strict mode — supervisor is the sole writer. Legacy mode
+  // still lets a builder edit its own block, but Protected_Grants and
+  // Owned_Paths are ORCH-only (a builder cannot self-grant a protected path).
+  if (rel === 'PLAN.md') {
+    if (mode === 'strict') {
+      process.stderr.write(
+        `[territory-firewall] BLOCKED: PLAN.md is protected in control.mode=strict (Wave I). ` +
+        `The supervisor is the sole writer — emit a devteam-control block as the last thing ` +
+        `you print instead of editing PLAN.md directly. See docs/CONTROL.md.`
+      );
+      return 2;
+    }
+    if (lib.builderChangedOrchOnlyFields(toolInput)) {
+      process.stderr.write(
+        `[territory-firewall] BLOCKED: Protected_Grants and Owned_Paths are ORCH-only fields. ` +
+        `A builder must not add or change those lines in PLAN.md.`
+      );
+      return 2;
+    }
+    return 0;
+  }
+
+  // PLAN.md and grants come from the main checkout, not this worktree (E-A.1).
+  const planText = lib.readPlanText();
+  const tasks = planText == null ? [] : lib.parsePlan(planText);
+  const active = lib.sessionTasksFor(tasks, u);
+  const grantGlobs = active.flatMap(lib.effectiveProtectedGrantsOf);
+
+  // Hard-protected paths first. Permanent PROTECTED_EXCEPTIONS plus this
+  // session's active-task Protected_Grants (a done task contributes none).
   if (lib.pathInAnyGlob(rel, lib.PROTECTED_FOR_BUILDERS) &&
-      !lib.pathInAnyException(rel, lib.PROTECTED_EXCEPTIONS)) {
+      !lib.pathInAnyException(rel, lib.PROTECTED_EXCEPTIONS.concat(grantGlobs))) {
     process.stderr.write(
       `[territory-firewall] BLOCKED: ${rel} is a protected path (protocol hard prohibition for ${u}). ` +
       `Do not modify it. If you believe you need this file, set your task to blocked ` +
@@ -74,12 +99,7 @@ function main() {
   // (their heartbeat/work-log file) — resolved via .devteam/inflight/<unit>.json,
   // falling back to a PLAN.md scan. Any OTHER dossier is still off-limits.
   if (mode === 'strict' && rel.startsWith('dossiers/')) {
-    let planTextForDossier = '';
-    try {
-      planTextForDossier = fs.readFileSync(path.join(lib.repoRoot(), 'PLAN.md'), 'utf-8');
-    } catch (_e) { /* no plan yet — activeTaskIdFor's inflight fallback still works */ }
-    const tasksForDossier = lib.parsePlan(planTextForDossier);
-    const activeId = lib.activeTaskIdFor(tasksForDossier, u);
+    const activeId = lib.activeTaskIdFor(tasks, u);
     if (activeId && rel === `dossiers/${activeId}.md`) return 0;
     process.stderr.write(
       `[territory-firewall] BLOCKED: ${rel} — in control.mode=strict you may only write your ` +
@@ -88,17 +108,11 @@ function main() {
     return 2;
   }
 
-  // Territory check against this unit's active task(s).
-  const planPath = path.join(lib.repoRoot(), 'PLAN.md');
-  let planText;
-  try {
-    planText = fs.readFileSync(planPath, 'utf-8');
-  } catch (_e) {
+  // Territory check against this session's active task(s).
+  if (planText == null) {
     return 0; // no plan → nothing to enforce (e.g. fresh repo); fail open
   }
 
-  const tasks = lib.parsePlan(planText);
-  const active = lib.activeTasksFor(tasks, u);
   if (active.length === 0) {
     process.stderr.write(
       `[territory-firewall] BLOCKED: unit ${u} has no active (claimed/in_progress/needs_review) task in PLAN.md, ` +
