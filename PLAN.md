@@ -931,7 +931,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-026
 **Title:** Wave E E-0d — no-manifest adopt path (sync_from_pack --adopt)
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §2 (E-0.6)
@@ -951,6 +951,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-27T13:57:57Z] [CX] Full pytest completed: 1055 passed, 1 failed in 246.88s. The sole failure is an integration-manifest defect outside this task's Owned_Paths: master has tests/test_test_env_scrub.py but sync-manifest.json does not register it. Node suite passes (37/0); copied-RWC dry-run reported 9 diverged files and 107 proposed absent-layer adds, exit 2 as expected, with the original checkout's pre-existing dirty status unchanged. Awaiting ORCH resolution of the unrelated manifest failure before handoff.
 - [2026-09-27T14:15:46Z] [ORCH] Unblocked: the manifest failure was a master defect, fixed on master in e8fa1f7 (tests/test_test_env_scrub.py and three other Wave E files registered; master full suite 1061 passed, node 37/0). Next: merge master into task/TASK-026-cx, re-run both full suites, record counts, submit needs_review.
 - [2026-09-27T14:20:41Z] [CX] Merged master (including e8fa1f7) and re-ran both full suites. Node is green; Python now has one unrelated master-side Windows dispatch assertion failure in tests/test_dispatch_worktree.py::TestEmptyHuskReclaim::test_dotfile_only_directory_is_refused_by_dispatch_ps1 (expected "not a registered worktree", received a PowerShell WriteError). That test/path is outside TASK-026 territory; blocked awaiting ORCH resolution.
+- [2026-09-27T14:24:13Z] [ORCH] Unblocked: TestEmptyHuskReclaim is environment-specific to the Codex session (PowerShell WriteError), not a code defect — ORCH ran tests/test_dispatch_worktree.py::TestEmptyHuskReclaim on task/TASK-026-cx @fa59c67 three times: 7 passed each run; master full suite @6b7b568 1066 passed. Submit needs_review with your existing evidence, citing this note; ORCH's review re-runs the full suites independently.
 **Artifacts:** —
 **Artifacts:**
 - scripts/sync_from_pack.py
@@ -964,13 +965,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-27T13:57:57Z] [CX] `python scripts/sync_from_pack.py --pack . --project <tmp copy of rwc-mobile-connect> --adopt --dry-run` — exit 2 as expected; 9 `diverged`, 107 absent-layer proposed adds; original RWC checkout status was unchanged (pre-existing dirty state retained).
 - [2026-09-27T14:20:41Z] [CX] After merging master: `python -m pytest -q` — 1062 passed, 1 failed in 191.27s; sole failure `TestEmptyHuskReclaim::test_dotfile_only_directory_is_refused_by_dispatch_ps1` in tests/test_dispatch_worktree.py (outside territory). `node hooks/run-tests.js` — 37 passed, 0 failed.
 **Review_Findings:** —
-**Blocked_Reason:** OTHER: master-side Windows dispatch test assertion failure outside TASK-026 Owned_Paths
-**Updated_By:** CX
-**Updated_At:** 2026-09-27T14:20:41Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-27T14:24:13Z
 
 ### TASK-027
 **Title:** Wave E E-A — hooks resolve main checkout; DEVTEAM_TASK; human-only config; Protected_Grants field
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** GB
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §3 (E-A.1–4)
@@ -1033,9 +1034,10 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-27T14:14:14Z] [GB] `node hooks/run-tests.js` → 47 passed, 0 failed (builder self-grant denied; ORCH-authored in-Owned_Paths grant allows write; grant outside Owned_Paths ignored; ORCH/interactive field edits allowed; grantWithinOwned cases). `node tests/test_gateguard.js` → 39 passed, 0 failed. `python -m pytest tests/test_validate_plan.py -q` → 24 passed. `python -m pytest -q` → 1066 passed in 230.11s.
 **Review_Findings:**
 - [2026-09-27T14:00:54Z] [ORCH] REWORK (reviewer: claude-opus-5-5) — stays with GB (owner decision 2026-09-27: GB and CX build, S5 does not); continue on branch task/TASK-027-gb. Verified: territory clean (12 Owned_Paths files + dossier); merged onto master in a temp worktree: pytest 1065 passed, hooks 42/0, gateguard 39/0; mainRoot(), DEVTEAM_TASK narrowing, human-only config and grant expiry all correct and tested. GB also correctly found a master defect (unregistered test file), fixed by ORCH in e8fa1f7. REQUIRED (security): Protected_Grants moved grants from a protected code file (hooks/lib.js) into PLAN.md, which builders can edit in legacy mode, and the firewall applies them straight from the live file with no subset check — a builder can add `**Protected_Grants:** CLAUDE.md` (or hooks/**) to its own block and immediately write that path. Fix both halves: (1) the firewall applies a grant only if it lies within that same task's Owned_Paths (port validate_plan.grant_within_owned to lib.js; identical semantics, tested against the same cases); (2) in legacy mode the firewall denies a builder write to PLAN.md that adds or changes a `**Protected_Grants:**` or `**Owned_Paths:**` line (Edit: compare old_string vs new_string; Write/MultiEdit: compare against the current main-checkout PLAN.md), with a clear message that these fields are ORCH-only. Tests: builder self-grant attempt denied; ORCH-authored grant inside Owned_Paths allows the write; grant outside Owned_Paths ignored by the firewall; ORCH/interactive edits to those fields unaffected. Also: memoize mainRoot() per process (it spawns git on every call, several times per hook); re-run both full suites and tick criterion 5 with counts (master is green since e8fa1f7).
+- [2026-09-27T14:24:13Z] [ORCH] APPROVED on re-review (reviewer: claude-opus-5-5). Security rework verified: firewall applies a Protected_Grants entry only inside that task's Owned_Paths (JS port of validate_plan.grant_within_owned, same cases), and refuses builder Edit/Write/MultiEdit of PLAN.md that adds/changes Owned_Paths or Protected_Grants (field-level snapshot compare, not text diff); mainRoot() memoized. Merged-tree check (temp worktree): pytest 1066, hooks 47/0, gateguard 39/0. Post-merge on master 6b7b568: pytest 1066 passed, hooks 47/0, gateguard 39/0. Known limit (pre-existing, not this task): the firewall sees file tools only; a shell write to PLAN.md bypasses it — backstop carried to TASK-034. Merged --no-ff 6b7b568; branch deleted.
 **Blocked_Reason:** —
-**Updated_By:** GB
-**Updated_At:** 2026-09-27T14:14:14Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-27T14:24:13Z
 
 ### TASK-028
 **Title:** Wave E E-B1 — review ledger (head-SHA keyed), backoff, review.lock, markers, atomic state + multi-tick harness
@@ -1044,6 +1046,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H3/H7, §4 (E-B.1, E-B.2, E-B.6)
 **Owned_Paths:** scripts/supervisor.py, scripts/status_digest.py, tests/test_supervisor.py, tests/test_supervisor_ledgers.py (new), tests/tick_harness.py (new), tests/test_token_efficiency.py
+**Protected_Grants:** scripts/supervisor.py, scripts/status_digest.py
 **Depends_On:** TASK-023, TASK-024, TASK-025
 **Description:** Extend TASK-023's port. Build `tests/tick_harness.py` FIRST: a reusable harness that runs N supervisor ticks with a fake clock, and N separate `--once` processes (real subprocesses) against a tmp fixture repo — TASK-029/030/031/043 reuse it. Then: review ledger keyed by task_id + task-branch head SHA; REVIEW only when needs_review and (no entry, or entry ended without verdict and backoff 5 min × 2^n capped at `review.max_backoff_minutes`=120 elapsed); new head SHA resets; at most one REVIEW per tick, oldest first; `.devteam/review.lock` (PID + start, stale after `review.lock_stale_minutes`=90). AUTOPILOT_LOG markers `REVIEW_START task= sha= session=` / `REVIEW_END task= verdict=approved|rework|none duration=`. Atomic RuntimeState save (temp + os.replace); corrupt file renamed `.autopilot_state.corrupt-<ts>.json`, logged, one P2. Dry-run never saves state. Also: the P0 digest prints TASK-025's `behind_pack()` line. **Protected-path grants (ORCH applies before dispatch):** scripts/supervisor.py, scripts/status_digest.py.
 **Acceptance_Criteria:**
@@ -1073,6 +1076,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H1/H2, §4 (E-B.3–E-B.5), docs/reviews/LIVE_CHECKS_2026-09.md (slash row)
 **Owned_Paths:** scripts/supervisor.py, scripts/status_digest.py, tests/test_supervisor.py, tests/test_supervisor_ledgers.py, tests/test_supervisor_telegram.py, autopilot.json
+**Protected_Grants:** scripts/supervisor.py, scripts/status_digest.py, autopilot.json
 **Depends_On:** TASK-028
 **Description:** Escalation ledger: key `kind|task_id|reason_prefix|digit-masked detail` (masking per a14f8976); send on first sight or change; re-send after `escalation.renotify_hours` (4 for P2, 1 for P1); otherwise `ESCALATION_HELD` once per hold period; HALT from a STOP file logs once per STOP-file mtime; clear key when the condition goes. Triage ledger `triage_counts[task_id][reason_prefix]` incremented in the executor for EVERY reason, logged detail shows real attempt number, ceiling `max_triage_attempts` (1; OWNERSHIP_CONFLICT 1; MISSING_DEPENDENCY 2), then one P2 via the escalation ledger; resets when the task leaves blocked. BEFORE coding the triage fix, investigate oikonomos SB-8 ('attempt 1 forever'): state loss between --once processes vs the stale_resets mix-up — record the finding in the dossier; the regression test reproduces whichever it was. One `judgment_prompt(command, args)` helper renders the explicit 'Read .claude/commands/<cmd>.md and execute …' form for review, REVIEW_TG and triage; no -p argument starts with `/` (LIVE_CHECKS: Git Bash rewrites a leading slash into a Windows path). Fix DEFAULT_CONFIG review_cmd and its stale comment; every supervisor headless launch exports `DEVTEAM_DELEGATED=1`. Carried from TASK-023 review: maybe_status_digest currently ships ON and notifies on each content change — route its sends through the escalation ledger and default `status_digest.send` to false for existing projects (true for new), per ask-don't-auto-flip; test it. **Protected-path grants (ORCH applies before dispatch):** scripts/supervisor.py, scripts/status_digest.py, autopilot.json.
 **Acceptance_Criteria:**
@@ -1100,6 +1104,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H3/H5, §5 (E-C.1–3)
 **Owned_Paths:** scripts/supervisor.py, scripts/status_digest.py, tests/test_supervisor.py, tests/test_supervisor_park.py (new), tests/test_stagnation_signal.py, deploy/ecosystem.config.js, .claude/commands/devteam-status.md
+**Protected_Grants:** scripts/supervisor.py, scripts/status_digest.py, .claude/commands/devteam-status.md, deploy/ecosystem.config.js
 **Depends_On:** TASK-029
 **Description:** (1) `RuntimeState.parked = {kind: P1|WAVE_DONE, reason, since}` replaces halt-and-exit, honoured on every start. Parked tick: drain commands, maintenance, board/Tower, reap; skip decide()/execute(). Unpark on /resume, on the P1 condition clearing, or on a pending task appearing after WAVE_DONE. Exit only on STOP (code 3), --max-ticks, --budget-minutes; ecosystem.config.js `stop_exit_codes: [3]`. (2) Heartbeat = max(Updated_At, last commit time on the task branch, dossier mtime); surface any in_progress task with no source newer than stale_minutes×4 in /devteam-status and the digest, even when redispatch is exhausted. (3) `.devteam/inflight/<unit|review>.json {pid, task_id, cmd, started}` written at launch; reaper checks PID liveness each tick, replacing the in-memory inflight dict. Use tests/tick_harness.py. The /resume-via-file-inbox acceptance line is proven in TASK-031 (E-K) once the inbox path exists; here, prove /resume via the existing command path. **Protected-path grants (ORCH applies before dispatch):** scripts/supervisor.py, scripts/status_digest.py, .claude/commands/devteam-status.md, deploy/ecosystem.config.js.
 **Acceptance_Criteria:**
@@ -1126,6 +1131,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H3/H6, §13 (E-K.1–5), §5 Acceptance (/resume from inbox)
 **Owned_Paths:** scripts/tg_listener.py, scripts/slack_listener.py, scripts/inbox.py, scripts/control.py, scripts/supervisor.py, scripts/usage_probe.py, tests/test_tg_listener.py, tests/test_slack_listener.py, tests/test_inbox.py, tests/test_control.py, tests/test_usage.py, tests/test_supervisor_once_inbox.py (new)
+**Protected_Grants:** scripts/tg_listener.py, scripts/slack_listener.py, scripts/inbox.py, scripts/control.py, scripts/supervisor.py, scripts/usage_probe.py
 **Depends_On:** TASK-030
 **Description:** (1) Listeners write each accepted command to `.devteam/inbox/<ts>-<update_id>.json` and only then persist the Telegram offset; supervisor drains via inbox.drain_inbox → handler → inbox.ack; remove the in-memory queue. (2) Under --once, one bounded long-poll (≤ `telegram.once_poll_seconds`=10) before the drain. (3) `SOURCE_MISSING <name> <path>` logged once per process start and once per day by _dossier_heartbeats, inbox.drain_inbox, usage_probe and the gateguard reader. (4) Template CONTROL blocks (TASK-NNN / prompt-example fields) → UNREPORTED with a provider-error hint; run log grepped for `at capacity` / `402` / `usage limit` → blocked_reason CAPACITY (Wave G registry when present; plain string until then). (5) Supervisor start warns loudly when telegram is in notify_channels but env vars are unset, and when running --once without the inbox path. Use tests/tick_harness.py for the --once process tests. **Protected-path grants (ORCH applies before dispatch):** scripts/tg_listener.py, scripts/slack_listener.py, scripts/inbox.py, scripts/control.py, scripts/supervisor.py, scripts/usage_probe.py.
 **Acceptance_Criteria:**
@@ -1153,6 +1159,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §6 (E-D)
 **Owned_Paths:** scripts/plan_archive.py (new), tests/test_plan_archive.py (new), scripts/team_stats.py, tests/test_team_stats.py (new), scripts/maintenance.py, tests/test_maintenance.py, scripts/validate_plan.py, tests/test_validate_plan.py, tests/fixtures/plan_archive/** (new)
+**Protected_Grants:** scripts/plan_archive.py, scripts/team_stats.py, scripts/maintenance.py, scripts/validate_plan.py
 **Depends_On:** TASK-027
 **Description:** `plan_archive.py` moves done blocks older than the current wave to `plan/archive/<YYYY-MM>.md` (append-only), leaving one stub per task; validate_plan.parse_tasks treats stubs as done (every module imports that parser — check control._deps_done and instincts._deps_done see archived IDs as done). Nightly via maintenance.py when PLAN.md exceeds `maintenance.plan_archive_kb`=60. Notes cap: `plan.notes_max_chars`=4000, overflow rotates to `docs/handovers/<date>-notes.md` with a pointer (the tool writes it; builders never commit into docs/ — tests use tmp dirs), validate_plan warns over the cap. validate_plan warns when PLAN.md >150 KB. `team_stats.py --write-tallies` generates REVIEW.md's tallies block from rows. `validate_plan.py --review` rejects blank lines/broken rows inside the verdict table; team_stats flags `:00:00Z`-rounded stamps. (The review command's clock-stamped verdict time is a .claude/commands edit — TASK-042.) Do NOT run the archiver on this repo's PLAN.md; ORCH does that at wave close. Oikonomos's 11,134-line PLAN.md may be copied read-only from C:/CLAUDECODE_TOOLSETS/oikonomos/PLAN.md into a tmp dir, or use a synthetic 366-done-task fixture. **Protected-path grants (ORCH applies before dispatch):** scripts/plan_archive.py, scripts/team_stats.py, scripts/maintenance.py, scripts/validate_plan.py.
 **Acceptance_Criteria:**
@@ -1178,6 +1185,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H5, §7 (E-E)
 **Owned_Paths:** scripts/plan_commit.sh, scripts/plan_commit.ps1, tests/test_plan_commit.py
+**Protected_Grants:** scripts/plan_commit.sh, scripts/plan_commit.ps1
 **Depends_On:** TASK-024
 **Description:** plan_commit.sh/.ps1 rewrite missing, unparseable, future or stale `Updated_At` values in the changed task blocks to the system UTC time before committing. Also fix the known flake (TASK-022 review): tests/test_plan_commit.py must resolve REPO_ROOT to a tmp fixture repo, never the live main checkout, so suites don't contend with concurrent sessions. **Protected-path grants (ORCH applies before dispatch):** scripts/plan_commit.sh, scripts/plan_commit.ps1.
 **Acceptance_Criteria:**
@@ -1202,6 +1210,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H4, §8 (E-F.1, E-F.2, E-F.6)
 **Owned_Paths:** scripts/plan_commit.sh, scripts/plan_commit.ps1, tests/test_plan_commit.py, scripts/plan_guard.py, tests/test_plan_guard.py
+**Protected_Grants:** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/plan_guard.py
 **Depends_On:** TASK-033, TASK-027
 **Description:** (1) CAS: record PLAN.md blob SHA at read; at commit, if HEAD's PLAN.md differs, re-read, re-apply only this unit's task-block change (3-way at block granularity), retry ≤3, else fail loudly — never commit a lost update. (2) Claim for a task already claimed/in_progress by the same unit = no-op exit 0, no commit. (6) Legacy-mode guard (until strict): plan_commit and the dispatch post-run validation (plan_guard.py) reject a builder PLAN.md change touching any block other than the unit's claimed task, changing more than `plan.max_builder_diff_lines`=40 lines, or changing line endings; the error tells the builder to use plan_commit for its own block only. Carried from TASK-027 review: the firewall now refuses builder Edit/Write/MultiEdit changes to `Owned_Paths`/`Protected_Grants`, but a shell command can still rewrite PLAN.md — the legacy guard must also reject a builder PLAN.md change that alters Owned_Paths, Protected_Grants or Assigned_To in the unit's own block (test it). **Protected-path grants (ORCH applies before dispatch):** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/plan_guard.py.
 **Acceptance_Criteria:**
@@ -1228,6 +1237,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §8 (E-F.3, E-F.4, E-F.5, E-F.7)
 **Owned_Paths:** scripts/dispatch.sh, scripts/dispatch.ps1, tests/test_dispatch_worktree.py, scripts/validate_plan.py, tests/test_validate_plan.py, scripts/sync_from_pack.py, tests/test_sync_from_pack.py
+**Protected_Grants:** scripts/dispatch.sh, scripts/dispatch.ps1, scripts/validate_plan.py, scripts/sync_from_pack.py
 **Depends_On:** TASK-027, TASK-032, TASK-026
 **Description:** (3) Legacy mode: after launch, dispatch polls main-checkout PLAN.md up to `dispatch.claim_verify_seconds`=120 for the unit's claim flip; none → log CLAIM_UNVERIFIED, hold the builder's first commit for next tick's reconciliation (strict mode: dispatch claims itself). (4) Extend TASK-024's base-tip port: branch created from <base> tip in the worktree on every fresh claim, both scripts; refuse if PLAN.md has uncommitted changes in the main checkout. (5) validate_plan: Owned_Paths is a comma-separated list of globs only; reject prose, parentheses (other than the single permitted ` (new)` suffix) and TBD. (7) Onboarding writes control.mode strict only for projects whose active units are all verified CONTROL emitters; existing projects are OFFERED strict in the upgrade checklist, never flipped (ask-don't-auto-flip). Carried from TASK-024 review: the ported base-tip pre-create only fires when dispatch itself claims (strict); make legacy-mode fresh claims start from the base tip too, and decide whether -DryRun/--dry-run may create branches/worktrees at all (it currently does). **Protected-path grants (ORCH applies before dispatch):** scripts/dispatch.sh, scripts/dispatch.ps1, scripts/validate_plan.py, scripts/sync_from_pack.py.
 **Acceptance_Criteria:**
@@ -1253,6 +1263,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §9 (E-G)
 **Owned_Paths:** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/control.py, tests/test_control.py, tests/test_plan_commit.py, scripts/push_policy.py (new), tests/test_push_policy.py (new), scripts/supervisor.py
+**Protected_Grants:** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/control.py, scripts/push_policy.py, scripts/supervisor.py
 **Depends_On:** TASK-034, TASK-031
 **Description:** `git.push_policy`: every | batch | merge_only. Default `batch` for NEW projects only; existing projects keep `every` unless the owner opts in (ask-don't-auto-flip). batch: plan-only commits (chore(plan), CONTROL applications, status scans) pushed at most every `git.push_batch_minutes`=30, always on merge or park. merge_only: only on merge or park. Status scans that change nothing produce no commit. Implement the policy once in push_policy.py; plan_commit, control and the supervisor's merge/park paths call it. **Protected-path grants (ORCH applies before dispatch):** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/control.py, scripts/push_policy.py, scripts/supervisor.py.
 **Acceptance_Criteria:**
@@ -1279,6 +1290,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.1–3, E-H.5)
 **Owned_Paths:** scripts/dispatch.ps1, scripts/worktree.ps1, .github/workflows/** (new), .gitattributes, tests/test_dispatch_worktree.py, tests/test_worktree_ps1.py (new)
+**Protected_Grants:** scripts/dispatch.ps1, scripts/worktree.ps1
 **Depends_On:** TASK-035
 **Description:** (1) dispatch.ps1 records the runner window PID in `.devteam/launch/<unit>.pid`; headless runs drop -NoExit; `worktree.ps1 remove` kills recorded PIDs first, retries `Access is denied` with robocopy /MIR from an empty folder and \\?\ long paths. (2) GitHub Actions matrix windows-latest + ubuntu-latest, fixture repo with base branch `master`, both suites + harness-audit; PS 5.1 parser check on Windows. (3) Every shell parse of Python output strips CR (extends d3f5fc08 port). (5) .gitattributes: `*.sh text eol=lf`, `*.ps1 text eol=crlf`, `PLAN.md text eol=lf` (framework-owned). Carried from TASK-024 review: tests/conftest.py's env scrub removes all DEVTEAM_* including DEVTEAM_PACK_SELF_TESTS (the CI override) — exempt it in the CI setup or the scrub pattern. **Protected-path grants (ORCH applies before dispatch):** scripts/dispatch.ps1, scripts/worktree.ps1.
 **Acceptance_Criteria:**
@@ -1303,6 +1315,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.4, E-H.5), docs/reviews/LIVE_CHECKS_2026-09.md
 **Owned_Paths:** scripts/harness-audit.sh, scripts/harness-audit.ps1, tests/test_harness_smoke.py (new), tests/fixtures/smoke/** (new)
+**Protected_Grants:** scripts/harness-audit.sh, scripts/harness-audit.ps1
 **Depends_On:** TASK-035
 **Description:** harness-audit.sh/.ps1 launch every ACTIVE unit's CLI through the real dispatch argv, in a scratch worktree, with a no-op prompt that must write one file under its territory and exit; check exit 0, file written, no TTY prompt, CLI version recorded. Runs on builder_registry changes and before an onboarding's first dispatch. Fails on a CR in any *.sh in the checkout. From LIVE_CHECKS: assert `--max-turns` is still accepted (hidden flag), and that Windows Git Bash launch paths set MSYS_NO_PATHCONV=1 or never pass a leading-slash prompt. Fixture tests use stub CLIs; one real run per active unit recorded in Test_Evidence. **Protected-path grants (ORCH applies before dispatch):** scripts/harness-audit.sh, scripts/harness-audit.ps1.
 **Acceptance_Criteria:**
@@ -1327,6 +1340,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §11 (E-I.1–5)
 **Owned_Paths:** scripts/distiller.py, scripts/retro.py, scripts/instincts.py, tests/test_distiller.py, tests/test_retro.py, tests/test_instincts.py, tests/test_instincts_lifecycle.py, scripts/board_publisher.py, tests/test_board_publisher.py, scripts/status_digest.py, .claude/commands/devteam-status.md
+**Protected_Grants:** scripts/distiller.py, scripts/retro.py, scripts/instincts.py, scripts/board_publisher.py, scripts/status_digest.py, .claude/commands/devteam-status.md
 **Depends_On:** TASK-030
 **Description:** (1) `learning.enabled` gate inside distiller (default false for NEW projects; existing projects keep current behaviour + one-time notice — ask-don't-auto-flip). (2) Amendments de-duplicated by (target file, rule-text hash); missing-target rejected at creation; pending amendments appear once in the P0 digest with /approve AMEND-NNN / /rework AMEND-NNN; auto-expire after `learning.amend_expiry_days`=14 with a log line. (3) retro.py: unit list from the registry (CX9 included), correct active-instinct count, bucket by file not directory. (4) Effectiveness gate: matched-task first-pass ≤ overall for 2 consecutive weeks → distillation pauses itself and says so in the digest. (5) /devteam-status shows distiller last-run, runs, instincts produced. **Protected-path grants (ORCH applies before dispatch):** scripts/distiller.py, scripts/retro.py, scripts/instincts.py, scripts/board_publisher.py, scripts/status_digest.py, .claude/commands/devteam-status.md.
 **Acceptance_Criteria:**
@@ -1351,6 +1365,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §12 (E-J.1, E-J.3)
 **Owned_Paths:** scripts/sync_from_pack.py, scripts/retire_unit.py (new), tests/test_retire_unit.py (new), scripts/validate_plan.py, tests/test_validate_plan.py, tests/test_sync_from_pack.py, briefings/**
+**Protected_Grants:** scripts/sync_from_pack.py, scripts/retire_unit.py, scripts/validate_plan.py, briefings/**
 **Depends_On:** TASK-035
 **Description:** (1) Marked sections `<!-- devteam:roster -->…<!-- /devteam:roster -->` regenerated by `sync_from_pack.py --render` from `builders`; add the markers to briefings/** (CLAUDE.md/AGENTS.md markers are ORCH-applied at wave close — the renderer must handle their presence, tested on fixtures). Per-unit briefing chosen by the registry `briefing` key; a unit without a real briefing file fails `validate_plan.py --config`. `retire_unit.py <UNIT>` removes a unit from active, re-renders, leaves history. (3) `validate_plan.py --lint-briefings` warns when CLAUDE.md names a task/feature ID as parked/'do not' while an open task references it, and when a briefing names a nonexistent file path. **Protected-path grants (ORCH applies before dispatch):** scripts/sync_from_pack.py, scripts/retire_unit.py, scripts/validate_plan.py, briefings/**.
 **Acceptance_Criteria:**
@@ -1375,6 +1390,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §12 (E-J.2, E-J.5, E-J.6)
 **Owned_Paths:** scripts/validate_plan.py, tests/test_validate_plan.py, scripts/supervisor.py, tests/test_supervisor.py, scripts/control.py, tests/test_control.py, tests/test_lanes.py (new)
+**Protected_Grants:** scripts/validate_plan.py, scripts/supervisor.py, scripts/control.py
 **Depends_On:** TASK-040, TASK-036
 **Description:** (2) `superseded` terminal status requiring `Superseded_By:`; excluded from awaiting-ORCH banners. (5) `owner_hold` status with required `Hold_On:` (CREDENTIALS | HARDWARE | ACCOUNT | DECISION | EXTERNAL: <detail>) — never dispatched, never triaged, listed in the digest with age. `Type: external` tasks: no Owned_Paths, checklist acceptance, evidence line, still get a REVIEW row. Solo lane `Assigned_To: ORCH-SOLO`: direct to base with [TASK-NNN] commits; cannot reach done without a REVIEW row whose reviewer model differs from the solo session's; capped by `plan.solo_max_files`=5. (6) Blocked_Reason must be `CATEGORY: detail` from the vocabulary (+ CAPACITY); prose-only fails validation. Protocol text (docs/COORDINATION_PROTOCOL.md) is ORCH-applied at wave close. **Protected-path grants (ORCH applies before dispatch):** scripts/validate_plan.py, scripts/supervisor.py, scripts/control.py.
 **Acceptance_Criteria:**
@@ -1401,6 +1417,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §12 (E-J.4, E-J.7, E-J.8), §6 (review timestamp bullet)
 **Owned_Paths:** scripts/plan_health.py (new), tests/test_plan_health.py (new), .claude/commands/devteam-review.md, .claude/commands/devteam-status.md, .claude/commands/devteam-decompose.md, hooks/session-start.js, autopilot.json
+**Protected_Grants:** scripts/plan_health.py, .claude/commands/devteam-review.md, .claude/commands/devteam-status.md, .claude/commands/devteam-decompose.md, hooks/session-start.js, autopilot.json
 **Depends_On:** TASK-040, TASK-039
 **Description:** (4) Move the review standing rules out of the review_cmd JSON string into .claude/commands/devteam-review.md; review_cmd only points at it. The review command writes each verdict timestamp from the system clock (`date -u` / `[DateTime]::UtcNow`) and records the reviewing model. (7) `plan_health.py freshness`: flag frontmatter last_updated/overall_status/orchestrator_notes older than the newest task Updated_At or newest [TASK-…] commit; called by /devteam-status and session-start.js. (8) `plan_health.py untracked`: count base-branch commits in the last 14 days with no [TASK-NNN]/[ORCH]/[MAINT] tag → 'work outside the plan'. devteam-decompose.md: replace the claude-fable-5 model line with claude-opus-5-5 (owner decision 2026-09-26, LIVE_CHECKS). **Protected-path grants (ORCH applies before dispatch):** scripts/plan_health.py, .claude/commands/**, hooks/session-start.js, autopilot.json.
 **Acceptance_Criteria:**

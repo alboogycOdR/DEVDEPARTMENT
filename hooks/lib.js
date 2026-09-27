@@ -304,13 +304,9 @@ const PROTECTED_EXCEPTIONS = [
   //   'scripts/extract_caps_taxonomy*.py',
   //
   // Wave E first dispatch (plan v6.0, 2026-09-26). Remove each when its task is done;
-  // TASK-027's Protected_Grants field retires this ritual.
+  // TASK-027's Protected_Grants field (live since 6b7b568) retires this ritual; new grants go in PLAN.md.
   // TASK-026 (CX):
   'scripts/sync_from_pack.py',
-  // TASK-027 (GB):
-  'hooks/**', 'scripts/validate_plan.py', 'scripts/dispatch.sh', 'scripts/dispatch.ps1',
-  // TASK-028 (CX, from S5):
-  'scripts/supervisor.py', 'scripts/status_digest.py',
 ];
 
 /**
