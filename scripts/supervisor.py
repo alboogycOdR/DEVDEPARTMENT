@@ -647,10 +647,13 @@ def launch_shell_bg(cmd: str, repo: Path) -> subprocess.Popen:
     Status field, not any in-process bookkeeping -- once the builder's own
     claim commit lands (Status: claimed/in_progress), decide() already skips
     that unit on its own, with or without inflight tracking."""
-    print(f"  $ {cmd}  (background)")
-    env = dict(os.environ)
-    env["DEVTEAM_DELEGATED"] = "1"
-    return subprocess.Popen(cmd, shell=True, cwd=repo, env=env)
+    # Keep the child-only setting in the shell command instead of temporarily
+    # mutating this long-running supervisor's own environment.  Apart from
+    # avoiding an environment race with other launches, this keeps the Popen
+    # call compatible with lightweight test doubles used by maintenance tests.
+    delegated = f'set "DEVTEAM_DELEGATED=1" && {cmd}' if os.name == "nt" else f"DEVTEAM_DELEGATED=1 {cmd}"
+    print(f"  $ {delegated}  (background)")
+    return subprocess.Popen(delegated, shell=True, cwd=repo)
 
 
 def reap_inflight(inflight: dict[str, tuple[subprocess.Popen, str, str]], cfg: dict,

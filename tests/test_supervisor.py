@@ -354,8 +354,8 @@ class TestDispatchCmdCwdIndependence:
             def poll(self):
                 return None
 
-        def fake_popen(cmd, shell=True, cwd=None, env=None):
-            launched.append((cmd, env))
+        def fake_popen(cmd, shell=True, cwd=None):
+            launched.append(cmd)
             return _Proc()
 
         monkeypatch.setattr(sup.subprocess, "Popen", fake_popen)
@@ -369,8 +369,8 @@ class TestDispatchCmdCwdIndependence:
             now=datetime(2026, 8, 5, tzinfo=timezone.utc), inflight=inflight,
         )
         assert len(launched) == 1
-        assert "CX" in launched[0][0]
-        assert launched[0][1]["DEVTEAM_DELEGATED"] == "1"
+        assert "CX" in launched[0]
+        assert "DEVTEAM_DELEGATED=1" in launched[0]
 
 
 class _FinishedDispatch:
