@@ -1088,7 +1088,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-029
 **Title:** Wave E E-B2 — escalation ledger (H1), triage ledger (H2), one judgment-prompt form
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H1/H2, §4 (E-B.3–E-B.5), docs/reviews/LIVE_CHECKS_2026-09.md (slash row)
@@ -1104,15 +1104,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] No `-p` argument built by supervisor.py begins with `/`; review, REVIEW_TG and triage share one helper; supervisor-launched sessions carry DEVTEAM_DELEGATED=1 (E-B.5, E-A.3)
 - [ ] Every tick/process/hour-based criterion is proven by a multi-tick or multi-process test with an advanced (fake) clock, never a single tick (spec §1 H7, §16)
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-029-cx
+**Started_At:** 2026-09-27T15:48:10Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-26T13:49:25Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-27T15:48:10Z
 
 ### TASK-030
 **Title:** Wave E E-C — durable park state, git heartbeat, on-disk in-flight tracking
