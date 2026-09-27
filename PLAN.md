@@ -1138,7 +1138,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H3/H5, §5 (E-C.1–3)
-**Owned_Paths:** scripts/supervisor.py, scripts/status_digest.py, tests/test_supervisor.py, tests/test_supervisor_park.py (new), tests/test_stagnation_signal.py, deploy/ecosystem.config.js, .claude/commands/devteam-status.md, dossiers/TASK-030.md
+**Owned_Paths:** scripts/supervisor.py, scripts/status_digest.py, tests/test_supervisor.py, tests/test_supervisor_park.py (new), tests/test_stagnation_signal.py, deploy/ecosystem.config.js, .claude/commands/devteam-status.md, dossiers/TASK-030.md, tests/test_supervisor_control.py
 **Protected_Grants:** scripts/supervisor.py, scripts/status_digest.py, .claude/commands/devteam-status.md, deploy/ecosystem.config.js
 **Depends_On:** TASK-029
 **Description:** (1) `RuntimeState.parked = {kind: P1|WAVE_DONE, reason, since}` replaces halt-and-exit, honoured on every start. Parked tick: drain commands, maintenance, board/Tower, reap; skip decide()/execute(). Unpark on /resume, on the P1 condition clearing, or on a pending task appearing after WAVE_DONE. Exit only on STOP (code 3), --max-ticks, --budget-minutes; ecosystem.config.js `stop_exit_codes: [3]`. (2) Heartbeat = max(Updated_At, last commit time on the task branch, dossier mtime); surface any in_progress task with no source newer than stale_minutes×4 in /devteam-status and the digest, even when redispatch is exhausted. (3) `.devteam/inflight/<unit|review>.json {pid, task_id, cmd, started}` written at launch; reaper checks PID liveness each tick, replacing the in-memory inflight dict. Use tests/tick_harness.py. The /resume-via-file-inbox acceptance line is proven in TASK-031 (E-K) once the inbox path exists; here, prove /resume via the existing command path. **Protected-path grants (ORCH applies before dispatch):** scripts/supervisor.py, scripts/status_digest.py, .claude/commands/devteam-status.md, deploy/ecosystem.config.js.
@@ -1153,6 +1153,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Started_At:** 2026-09-27T19:27:16Z
 **Progress_Notes:**
 - [2026-09-27T19:32:04Z] [CX] Implemented and committed durable park state, on-disk inflight launch/reap, aggregate git/dossier/PLAN heartbeats, STOP exit semantics, and focused E-C regressions on `task/TASK-030-cx` (`473dd82`). Python full-suite run stalls after 26% in pre-existing Tower tick tests; isolating before review.
+- [2026-09-27T20:01:42Z] [ORCH] Diagnosis of your stalled suite on task/TASK-030-cx @473dd82 (run by ORCH): (1) tests/test_supervisor_control.py::TestDossierHeartbeatStaleDetection::test_legacy_mode_ignores_dossier_heartbeats fails — it asserts the OLD rule; E-C.2 now makes dossier mtime a heartbeat source in every mode. That file was missing from your territory (ORCH carve error): it is now in Owned_Paths — update the test to the new rule and cite E-C.2. (2) tests/test_supervisor_ledgers.py::test_p1_ledger_renotifies_only_after_one_hour fails — parking suppresses the hourly P1 re-send. Spec reconciliation (ORCH): E-B requires a frozen task's P1 to re-send after 1 h; E-C requires one P1 notification across 10 --once processes (50 min at 5-min ticks) with the loop parked. Both hold if a PARKED tick still runs the escalation ledger's P1 renotify timer. Fix the code; do NOT change that test. (3) your own tests/test_supervisor_park.py::test_durable_inflight_reaped_by_next_process fails. (4) the full-suite hang appears only in the ordered full run, just after (3) — tests/test_supervisor_telegram.py passes alone — so (3) most likely leaves a live child process or lock behind; make that test clean up (and bound any subprocess waits with timeouts). Then run BOTH full suites to completion and submit.
 **Artifacts:**
 - `473dd82` — supervisor/status digest/PM2 updates and `tests/test_supervisor_park.py`
 **Test_Evidence:**
@@ -1161,8 +1162,8 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - `python -m pytest -q` — stalled after 26%; terminated for isolation, not yet acceptable full-suite evidence.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-09-27T19:32:04Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-27T20:01:42Z
 
 ### TASK-031
 **Title:** Wave E E-K — commands through the durable inbox; source-missing once; template CONTROL = UNREPORTED
