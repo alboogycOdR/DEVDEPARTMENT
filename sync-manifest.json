@@ -118,7 +118,11 @@
     "tests/test_tg_listener.py",
     "tests/test_tower_sync.py",
     "tests/test_usage.py",
-    "tests/test_validate_plan.py"
+    "tests/test_validate_plan.py",
+    "scripts/status_digest.py",
+    "scripts/test_env_scrub.py",
+    "tests/test_test_env_scrub.py",
+    "scripts/autopilot-tick.ps1"
   ],
   "project_owned": [
     "PLAN.md",
