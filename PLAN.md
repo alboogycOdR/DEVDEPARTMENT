@@ -1068,12 +1068,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-27T14:00:33Z] [ORCH] Reassigned S5 -> CX (owner decision 2026-09-27: Codex-only roster). S5 was stopped mid-task after a usage-limit death; it never committed. Its unreviewed WIP is kept as optional reference at .devteam/salvage/ in the main checkout (TASK-028-s5-wip.patch = supervisor/status_digest/test_token_efficiency diff; TASK-028-s5-wip.tick_harness.py and TASK-028-s5-wip.test_supervisor_ledgers.py = its new files). Treat it as untrusted draft: verify every line against the spec; start from a fresh branch task/TASK-028-cx.
 - [2026-09-27T14:41:33Z] [CX] Claimed TASK-028 on task/TASK-028-cx. Next: inspect the Wave E §4 specification, existing supervisor/runtime state, and the retained S5 draft as untrusted reference; implement the reusable tick harness first.
 - [2026-09-27T14:42:30Z] [CX] Preflight complete: verified all six Owned_Paths and read the E-B specification. The retained S5 patch is a reference only; its review-ledger, locking, state-atomicity, marker, and digest ideas will be independently validated with multi-tick/process tests.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-27T15:08:00Z] [CX] Implemented and committed a9c7926: reusable fake-clock/real-subprocess tick harness; SHA-keyed one-review-per-tick ledger with 5-minute exponential backoff; atomic stale-aware review lock; REVIEW_START/END markers; atomic corrupt-state quarantine; dry-run state guard; and behind-pack P0 digest line. Targeted tests pass. Full suite is blocked only by the unrelated GB-owned `tests/test_dispatch_worktree.py::TestEmptyHuskReclaim::test_dotfile_only_directory_is_refused_by_dispatch_ps1` assertion (PowerShell fails before its expected message); no permitted fix path under TASK-028.
+**Artifacts:**
+- [2026-09-27T15:08:00Z] [CX] scripts/supervisor.py, scripts/status_digest.py, tests/tick_harness.py, tests/test_supervisor_ledgers.py, tests/test_token_efficiency.py (a9c7926)
+**Test_Evidence:**
+- [2026-09-27T15:08:00Z] [CX] `python -m pytest tests/test_supervisor_ledgers.py tests/test_token_efficiency.py -q` → 18 passed. `python -m pytest tests/test_supervisor_ledgers.py -q` after the lock timing hardening → 5 passed. `node hooks/run-tests.js` → 47 passed, 0 failed. `git diff --check` → clean. Full `python -m pytest -q` did not complete green: unrelated GB-owned Windows dispatch test failed as recorded in Progress_Notes; `python -m pytest --lf -q` confirms the same external failure while TASK-028's only prior failure is now resolved.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-27T14:42:30Z
+**Updated_At:** 2026-09-27T15:08:00Z
 
 ### TASK-029
 **Title:** Wave E E-B2 — escalation ledger (H1), triage ledger (H2), one judgment-prompt form
