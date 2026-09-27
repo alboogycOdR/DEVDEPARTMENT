@@ -204,9 +204,9 @@ const PROTECTED_EXCEPTIONS = [
   // TASK-027's Protected_Grants field retires this ritual.
   // TASK-026 (CX):
   'scripts/sync_from_pack.py',
-  // TASK-027 (GB):
+  // TASK-027 (CX, from GB):
   'hooks/**', 'scripts/validate_plan.py', 'scripts/dispatch.sh', 'scripts/dispatch.ps1',
-  // TASK-028 (S5):
+  // TASK-028 (CX, from S5):
   'scripts/supervisor.py', 'scripts/status_digest.py',
 ];
 
