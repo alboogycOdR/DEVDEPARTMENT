@@ -1088,7 +1088,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-029
 **Title:** Wave E E-B2 — escalation ledger (H1), triage ledger (H2), one judgment-prompt form
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H1/H2, §4 (E-B.3–E-B.5), docs/reviews/LIVE_CHECKS_2026-09.md (slash row)
@@ -1106,13 +1106,14 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-029-cx
 **Started_At:** 2026-09-27T15:48:10Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-27T15:48:32Z] [CX] Claimed TASK-029 and completed preflight: `scripts/supervisor.py` (1704 lines, 87862 bytes), `scripts/status_digest.py` (184 lines, 7100 bytes), `tests/test_supervisor.py` (820 lines, 37416 bytes), `tests/test_supervisor_ledgers.py` (134 lines, 6302 bytes), `tests/test_supervisor_telegram.py` (311 lines, 13824 bytes), and `autopilot.json` (146 lines, 5403 bytes) all exist and are within the task territory. Next: trace existing persisted runtime state and notification paths, then reproduce and document the SB-8 triage-state defect before implementing the ledgers.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-27T15:48:10Z
+**Updated_At:** 2026-09-27T15:48:32Z
 
 ### TASK-030
 **Title:** Wave E E-C — durable park state, git heartbeat, on-disk in-flight tracking
