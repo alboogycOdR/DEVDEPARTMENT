@@ -931,7 +931,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-026
 **Title:** Wave E E-0d — no-manifest adopt path (sync_from_pack --adopt)
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §2 (E-0.6)
@@ -950,6 +950,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-26T15:15:00Z] [CX] Implemented conservative --adopt fingerprinting at 7db6801: historical Git-blob matches are recorded, diverged files remain legacy conflicts, and absent layers are checklist-only proposals. Focused tests pass; full pytest was still active without completion after several minutes and was stopped for a later clean rerun.
 - [2026-09-27T13:57:57Z] [CX] Full pytest completed: 1055 passed, 1 failed in 246.88s. The sole failure is an integration-manifest defect outside this task's Owned_Paths: master has tests/test_test_env_scrub.py but sync-manifest.json does not register it. Node suite passes (37/0); copied-RWC dry-run reported 9 diverged files and 107 proposed absent-layer adds, exit 2 as expected, with the original checkout's pre-existing dirty status unchanged. Awaiting ORCH resolution of the unrelated manifest failure before handoff.
 - [2026-09-27T14:15:46Z] [ORCH] Unblocked: the manifest failure was a master defect, fixed on master in e8fa1f7 (tests/test_test_env_scrub.py and three other Wave E files registered; master full suite 1061 passed, node 37/0). Next: merge master into task/TASK-026-cx, re-run both full suites, record counts, submit needs_review.
+- [2026-09-27T14:20:41Z] [CX] Merged master (including e8fa1f7) and re-ran both full suites. Node is green; Python now has one unrelated master-side Windows dispatch assertion failure in tests/test_dispatch_worktree.py::TestEmptyHuskReclaim::test_dotfile_only_directory_is_refused_by_dispatch_ps1 (expected "not a registered worktree", received a PowerShell WriteError). That test/path is outside TASK-026 territory; blocked awaiting ORCH resolution.
 **Artifacts:** —
 **Artifacts:**
 - scripts/sync_from_pack.py
@@ -961,10 +962,11 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-27T13:57:57Z] [CX] `python -m pytest -q` — 1055 passed, 1 failed in 246.88s; unrelated `test_every_shipped_test_file_is_registered` reports `tests/test_test_env_scrub.py` absent from master `sync-manifest.json` (outside TASK-026 territory).
 - [2026-09-27T13:57:57Z] [CX] `node hooks/run-tests.js` — 37 passed, 0 failed.
 - [2026-09-27T13:57:57Z] [CX] `python scripts/sync_from_pack.py --pack . --project <tmp copy of rwc-mobile-connect> --adopt --dry-run` — exit 2 as expected; 9 `diverged`, 107 absent-layer proposed adds; original RWC checkout status was unchanged (pre-existing dirty state retained).
+- [2026-09-27T14:20:41Z] [CX] After merging master: `python -m pytest -q` — 1062 passed, 1 failed in 191.27s; sole failure `TestEmptyHuskReclaim::test_dotfile_only_directory_is_refused_by_dispatch_ps1` in tests/test_dispatch_worktree.py (outside territory). `node hooks/run-tests.js` — 37 passed, 0 failed.
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-27T14:15:46Z
+**Blocked_Reason:** OTHER: master-side Windows dispatch test assertion failure outside TASK-026 Owned_Paths
+**Updated_By:** CX
+**Updated_At:** 2026-09-27T14:20:41Z
 
 ### TASK-027
 **Title:** Wave E E-A — hooks resolve main checkout; DEVTEAM_TASK; human-only config; Protected_Grants field
