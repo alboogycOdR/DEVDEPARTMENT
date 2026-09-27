@@ -1110,12 +1110,24 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-27T15:48:32Z] [CX] Claimed TASK-029 and completed preflight: `scripts/supervisor.py` (1704 lines, 87862 bytes), `scripts/status_digest.py` (184 lines, 7100 bytes), `tests/test_supervisor.py` (820 lines, 37416 bytes), `tests/test_supervisor_ledgers.py` (134 lines, 6302 bytes), `tests/test_supervisor_telegram.py` (311 lines, 13824 bytes), and `autopilot.json` (146 lines, 5403 bytes) all exist and are within the task territory. Next: trace existing persisted runtime state and notification paths, then reproduce and document the SB-8 triage-state defect before implementing the ledgers.
 - [2026-09-27T15:48:32Z] [CX] Blocked before code changes: the task requires an SB-8 root-cause record in `dossiers/TASK-029.md`, but `dossiers/TASK-029.md` is absent from Owned_Paths. Protocol §4 prohibits modifying it without an ownership grant. Please add this exact dossier path to TASK-029 Owned_Paths (or revise the required record location) before resuming.
 - [2026-09-27T15:50:01Z] [ORCH] Unblocked: correct, cautious block. A builder's own dossier is always writable (dispatch prompt + firewall), and it is now listed explicitly in Owned_Paths for every open task. Record the SB-8 root cause in dossiers/TASK-029.md as required, then continue.
+- [2026-09-27T18:05:00Z] [CX] Implemented and committed `fc4cbb2` + `2ef6ca2`: durable H1 P1/P2 escalation ledger (including held markers, condition clearing and STOP mtime), per-reason H2 triage state with SB-8 regression coverage, shared safe judgment prompts, delegated launch environments, and opt-in status-digest ledger routing. Full Python suite was started but remained active with near-zero CPU beyond the normal window; I stopped that run rather than report it green. Scoped ledger tests and Node suite are green; next step is isolate/re-run the full-suite hang, then record final counts and submit.
+- [2026-09-27T18:05:00Z] [CX] Preflight output: [preflight] TASK-029 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-codex-DEVDEPARTMENT
+  [preflight] 6 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    FILE   scripts/supervisor.py  -> exists, 1704 line(s), 87862 bytes
+    FILE   scripts/status_digest.py  -> exists, 184 line(s), 7100 bytes
+    FILE   tests/test_supervisor.py  -> exists, 820 line(s), 37416 bytes
+    FILE   tests/test_supervisor_ledgers.py  -> exists, 134 line(s), 6302 bytes
+    FILE   tests/test_supervisor_telegram.py  -> exists, 311 line(s), 13824 bytes
+    FILE   autopilot.json  -> exists, 146 line(s), 5403 bytes
+  [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
 **Artifacts:** —
+- [2026-09-27T18:05:00Z] [CX] autopilot.json; dossiers/TASK-029.md; scripts/supervisor.py; tests/test_supervisor.py; tests/test_supervisor_ledgers.py
 **Test_Evidence:** —
+- [2026-09-27T18:05:00Z] [CX] `python -m py_compile scripts/supervisor.py scripts/status_digest.py` passed; `python -m pytest tests/test_supervisor_ledgers.py -k "escalation or p1_ledger or tooling or stop or status_digest" -q` → 5 passed, 7 deselected; `python -m pytest tests/test_supervisor.py -k "judgment or triage or ownership" -q` → 4 passed, 58 deselected; `node hooks/run-tests.js` → 47 passed, 0 failed. `python -m pytest -q` was stopped after exceeding its normal window without completing; do not treat full-suite acceptance as met.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-27T15:50:01Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-27T18:05:00Z
 
 ### TASK-030
 **Title:** Wave E E-C — durable park state, git heartbeat, on-disk in-flight tracking
