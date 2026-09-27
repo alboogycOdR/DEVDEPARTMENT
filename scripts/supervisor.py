@@ -448,6 +448,17 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
         if clear:
             state.parked = {}
         else:
+            # Parking suppresses new decisions, not the existing P1's slow
+            # reminder.  The escalation ledger is durable too, so a scheduled
+            # --once process sends this only after the configured P1 interval.
+            # This reconciles E-B's hourly frozen-task reminder with E-C's
+            # requirement that the parked loop otherwise remain quiet.
+            if kind == "P1":
+                reminder = Action("ESCALATE_P1", reason,
+                                  task_id=frozen.group(1) if frozen else None)
+                last = _parse_ts(state.escalated.get(escalation_key(reminder), ""))
+                if last is None or (now - last).total_seconds() >= _renotify_hours(reminder, cfg) * 3600:
+                    return [reminder]
             return [Action("IDLE", f"parked ({kind}): {reason}")]
 
     # 2. Rework-loop guardrail + reviews
@@ -753,6 +764,11 @@ def _reap_durable_inflight(cfg: dict, state: RuntimeState, repo: Path, now: date
                 alive = False
             except PermissionError:
                 alive = True
+            except OSError:
+                # Windows raises a generic OSError (for example WinError 87)
+                # for a non-existent synthetic PID rather than
+                # ProcessLookupError.  It is still a dead persisted launch.
+                alive = False
             if alive:
                 continue
             path.unlink(missing_ok=True)
