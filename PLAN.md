@@ -949,6 +949,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-26T15:01:00Z] [CX] Preflight: FILE scripts/sync_from_pack.py -> exists, 696 lines, 31006 bytes; NEW tests/test_sync_adopt.py (parent tests/ exists); GLOB tests/fixtures/adopt/** -> matches nothing yet (new territory). Beginning spec and implementation inspection.
 - [2026-09-26T15:15:00Z] [CX] Implemented conservative --adopt fingerprinting at 7db6801: historical Git-blob matches are recorded, diverged files remain legacy conflicts, and absent layers are checklist-only proposals. Focused tests pass; full pytest was still active without completion after several minutes and was stopped for a later clean rerun.
 - [2026-09-27T13:57:57Z] [CX] Full pytest completed: 1055 passed, 1 failed in 246.88s. The sole failure is an integration-manifest defect outside this task's Owned_Paths: master has tests/test_test_env_scrub.py but sync-manifest.json does not register it. Node suite passes (37/0); copied-RWC dry-run reported 9 diverged files and 107 proposed absent-layer adds, exit 2 as expected, with the original checkout's pre-existing dirty status unchanged. Awaiting ORCH resolution of the unrelated manifest failure before handoff.
+- [2026-09-27T14:15:46Z] [ORCH] Unblocked: the manifest failure was a master defect, fixed on master in e8fa1f7 (tests/test_test_env_scrub.py and three other Wave E files registered; master full suite 1061 passed, node 37/0). Next: merge master into task/TASK-026-cx, re-run both full suites, record counts, submit needs_review.
 **Artifacts:** —
 **Artifacts:**
 - scripts/sync_from_pack.py
@@ -962,8 +963,8 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-27T13:57:57Z] [CX] `python scripts/sync_from_pack.py --pack . --project <tmp copy of rwc-mobile-connect> --adopt --dry-run` — exit 2 as expected; 9 `diverged`, 107 absent-layer proposed adds; original RWC checkout status was unchanged (pre-existing dirty state retained).
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-09-27T13:57:57Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-27T14:15:46Z
 
 ### TASK-027
 **Title:** Wave E E-A — hooks resolve main checkout; DEVTEAM_TASK; human-only config; Protected_Grants field
@@ -1200,7 +1201,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H4, §8 (E-F.1, E-F.2, E-F.6)
 **Owned_Paths:** scripts/plan_commit.sh, scripts/plan_commit.ps1, tests/test_plan_commit.py, scripts/plan_guard.py, tests/test_plan_guard.py
 **Depends_On:** TASK-033, TASK-027
-**Description:** (1) CAS: record PLAN.md blob SHA at read; at commit, if HEAD's PLAN.md differs, re-read, re-apply only this unit's task-block change (3-way at block granularity), retry ≤3, else fail loudly — never commit a lost update. (2) Claim for a task already claimed/in_progress by the same unit = no-op exit 0, no commit. (6) Legacy-mode guard (until strict): plan_commit and the dispatch post-run validation (plan_guard.py) reject a builder PLAN.md change touching any block other than the unit's claimed task, changing more than `plan.max_builder_diff_lines`=40 lines, or changing line endings; the error tells the builder to use plan_commit for its own block only. **Protected-path grants (ORCH applies before dispatch):** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/plan_guard.py.
+**Description:** (1) CAS: record PLAN.md blob SHA at read; at commit, if HEAD's PLAN.md differs, re-read, re-apply only this unit's task-block change (3-way at block granularity), retry ≤3, else fail loudly — never commit a lost update. (2) Claim for a task already claimed/in_progress by the same unit = no-op exit 0, no commit. (6) Legacy-mode guard (until strict): plan_commit and the dispatch post-run validation (plan_guard.py) reject a builder PLAN.md change touching any block other than the unit's claimed task, changing more than `plan.max_builder_diff_lines`=40 lines, or changing line endings; the error tells the builder to use plan_commit for its own block only. Carried from TASK-027 review: the firewall now refuses builder Edit/Write/MultiEdit changes to `Owned_Paths`/`Protected_Grants`, but a shell command can still rewrite PLAN.md — the legacy guard must also reject a builder PLAN.md change that alters Owned_Paths, Protected_Grants or Assigned_To in the unit's own block (test it). **Protected-path grants (ORCH applies before dispatch):** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/plan_guard.py.
 **Acceptance_Criteria:**
 - [ ] A builder PLAN.md diff touching another task's block, or rewriting line endings, is rejected by the legacy guard (spec §8 Acceptance)
 - [ ] Two concurrent plan_commit calls editing different task blocks both land (§8 Acceptance)
