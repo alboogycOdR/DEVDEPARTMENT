@@ -1045,7 +1045,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-028
 **Title:** Wave E E-B1 — review ledger (head-SHA keyed), backoff, review.lock, markers, atomic state + multi-tick harness
-**Status:** needs_review
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H3/H7, §4 (E-B.1, E-B.2, E-B.6)
@@ -1076,10 +1076,11 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Test_Evidence:**
 - [2026-09-27T15:08:00Z] [CX] `python -m pytest tests/test_supervisor_ledgers.py tests/test_token_efficiency.py -q` → 18 passed. `python -m pytest tests/test_supervisor_ledgers.py -q` after the lock timing hardening → 5 passed. `node hooks/run-tests.js` → 47 passed, 0 failed. `git diff --check` → clean. Full `python -m pytest -q` did not complete green: unrelated GB-owned Windows dispatch test failed as recorded in Progress_Notes; `python -m pytest --lf -q` confirms the same external failure while TASK-028's only prior failure is now resolved.
 - [2026-09-27T15:34:19Z] [CX] Final re-run: `python -m pytest tests/test_supervisor_ledgers.py tests/test_token_efficiency.py -q` → 18 passed in 22.86s; `git diff --check` → clean. Full `python -m pytest -q` again reached the known, ORCH-confirmed Codex-sandbox-only `TestEmptyHuskReclaim::test_dotfile_only_directory_is_refused_by_dispatch_ps1` failure; ORCH authorized review submission with that external result. Prior full Node run: `node hooks/run-tests.js` → 47 passed, 0 failed.
-**Review_Findings:** —
+**Review_Findings:**
+- [2026-09-27T15:39:14Z] [ORCH] REWORK — small (reviewer: claude-opus-5-5). Strong work: territory clean (5 files); merged-tree pytest 1073, hooks 47/0, gateguard 39/0; fail-before check — 4 of 5 new ledger tests fail against master's supervisor (the 5th, the two-process lock, passes pre-change because TASK-023's port already added a lock: expected). Backoff 0/5/15/35 over 30 fake-clock ticks, head-SHA reset via a real git bump, markers and two real --once processes are all properly demonstrated. REQUIRED (criterion 5 is implemented but untested): (1) a test that a corrupt state file produces exactly ONE P2 notification (and the STATE_CORRUPT log line) when the supervisor starts — drive main()/--once, not RuntimeState.load alone; (2) a test that `--dry-run` leaves an existing state file byte-identical (and does not quarantine a corrupt one). Carried forward (not rework): 'oldest first' orders by Updated_At, which is still model-written until TASK-033 lands — acceptable for now.
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-09-27T15:34:19Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-27T15:39:14Z
 
 ### TASK-029
 **Title:** Wave E E-B2 — escalation ledger (H1), triage ledger (H2), one judgment-prompt form
