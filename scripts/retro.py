@@ -70,7 +70,12 @@ def review_outcomes(review_text: str) -> list[dict]:
         rework = any(k in low for k in REWORK_KEYWORDS)
         clean = (not rework) and any(k in low for k in CLEAN_KEYWORDS)
         if rework or clean:
-            out.append({"task_id": m.group(0), "rework": rework})
+            # REVIEW.md rows put the reviewed unit in column two.  Keep this
+            # deliberately best-effort: historical/free-form rows still count
+            # toward project totals, but cannot be assigned to a unit.
+            columns = [column.strip() for column in line.split("|")]
+            unit = columns[2] if len(columns) > 2 else ""
+            out.append({"task_id": m.group(0), "rework": rework, "unit": unit})
     return out
 
 
@@ -118,6 +123,17 @@ def registry_units(cfg: dict) -> list[str]:
     builders = cfg.get("builders", {}) if isinstance(cfg, dict) else {}
     active = builders.get("active", []) if isinstance(builders, dict) else []
     return [str(unit) for unit in active]
+
+
+def unit_review_summary(outcomes: list[dict], units: list[str]) -> dict[str, dict[str, int]]:
+    """Return review counts for exactly the active units in the registry."""
+    summary = {unit: {"reviews": 0, "first_pass": 0} for unit in units}
+    for outcome in outcomes:
+        row = summary.get(outcome.get("unit", ""))
+        if row is not None:
+            row["reviews"] += 1
+            row["first_pass"] += 0 if outcome["rework"] else 1
+    return summary
 
 
 def record_effectiveness(repo: Path, week: str, eff: dict) -> bool:
@@ -212,16 +228,20 @@ def _run(repo: Path, cfg: dict) -> Path:
             verdict = "higher — instincts appear to be helping" if a > b else \
                       "not higher — review whether current instincts target the real failure modes"
             lines.append(f"- Comparison: instinct-matched rate is {verdict}.")
+    if not eff["total_reviews"]:
+        lines.append("- No reviews in window.")
     if paused:
         lines.append("- Distillation paused: matched first-pass rate was not above overall for two consecutive weeks.")
-    else:
-        lines.append("- No reviews in window.")
     lines.append(f"- Active instincts: "
                  f"{sum(1 for i in instincts if i.status == 'active')} · probation: "
                  f"{sum(1 for i in instincts if i.status == 'probation')} · retired: "
                  f"{sum(1 for i in instincts if i.status == 'retired')}")
     units = registry_units(cfg)
     lines.append(f"- Active registry units: {', '.join(units) if units else 'none'}")
+    lines += ["", "## Reviews by active registry unit"]
+    for unit, stats in unit_review_summary(outcomes, units).items():
+        rate = round(stats["first_pass"] / stats["reviews"], 3) if stats["reviews"] else "n/a"
+        lines.append(f"- {unit}: {stats['reviews']} review(s); first-pass rate {rate}")
 
     lines += ["", "## Escalations logged (AUTOPILOT_LOG.md keyword counts)",
               f"- P0: {escalations['P0']} · P1: {escalations['P1']} · P2: {escalations['P2']}"]

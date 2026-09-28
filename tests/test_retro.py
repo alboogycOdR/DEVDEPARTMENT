@@ -76,6 +76,19 @@ class TestChurnAndEffectiveness:
         assert not rm.record_effectiveness(tmp_path, "2026-W01", weak)
         assert rm.record_effectiveness(tmp_path, "2026-W02", weak)
 
+    def test_unit_summary_uses_registry_and_counts_only_active_instincts(self, tmp_path):
+        outcomes = rm.review_outcomes(REVIEW + "\n| TASK-302 | CX9 | approved first-pass | — | note | now |")
+        assert rm.unit_review_summary(outcomes, ["GB", "CX9"]) == {
+            "GB": {"reviews": 3, "first_pass": 2},
+            "CX9": {"reviews": 1, "first_pass": 1},
+        }
+        im.save_atomic(tmp_path, [
+            im.Instinct("INST-001", "a", ["python/**"], 0.7, ["x"], "active"),
+            im.Instinct("INST-002", "b", ["python/**"], 0.7, ["x"], "probation"),
+            im.Instinct("INST-003", "c", ["python/**"], 0.7, ["x"], "retired"),
+        ])
+        assert sum(i.status == "active" for i in im.load(tmp_path)) == 1
+
 
 class TestRetroRun:
     def test_drafts_file_and_never_mutates_state(self, tmp_path):
@@ -96,6 +109,7 @@ class TestRetroRun:
         assert "TASK-301 (4.5h)" in text
         assert "AMEND-002" in text and "/approve AMEND-002" in text
         assert "Instinct effectiveness" in text
+        assert "No reviews in window" not in text
         # descriptive only — no mutation
         assert (tmp_path / "INSTINCTS.md").read_bytes() == before_instincts
 
@@ -103,6 +117,7 @@ class TestRetroRun:
         out = rm.run(tmp_path, {})
         assert out is not None  # still drafts a (sparse) retro
         assert "No completed tasks" in out.read_text(encoding="utf-8")
+        assert "No reviews in window" in out.read_text(encoding="utf-8")
 
 
 class TestScheduling:
