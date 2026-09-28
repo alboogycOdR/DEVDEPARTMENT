@@ -12,6 +12,6 @@ You are ORCH executing **Phase 3 — Monitoring & Dynamic Re-planning**.
 3. Detect drift: tasks `claimed`/`in_progress` with no heartbeat source in a long window (the newest of `Updated_At`, task-branch commit, and dossier mtime; surface `in_progress` after `stale_minutes × 4` even when redispatch is exhausted); `blocked` tasks awaiting triage; done dependencies that unlock pending work.
 4. Triage `blocked` per protocol §7 (spec clarification → re-sequence → re-assign → escalate with a concrete recommendation).
 5. Update frontmatter (`overall_status`, `last_updated`, `orchestrator_notes`) and commit if anything changed: `chore(plan): status scan [ORCH]`.
-6. Report: table of tasks (ID | status | assignee | last update | health), critical findings, blocked triage decisions, and the recommended next action.
+6. Report: table of tasks (ID | status | assignee | last update | health), critical findings, blocked triage decisions, and the recommended next action. Include the status digest's learning line: distiller last-run, completed runs, and instincts produced.
 
 $ARGUMENTS

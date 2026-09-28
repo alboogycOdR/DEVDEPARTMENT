@@ -87,6 +87,27 @@ def _behind_pack_line(repo: Path) -> str | None:
         return None
 
 
+def _distiller_line(repo: Path) -> str:
+    """Read-only learning observability; never starts a distillation session."""
+    marker = repo / ".devteam" / "last_distill_ts.txt"
+    try:
+        last = marker.read_text(encoding="utf-8").strip() or "never ran"
+    except OSError:
+        last = "never ran"
+    try:
+        log = (repo / "AUTOPILOT_LOG.md").read_text(encoding="utf-8")
+        runs = sum(1 for line in log.splitlines() if "DISTILL ok " in line)
+    except OSError:
+        runs = 0
+    try:
+        sys.path.insert(0, str(repo / "scripts"))
+        import instincts
+        produced = len(instincts.load(repo))
+    except Exception:
+        produced = 0
+    return f"Learning: distiller last-run {last}; runs {runs}; instincts produced {produced}"
+
+
 def _heartbeat(repo: Path, task) -> datetime | None:
     """Newest of the recorded plan time, branch commit and dossier mtime."""
     candidates = [_parse_ts(task.get("Updated_At"))]
@@ -147,6 +168,7 @@ def build(repo: Path, now: datetime, since: datetime | None = None, cfg: dict | 
              "Prod: not touched by the autopilot (deploys are manual)"]
     if behind := _behind_pack_line(repo):
         lines.append(behind)
+    lines.append(_distiller_line(repo))
     return "\n".join(lines)
 
 

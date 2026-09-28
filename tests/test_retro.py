@@ -57,7 +57,7 @@ class TestCycleTime:
 class TestChurnAndEffectiveness:
     def test_territory_churn(self):
         churn = rm.territory_churn(PLAN, rm.review_outcomes(REVIEW))
-        assert churn == {"python": 1}
+        assert churn == {"python/orb/**": 1}
 
     def test_instinct_effectiveness_comparison(self, tmp_path):
         # Instinct covering python/orb/** — TASK-301 (rework) and TASK-304 (clean)
@@ -69,6 +69,12 @@ class TestChurnAndEffectiveness:
         assert eff["matched_reviews"] == 3  # both TASK-301 rows + TASK-304
         assert eff["project_first_pass_rate"] == 0.75
         assert eff["instinct_matched_first_pass_rate"] == round(2 / 3, 3)
+
+    def test_registry_includes_cx9_and_effectiveness_pause(self, tmp_path):
+        assert rm.registry_units({"builders": {"active": ["GB", "CX9"]}}) == ["GB", "CX9"]
+        weak = {"instinct_matched_first_pass_rate": 0.4, "project_first_pass_rate": 0.5}
+        assert not rm.record_effectiveness(tmp_path, "2026-W01", weak)
+        assert rm.record_effectiveness(tmp_path, "2026-W02", weak)
 
 
 class TestRetroRun:

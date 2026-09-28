@@ -2,6 +2,7 @@
 import hashlib
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -94,6 +95,21 @@ class TestSkip:
 
 # -------------------------------------------------------- happy path -------
 class TestDistill:
+    def test_disabled_learning_does_not_launch_model(self, tmp_path):
+        repo = repo_with(tmp_path, FINDINGS)
+        r = dm.run(repo, {"learning": {"enabled": False, "distill_cmd": ["missing-command"]}})
+        assert r.ok and r.skipped and r.reason == "learning.enabled=false"
+
+    def test_missing_enabled_preserves_existing_behavior_once(self, tmp_path):
+        repo = repo_with(tmp_path, FINDINGS)
+        cfg = {"learning": {"distill_cmd": fake_model(tmp_path, MODEL_INSTINCT)}}
+        assert dm.run(repo, cfg).ok
+        notice = repo / ".devteam" / "learning_enabled_notice.txt"
+        assert notice.exists()
+        before = notice.read_text(encoding="utf-8")
+        dm.run(repo, cfg)
+        assert notice.read_text(encoding="utf-8") == before
+
     def test_seeded_rework_pattern_produces_instinct(self, tmp_path):
         repo = repo_with(tmp_path, FINDINGS)
         cfg = {"learning": {"distill_cmd": fake_model(tmp_path, MODEL_INSTINCT)}}
@@ -196,6 +212,42 @@ class TestConstitutionalGate:
         cfg = {"learning": {"distill_cmd": fake_model(tmp_path, MODEL_AMENDMENT)}}
         r = dm.run(repo, cfg)
         assert r.amendments == ["AMEND-005"]
+
+    def test_duplicate_amendment_is_not_written_twice(self, tmp_path):
+        repo = repo_with(tmp_path, FINDINGS)
+        dm.write_amendment(repo, MODEL_AMENDMENT)
+        r = dm.run(repo, {"learning": {"distill_cmd": fake_model(tmp_path, MODEL_AMENDMENT)}})
+        assert r.ok and r.amendments == []
+        assert [p.name for p in dm.pending_amendments(repo)] == ["AMEND-001.md"]
+
+    def test_missing_amendment_target_is_rejected(self, tmp_path):
+        repo = repo_with(tmp_path, FINDINGS)
+        bad = MODEL_AMENDMENT.replace("briefings/GROK_BUILD_BRIEFING.md", "missing.md")
+        r = dm.run(repo, {"learning": {"distill_cmd": fake_model(tmp_path, bad)}})
+        assert r.ok and r.amendments == []
+        assert not dm.pending_amendments(repo)
+
+    def test_pending_amendment_expires_with_log_line(self, tmp_path):
+        repo = repo_with(tmp_path, FINDINGS)
+        dm.write_amendment(repo, MODEL_AMENDMENT)
+        proposal = repo / ".devteam" / "pending_amendments" / "AMEND-001.md"
+        proposal.write_text(proposal.read_text(encoding="utf-8").replace(
+            "2026-09-28T", "2026-08-01T"), encoding="utf-8")
+        expired = dm.expire_amendments(repo, 14, datetime(2026, 9, 28, tzinfo=timezone.utc))
+        assert expired == ["AMEND-001"]
+        assert "**Status:** expired" in proposal.read_text(encoding="utf-8")
+        assert "amendment expired: AMEND-001" in (repo / "AUTOPILOT_LOG.md").read_text(encoding="utf-8")
+
+    def test_effectiveness_gate_pauses_after_two_weeks(self, tmp_path):
+        repo = repo_with(tmp_path, FINDINGS)
+        state = repo / ".devteam" / "learning_effectiveness.json"
+        state.parent.mkdir()
+        state.write_text(json.dumps({"weeks": [
+            {"week": "2026-W01", "matched": 0.4, "overall": 0.5},
+            {"week": "2026-W02", "matched": 0.5, "overall": 0.5},
+        ]}), encoding="utf-8")
+        r = dm.run(repo, {"learning": {"distill_cmd": ["missing-command"]}})
+        assert r.ok and r.skipped and "effectiveness gate" in r.reason
 
 
 # -------------------------------------------------------------- mining ------

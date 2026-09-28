@@ -25,10 +25,12 @@ same notify()/is_muted() path every other P2 escalation already uses.
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -39,6 +41,8 @@ MARKER_REL = ".devteam/last_distill_ts.txt"
 AMEND_DIR_REL = ".devteam/pending_amendments"
 DEFAULT_MIN_NEW_FINDINGS = 3
 AMEND_HEADER = "## PROPOSED AMENDMENT"
+EFFECTIVENESS_REL = ".devteam/learning_effectiveness.json"
+ENABLED_NOTICE_REL = ".devteam/learning_enabled_notice.txt"
 
 DISTILLER_PROMPT_TEMPLATE = (
     "Read the following new Review_Findings entries from REVIEW.md since {ts}. "
@@ -167,6 +171,56 @@ def write_amendment(repo: Path, body: str) -> str:
     return amend_id
 
 
+def _amend_target(body: str) -> str:
+    match = re.search(r"^\*\*Target:\*\*\s*([^\r\n(]+)", body, re.MULTILINE)
+    return match.group(1).strip().strip("`") if match else ""
+
+
+def _amend_rule_hash(body: str) -> str:
+    """A stable content identity that ignores whitespace and generated IDs."""
+    text = re.sub(r"\s+", " ", body.strip()).lower()
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def pending_amendments(repo: Path) -> list[Path]:
+    d = repo / AMEND_DIR_REL
+    if not d.is_dir():
+        return []
+    return [p for p in sorted(d.glob("AMEND-*.md"))
+            if "**Status:** pending" in p.read_text(encoding="utf-8", errors="replace")]
+
+
+def expire_amendments(repo: Path, days: int = 14, now: datetime | None = None) -> list[str]:
+    """Expire old pending proposals. Invalid dates are deliberately retained."""
+    now = now or datetime.now(timezone.utc)
+    expired: list[str] = []
+    for proposal in pending_amendments(repo):
+        text = proposal.read_text(encoding="utf-8", errors="replace")
+        match = re.search(r"^\*\*Proposed:\*\*\s*(\S+)", text, re.MULTILINE)
+        if not match:
+            continue
+        try:
+            proposed = datetime.strptime(match.group(1), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if (now - proposed).days >= days:
+            proposal.write_text(text.replace("**Status:** pending", "**Status:** expired", 1),
+                                encoding="utf-8", newline="\n")
+            expired.append(proposal.stem)
+            _log(repo, f"DISTILL amendment expired: {proposal.stem}")
+    return expired
+
+
+def effectiveness_paused(repo: Path) -> bool:
+    """Two consecutive weekly non-improvements pause model work, not reporting."""
+    try:
+        rows = json.loads((repo / EFFECTIVENESS_REL).read_text(encoding="utf-8")).get("weeks", [])[-2:]
+        return len(rows) == 2 and all(row.get("matched") is not None and row.get("overall") is not None
+                                      and row["matched"] <= row["overall"] for row in rows)
+    except (OSError, ValueError, TypeError):
+        return False
+
+
 # -------------------------------------------------- rationalization rows ----
 def rationalization_candidates(cfg: dict, repo: Path) -> list[str]:
     """When team_stats shows a rework category recurring >= 3x in the window,
@@ -268,6 +322,18 @@ def run(repo: str | Path, cfg: dict) -> DistillResult:
 
 def _run(repo: Path, cfg: dict) -> DistillResult:
     learning = cfg.get("learning", {})
+    if "enabled" not in learning:
+        notice = repo / ENABLED_NOTICE_REL
+        if not notice.exists():
+            notice.parent.mkdir(parents=True, exist_ok=True)
+            notice.write_text("existing project: learning.enabled defaulted to true; opt in/out explicitly\n", encoding="utf-8")
+            _log(repo, "DISTILL notice: learning.enabled missing; preserving existing enabled behaviour")
+    elif not bool(learning["enabled"]):
+        return DistillResult(ok=True, skipped=True, reason="learning.enabled=false")
+    expire_amendments(repo, int(learning.get("amend_expiry_days", 14)))
+    if effectiveness_paused(repo):
+        _log(repo, "DISTILL paused: instinct-matched first-pass rate was not above overall for 2 consecutive weeks")
+        return DistillResult(ok=True, skipped=True, reason="effectiveness gate paused distillation")
     min_new = int(learning.get("min_new_findings", DEFAULT_MIN_NEW_FINDINGS))
 
     try:
@@ -363,6 +429,16 @@ def _run(repo: Path, cfg: dict) -> DistillResult:
         # Split multiple amendment sections on repeated headers.
         parts = [AMEND_HEADER + p for p in amend_text.split(AMEND_HEADER) if p.strip()]
         for part in parts:
+            target = _amend_target(part)
+            if not target or not (repo / target).is_file():
+                _log(repo, f"DISTILL amendment rejected: missing target {target or '(unspecified)'}")
+                continue
+            signature = (target, _amend_rule_hash(part))
+            if any(signature == (_amend_target(p.read_text(encoding="utf-8", errors="replace")),
+                                 _amend_rule_hash(p.read_text(encoding="utf-8", errors="replace").split("\n\n", 1)[-1]))
+                   for p in pending_amendments(repo)):
+                _log(repo, f"DISTILL amendment de-duplicated: target {target}")
+                continue
             amend_id = write_amendment(repo, part)
             result.amendments.append(amend_id)
             _log(repo, f"DISTILL amendment proposed: {amend_id} "
