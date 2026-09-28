@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import inbox  # noqa: E402
 import supervisor as sup  # noqa: E402
+from tg_listener import TelegramListener  # noqa: E402
 from tick_harness import make_fixture_repo, run_once_subprocess  # noqa: E402
 
 
@@ -35,8 +36,17 @@ def test_resume_inbox_is_consumed_once_across_once_processes(tmp_path):
     (repo / "autopilot.json").write_text(json.dumps({"builders": []}), encoding="utf-8")
     sup.RuntimeState(parked={"kind": "P1", "reason": "fixture", "since": "2026-09-28T00:00:00Z"}).save(
         repo / ".autopilot_state.json")
-    path = _enqueue(repo, "/resume")
-    assert path is not None and path.exists()
+    # This first short-lived process is the bounded Telegram poll.  Its
+    # offset may advance only after the durable envelope is visible; the
+    # next scheduler process is then responsible for applying it.
+    update = {"update_id": 7, "message": {"chat": {"id": 42}, "text": "/resume"}}
+    listener = TelegramListener("token", ["42"], "42", None,
+                               repo / ".devteam" / "tg_offset.txt",
+                               fetch=lambda _method, _timeout: {"ok": True, "result": [update]})
+    assert listener.poll_once()
+    path = next((repo / ".devteam" / "inbox").glob("*-telegram-7.json"))
+    assert path.exists()
+    assert (repo / ".devteam" / "tg_offset.txt").read_text(encoding="utf-8") == "8"
 
     first = run_once_subprocess(repo)
     assert first.returncode == 0, first.stderr
