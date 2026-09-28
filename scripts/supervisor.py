@@ -201,6 +201,9 @@ class RuntimeState:
     halt_mtime: str = ""                                             # STOP file mtime already logged
     triage_counts: dict[str, dict[str, int]] = field(default_factory=dict)  # task_id -> reason -> attempts
     last_status_digest_ts: str = ""                                 # scripted status digest throttle
+    # E-C: a parked loop is deliberately still alive: it drains commands,
+    # maintenance and observability, but must not make new decisions.
+    parked: dict[str, str] = field(default_factory=dict)              # {kind, reason, since}
     _corrupt_note: str = field(default="", repr=False, compare=False)
 
     @classmethod
@@ -431,6 +434,33 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
     if not real:
         return [Action("IDLE", "No real tasks in plan")]
 
+    # Durable parking replaces the old "P1 means exit" behaviour.  A valid
+    # plan clears a plan-illegal P1; a changed frozen task clears its P1; a
+    # newly pending task clears a completed wave.  All other parked ticks are
+    # intentionally quiet and do not reach decide()/execute() work below.
+    if state.parked:
+        kind, reason = state.parked.get("kind", ""), state.parked.get("reason", "")
+        frozen = re.search(r"(TASK-[A-Z0-9-]+)", reason)
+        clear = (kind == "WAVE_DONE" and any(t.get("Status") == "pending" for t in real))
+        clear = clear or (kind == "P1" and reason.startswith("PLAN.md"))
+        clear = clear or (kind == "P1" and frozen and by_id.get(frozen.group(1))
+                          and by_id[frozen.group(1)].get("Status") != "needs_review")
+        if clear:
+            state.parked = {}
+        else:
+            # Parking suppresses new decisions, not the existing P1's slow
+            # reminder.  The escalation ledger is durable too, so a scheduled
+            # --once process sends this only after the configured P1 interval.
+            # This reconciles E-B's hourly frozen-task reminder with E-C's
+            # requirement that the parked loop otherwise remain quiet.
+            if kind == "P1":
+                reminder = Action("ESCALATE_P1", reason,
+                                  task_id=frozen.group(1) if frozen else None)
+                last = _parse_ts(state.escalated.get(escalation_key(reminder), ""))
+                if last is None or (now - last).total_seconds() >= _renotify_hours(reminder, cfg) * 3600:
+                    return [reminder]
+            return [Action("IDLE", f"parked ({kind}): {reason}")]
+
     # 2. Rework-loop guardrail + reviews
     review_candidates: list[Task] = []
     for t in real:
@@ -487,10 +517,12 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
     for t in real:
         if t.get("Status") in ("claimed", "in_progress"):
             ts = _parse_ts(t.get("Updated_At"))
-            if control_mode == "strict":
-                hb = dossier_heartbeats.get(t.task_id)
-                if hb is not None and (ts is None or hb > ts):
-                    ts = hb
+            # E-C heartbeat is the newest independently observable source:
+            # PLAN timestamp, branch commit and dossier mtime.  The caller
+            # supplies the latter two, in both legacy and strict mode.
+            hb = dossier_heartbeats.get(t.task_id)
+            if hb is not None and (ts is None or hb > ts):
+                ts = hb
             if ts is not None:
                 age_min = (now - ts).total_seconds() / 60.0
                 if age_min > cfg["stale_minutes"]:
@@ -582,7 +614,7 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
 
     # 6. Wave complete?
     if all(t.get("Status") == "done" for t in real):
-        return [Action("DIGEST", f"WAVE COMPLETE — all {len(real)} tasks done. Digest + halt.")]
+        return [Action("DIGEST", f"WAVE COMPLETE — all {len(real)} tasks done. Digest + park.")]
 
     actions = _dedupe_escalations(actions, state, cfg, now)
     if not actions:
@@ -671,6 +703,7 @@ def reap_inflight(inflight: dict[str, tuple[subprocess.Popen, str, str]], cfg: d
             if rc is None:
                 continue
             del inflight[unit]
+            _inflight_path(repo, unit).unlink(missing_ok=True)
             state.busy_units.pop(unit, None)
             if rc == 0:
                 state.dispatch_failures[unit] = 0
@@ -692,6 +725,59 @@ def reap_inflight(inflight: dict[str, tuple[subprocess.Popen, str, str]], cfg: d
         if not inflight or time.monotonic() >= deadline:
             return
         time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+
+
+def _inflight_path(repo: Path, unit: str) -> Path:
+    return repo / ".devteam" / "inflight" / f"{unit}.json"
+
+
+def _write_inflight(repo: Path, unit: str, proc: subprocess.Popen, task_id: str, command: str, now: datetime) -> None:
+    """Persist the minimum cross-process launch record (E-C/H3)."""
+    pid = getattr(proc, "pid", None)
+    if not isinstance(pid, int) or pid <= 0:
+        return  # lightweight test doubles are intentionally not durable
+    path = _inflight_path(repo, unit)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_suffix(".tmp")
+    temp.write_text(json.dumps({"pid": pid, "task_id": task_id, "cmd": command,
+                                "started": now.strftime(UTC_FMT)}), encoding="utf-8")
+    os.replace(temp, path)
+
+
+def _reap_durable_inflight(cfg: dict, state: RuntimeState, repo: Path, now: datetime) -> None:
+    """Remove dead persisted PIDs so a later --once process observes a launch.
+
+    Exit status cannot be recovered after a supervisor process exits; a dead
+    PID therefore counts as an unreachable dispatch, the conservative outcome.
+    """
+    directory = repo / ".devteam" / "inflight"
+    if not directory.is_dir():
+        return
+    for path in directory.glob("*.json"):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+            pid, unit = int(record["pid"]), path.stem
+            try:
+                os.kill(pid, 0)
+                alive = True
+            except ProcessLookupError:
+                alive = False
+            except PermissionError:
+                alive = True
+            except OSError:
+                # Windows raises a generic OSError (for example WinError 87)
+                # for a non-existent synthetic PID rather than
+                # ProcessLookupError.  It is still a dead persisted launch.
+                alive = False
+            if alive:
+                continue
+            path.unlink(missing_ok=True)
+            failures = state.dispatch_failures.get(unit, 0) + 1
+            state.dispatch_failures[unit] = failures
+            _notify_if_builder_unreachable(1, unit, record.get("task_id") or None,
+                                           record.get("cmd", ""), cfg, state, repo, now)
+        except (OSError, ValueError, TypeError, KeyError):
+            path.unlink(missing_ok=True)
 
 
 def _git_head_sha(repo: Path, branch: str) -> str:
@@ -822,7 +908,7 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
         elif a.kind == "ESCALATE_P1":
             notify(cfg, "P1", a.detail, repo)   # P1 is NEVER muted — safety rail, not a preference
             state.escalated[escalation_key(a)] = now.strftime(UTC_FMT)
-            halt = True
+            state.parked = {"kind": "P1", "reason": a.detail, "since": now.strftime(UTC_FMT)}
         elif a.kind == "ESCALATE_P2":
             if is_muted(state, now):
                 log_line(repo, f"MUTED: suppressed P2 — {a.detail}")
@@ -840,7 +926,7 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
                 log_line(repo, f"MUTED: suppressed P0 digest — {detail}")
             else:
                 notify(cfg, "P0", detail, repo)
-            halt = True
+            state.parked = {"kind": "WAVE_DONE", "reason": a.detail, "since": now.strftime(UTC_FMT)}
         elif a.kind == "REVIEW":
             review_ran = True
             _run_review(a, cfg, state, repo, now)
@@ -863,6 +949,7 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
             log_line(repo, f"DISPATCH_COMMAND unit={a.unit} task={a.task_id or '—'} command={command}")
             proc = launch_shell_bg(command, repo)
             inflight[a.unit] = (proc, a.task_id or "", command)
+            _write_inflight(repo, a.unit, proc, a.task_id or "", command, now)
             state.busy_units[a.unit] = a.task_id or ""
             state.dispatch_log = budget.record_dispatch(state.dispatch_log, now)
         elif a.kind == "TRIAGE_UNBLOCK" and a.task_id:
@@ -1067,6 +1154,24 @@ def _dossier_heartbeats(repo: Path) -> dict[str, datetime]:
     return out
 
 
+def _task_heartbeats(repo: Path, plan_text: str) -> dict[str, datetime]:
+    """Newest dossier mtime or task-branch commit timestamp, per E-C/H5."""
+    out = _dossier_heartbeats(repo)
+    for task in parse_tasks(plan_text, Report()):
+        branch = task.get("Branch")
+        if not branch or branch in ("—", "-"):
+            continue
+        try:
+            result = subprocess.run(["git", "log", "-1", "--format=%cI", branch], cwd=repo,
+                                    capture_output=True, text=True, timeout=10)
+            stamp = datetime.fromisoformat(result.stdout.strip().replace("Z", "+00:00"))
+            if stamp.tzinfo and (task.task_id not in out or stamp > out[task.task_id]):
+                out[task.task_id] = stamp
+        except (OSError, ValueError, subprocess.SubprocessError):
+            continue
+    return out
+
+
 # ---------------------------------------------------- stagnation signal (I/O) --
 # Best-effort git/gateguard readers feeding circuit_breaker.py's pure arithmetic.
 # Every function below fails toward "no opinion" (None / omitted key), never
@@ -1261,8 +1366,14 @@ def _process_tg_command(item: dict, repo: Path, cfg: dict, state: RuntimeState,
         existed = p.exists()
         if existed:
             p.unlink()
+        # E-C: /resume is also the explicit operator escape hatch for the
+        # durable P1/WAVE_DONE park state.  Merely clearing STOP would leave
+        # a --once supervisor silently parked forever on its next start.
+        was_parked = bool(state.parked)
+        state.parked = {}
         _tg_log(repo, cmd, None)
-        tgc.send_reply(token, chat_id, "▶️ STOP cleared — resuming." if existed else "Already running (no STOP file).")
+        tgc.send_reply(token, chat_id,
+                       "▶️ Resuming." if existed or was_parked else "Already running (no STOP file).")
         return None
 
     if cmd == "/wave":
@@ -1639,6 +1750,7 @@ def main(argv: list[str]) -> int:
 
     start = time.monotonic()
     ticks = 0
+    stopped = False
     # Background dispatch tracking (Popen handles, not persisted -- see
     # launch_shell_bg's docstring): lives for the lifetime of this process
     # only. A supervisor restart while a builder is mid-session (before its
@@ -1660,6 +1772,7 @@ def main(argv: list[str]) -> int:
             # since the last tick (see launch_shell_bg/reap_inflight above).
             if not args.dry_run:
                 reap_inflight(inflight, cfg, state, repo, now)
+                _reap_durable_inflight(cfg, state, repo, now)
 
             # Drain Telegram + Slack commands BEFORE deciding, so /answer /
             # /rework edits (and /stop) are visible to this tick's decision
@@ -1712,7 +1825,7 @@ def main(argv: list[str]) -> int:
             if not args.dry_run:
                 refresh_plan_from_head(repo)
             plan_text = plan.read_text(encoding="utf-8")
-            dossier_heartbeats = _dossier_heartbeats(repo) if cfg.get("control", {}).get("mode") == "strict" else {}
+            dossier_heartbeats = _task_heartbeats(repo, plan_text)
             try:
                 # Cache-only read in the common case — get_usage() only
                 # re-probes (burning real usage) when its own TTL has
@@ -1744,6 +1857,7 @@ def main(argv: list[str]) -> int:
                                           stagnation_signal=stagnation_signal,
                                           head_shas=head_shas)
             keep_going = execute(actions, cfg, state, repo, args.dry_run, now=now, inflight=inflight)
+            stopped = any(a.kind == "HALT" for a in actions)
             if args.once and not args.dry_run:
                 # A normal loop reaps on its next tick. A single-tick run has
                 # no next tick, so wait briefly for dispatch's fast outcome.
@@ -1791,7 +1905,7 @@ def main(argv: list[str]) -> int:
 
 
     print("[supervisor] Halted.")
-    return 0
+    return 3 if stopped else 0
 
 
 if __name__ == "__main__":

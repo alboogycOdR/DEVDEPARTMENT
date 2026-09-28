@@ -87,18 +87,41 @@ def _behind_pack_line(repo: Path) -> str | None:
         return None
 
 
-def build(repo: Path, now: datetime, since: datetime | None = None) -> str:
+def _heartbeat(repo: Path, task) -> datetime | None:
+    """Newest of the recorded plan time, branch commit and dossier mtime."""
+    candidates = [_parse_ts(task.get("Updated_At"))]
+    dossier = repo / "dossiers" / f"{task.task_id}.md"
+    try:
+        candidates.append(datetime.fromtimestamp(dossier.stat().st_mtime, tz=timezone.utc))
+    except OSError:
+        pass
+    branch = task.get("Branch")
+    if branch and branch not in ("—", "-"):
+        try:
+            out = subprocess.run(["git", "log", "-1", "--format=%cI", branch], cwd=repo,
+                                 capture_output=True, text=True, timeout=10).stdout.strip()
+            candidates.append(datetime.fromisoformat(out.replace("Z", "+00:00")))
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass
+    return max((item for item in candidates if item is not None), default=None)
+
+
+def build(repo: Path, now: datetime, since: datetime | None = None, cfg: dict | None = None) -> str:
     """The digest body WITHOUT the trailing local-time line (so it can be hashed for change detection)."""
     tasks = parse_tasks((repo / "PLAN.md").read_text(encoding="utf-8"), Report())
     by_id = {t.task_id: t for t in tasks}
     since = since or (now - timedelta(hours=DEFAULT_LOOKBACK_HOURS))
 
     in_progress, in_review, ready, waiting, unassigned, pending_action = [], [], [], 0, 0, []
+    stale_limit = int((cfg or {}).get("stale_minutes", 90)) * 4
     for t in tasks:
         status, tid, unit = t.get("Status"), t.task_id, t.get("Assigned_To")
         label = f"{tid} {_short(t.get('Title'))}"
         if status in ("claimed", "in_progress"):
             in_progress.append(f"{label} ({unit}, building)")
+            hb = _heartbeat(repo, t)
+            if status == "in_progress" and hb and (now - hb).total_seconds() / 60 > stale_limit:
+                pending_action.append(f"{tid} stale heartbeat ({int((now - hb).total_seconds() / 60)}m)")
         elif status == "needs_review":
             in_review.append(f"{label} (in review)")
         elif status == "pending":
@@ -149,7 +172,7 @@ def run(repo: Path, cfg: dict | None = None, now: datetime | None = None,
         last = json.loads(state_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         last = {}
-    body = build(repo, now, since=_parse_ts(last.get("ts", "")))
+    body = build(repo, now, since=_parse_ts(last.get("ts", "")), cfg=cfg)
     digest = f"{body}\n{_local_time_line(now)}"
     (repo / ".devteam").mkdir(exist_ok=True)
     (repo / ".devteam" / "STATUS.md").write_text(digest + "\n", encoding="utf-8")

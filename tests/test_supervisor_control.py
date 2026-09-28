@@ -73,14 +73,12 @@ def make_repo(tmp_path: Path, plan_text: str = None) -> Path:
 
 # =================================================== dossier heartbeats ===
 class TestDossierHeartbeatStaleDetection:
-    def test_legacy_mode_ignores_dossier_heartbeats(self):
-        """upd_at is 4h stale (> 90m default) — legacy mode redispatches
-        even if a heartbeats dict happens to be passed in, since control
-        mode isn't strict."""
+    def test_legacy_mode_dossier_heartbeat_prevents_false_stale(self):
+        """E-C.2 applies the newest heartbeat source in legacy mode too."""
         stale = task(status="in_progress", upd_at="2026-07-20T08:00:00Z")
-        fresh_hb = {"TASK-700": NOW}  # would rescue it, but legacy ignores this
+        fresh_hb = {"TASK-700": NOW}
         acts = decide(FM + stale, RuntimeState(), CFG, NOW, dossier_heartbeats=fresh_hb)
-        assert "REDISPATCH_STALE" in kinds(acts)
+        assert "REDISPATCH_STALE" not in kinds(acts)
 
     def test_strict_mode_dossier_heartbeat_prevents_false_stale(self):
         """PLAN.md's own Updated_At is 4h old, but the dossier was touched
