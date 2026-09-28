@@ -1215,7 +1215,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-032
 **Title:** Wave E E-D — plan archive, notes cap, generated REVIEW tallies, machine-readable REVIEW.md
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §6 (E-D)
@@ -1233,12 +1233,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Started_At:** 2026-09-28T13:50:42Z
 **Progress_Notes:**
 - [2026-09-27T19:07:45Z] [ORCH] Reassigned GB -> CX (owner decision 2026-09-27: all build tasks to CX; GB's Grok Build balance is exhausted, HTTP 402). GB never committed. Its unreviewed WIP is kept as optional reference in the main checkout at .devteam/salvage/TASK-032-gb-wip/ (modified.patch = maintenance/team_stats/validate_plan + their tests; new/ = plan_archive.py, test_plan_archive.py, test_team_stats.py, fixtures/plan_archive/sample_plan.md). Treat it as an untrusted draft: verify against the spec; start from a fresh branch task/TASK-032-cx.
+- [2026-09-28T13:52:20Z] [CX] Recovered the preserved GB draft into the dedicated CX branch; focused archive, maintenance, tally, and validator tests pass (96).
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-28T13:50:42Z
+**Updated_At:** 2026-09-28T13:52:20Z
 
 ### TASK-033
 **Title:** Wave E E-E — plan_commit stamps Updated_At from the clock; tests isolated from the live checkout
