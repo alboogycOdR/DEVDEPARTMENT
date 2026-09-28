@@ -1406,7 +1406,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-039
 **Title:** Wave E E-I — learning loop earns its sessions or stays off
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §11 (E-I.1–5)
@@ -1415,20 +1415,22 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-030
 **Description:** (1) `learning.enabled` gate inside distiller (default false for NEW projects; existing projects keep current behaviour + one-time notice — ask-don't-auto-flip). (2) Amendments de-duplicated by (target file, rule-text hash); missing-target rejected at creation; pending amendments appear once in the P0 digest with /approve AMEND-NNN / /rework AMEND-NNN; auto-expire after `learning.amend_expiry_days`=14 with a log line. (3) retro.py: unit list from the registry (CX9 included), correct active-instinct count, bucket by file not directory. (4) Effectiveness gate: matched-task first-pass ≤ overall for 2 consecutive weeks → distillation pauses itself and says so in the digest. (5) /devteam-status shows distiller last-run, runs, instincts produced. **Protected-path grants (ORCH applies before dispatch):** scripts/distiller.py, scripts/retro.py, scripts/instincts.py, scripts/board_publisher.py, scripts/status_digest.py, .claude/commands/devteam-status.md.
 **Acceptance_Criteria:**
-- [ ] Fixture tests for de-dup, missing-target rejection, expiry, retro counts (including CX9) and auto-pause (spec §11 Acceptance)
-- [ ] learning.enabled=false → no distiller session launched; existing config without the key → unchanged behaviour + one notice (E-I.1)
-- [ ] /devteam-status reports distiller last-run/runs/instincts (E-I.5)
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+- [x] Fixture tests for de-dup, missing-target rejection, expiry, retro counts (including CX9) and auto-pause (spec §11 Acceptance)
+- [x] learning.enabled=false → no distiller session launched; existing config without the key → unchanged behaviour + one notice (E-I.1)
+- [x] /devteam-status reports distiller last-run/runs/instincts (E-I.5)
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-039-cx
 **Started_At:** 2026-09-28T13:48:00Z
 **Progress_Notes:**
 - [2026-09-28T13:57:36Z] [CX] Implemented and committed learning gate, amendment lifecycle, retro effectiveness history, and digest observability (f43eac8). Focused Python suite: 109 passed; Node suite: 47 passed. Full Python suite is still running in this environment before review handoff.
+- [2026-09-28T15:44:20Z] [CX] Full verification complete; submitting f43eac8 for review.
 **Artifacts:** scripts/distiller.py, scripts/retro.py, scripts/status_digest.py, .claude/commands/devteam-status.md, tests/test_distiller.py, tests/test_retro.py
-**Test_Evidence:** —
+**Test_Evidence:**
+- [2026-09-28T15:44:20Z] [CX] `python -m pytest -q` → 1093 passed in 224.86s. `python -m pytest -q tests/test_distiller.py tests/test_retro.py tests/test_instincts.py tests/test_instincts_lifecycle.py tests/test_board_publisher.py` → 109 passed. `node hooks/run-tests.js` → 47 passed, 0 failed.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-28T13:57:36Z
+**Updated_At:** 2026-09-28T15:44:20Z
 
 ### TASK-040
 **Title:** Wave E E-J1 — rendered roster, retire_unit, briefing lint, per-unit briefing check
