@@ -1242,7 +1242,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-033
 **Title:** Wave E E-E — plan_commit stamps Updated_At from the clock; tests isolated from the live checkout
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H5, §7 (E-E)
@@ -1257,13 +1257,14 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-033-cx
 **Started_At:** 2026-09-28T13:50:44Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-28T13:51:25Z] [CX] Claimed and beginning implementation; inspecting both plan_commit mirrors and isolated fixture tests.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-28T13:50:44Z
+**Updated_At:** 2026-09-28T13:51:25Z
 
 ### TASK-034
 **Title:** Wave E E-F1 — plan_commit compare-and-swap, idempotent claim, legacy-mode blackboard guard
