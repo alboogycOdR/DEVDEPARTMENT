@@ -121,8 +121,9 @@ fi
 # block's supplied value is retained when it is a sane UTC timestamp that is
 # neither ahead of the clock nor older than the previous PLAN.md commit.
 #
-# Keep this inline instead of adding another framework entry point: this tool
-# must remain self-contained when copied into a project fixture/install.
+# scripts/plan_stamp.py is the single implementation of this rule; both this
+# script and plan_commit.ps1 call it, so the two platform mirrors cannot
+# drift apart on which blocks they stamp (TASK-033 review finding).
 PLAN_ARG="$PLAN"
 if command -v cygpath >/dev/null 2>&1; then
   PLAN_ARG="$(cygpath -w "$PLAN")"
@@ -130,66 +131,13 @@ fi
 PLAN_COMMIT_DIFF="$(git -C "$REPO_ROOT" diff --unified=0 -- PLAN.md)"
 PLAN_COMMIT_PREVIOUS="$(git -C "$REPO_ROOT" log -1 --format=%cI HEAD -- PLAN.md 2>/dev/null || true)"
 export PLAN_COMMIT_DIFF PLAN_COMMIT_PREVIOUS
-"$PY_BIN" - "$PLAN_ARG" <<'PY'
-import datetime as dt
-import os
-import re
-import sys
-from pathlib import Path
-
-plan_path = Path(sys.argv[1])
-text = plan_path.read_text(encoding="utf-8")
-lines = text.splitlines(keepends=True)
-headers = [i for i, line in enumerate(lines) if re.match(r"^### TASK-\d+\s*$", line)]
-if not headers:
-    raise SystemExit(0)
-
-changed_lines = []
-for match in re.finditer(r"^@@ -[^ ]+ \+(\d+)(?:,(\d+))? @@", os.environ.get("PLAN_COMMIT_DIFF", ""), re.M):
-    start = int(match.group(1))
-    length = int(match.group(2) or "1")
-    # A deletion-only hunk has no new line.  Its insertion point still belongs
-    # to the block that changed.
-    changed_lines.extend(range(start, start + max(length, 1)))
-
-affected = set()
-for lineno in changed_lines:
-    index = max(0, lineno - 1)
-    for header_index, header in enumerate(headers):
-        next_header = headers[header_index + 1] if header_index + 1 < len(headers) else len(lines)
-        if header <= index < next_header:
-            affected.add(header_index)
-            break
-
-previous = os.environ.get("PLAN_COMMIT_PREVIOUS", "").strip()
-try:
-    previous_time = dt.datetime.fromisoformat(previous.replace("Z", "+00:00")) if previous else None
-except ValueError:
-    previous_time = None
-now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
-stamp = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-for header_index in sorted(affected, reverse=True):
-    start = headers[header_index]
-    end = headers[header_index + 1] if header_index + 1 < len(headers) else len(lines)
-    value_index = next((i for i in range(start, end) if lines[i].startswith("**Updated_At:**")), None)
-    valid = False
-    if value_index is not None:
-        raw = lines[value_index].split(":", 1)[1].strip()
-        try:
-            value = dt.datetime.strptime(raw, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
-            valid = value <= now + dt.timedelta(minutes=5) and (previous_time is None or value >= previous_time)
-        except ValueError:
-            pass
-    if not valid:
-        if value_index is None:
-            ending = "\r\n" if "\r\n" in text else "\n"
-            lines.insert(end, f"**Updated_At:** {stamp}{ending}")
-            continue
-        ending = "\r\n" if lines[value_index].endswith("\r\n") else "\n"
-        lines[value_index] = f"**Updated_At:** {stamp}{ending}"
-
-plan_path.write_text("".join(lines), encoding="utf-8", newline="")
-PY
+if [ -f "$REPO_ROOT/scripts/plan_stamp.py" ]; then
+  "$PY_BIN" "$REPO_ROOT/scripts/plan_stamp.py" "$PLAN_ARG"
+else
+  # A copied-tool fixture that predates plan_stamp.py's split-out (or omits
+  # it deliberately) still gets a commit -- just without clock-stamping.
+  echo "[plan_commit] scripts/plan_stamp.py not found -- Updated_At not clock-checked this commit." >&2
+fi
 
 # Stray-block guard: PLAN.md is committed whole, so an edit outside your own
 # task block silently overwrites another unit's state. plan_guard.py refuses

@@ -83,38 +83,31 @@ if ($LASTEXITCODE -eq 0) {
 }
 
 # H5: coordination timestamps are evidence from the clock, not text invented
-# by a builder.  Limit rewriting to task blocks touched by this pending diff so
-# a plan-only commit cannot silently churn unrelated blocks.
-$PreviousPlanCommit = (git -C $RepoRoot log -1 --format=%cI HEAD -- PLAN.md | Select-Object -First 1)
-$PlanText = Get-Content -LiteralPath $Plan -Raw -Encoding UTF8
-$Newline = if ($PlanText.Contains("`r`n")) { "`r`n" } else { "`n" }
-$Affected = @([regex]::Matches($Message, 'TASK-\d+') | ForEach-Object { $_.Value } | Select-Object -Unique)
-$PreviousTime = $null
-if ($PreviousPlanCommit) {
-    try { $PreviousTime = [DateTimeOffset]::Parse($PreviousPlanCommit).ToUniversalTime() } catch { }
+# by a builder.  scripts/plan_stamp.py is the single implementation of which
+# blocks get rewritten (those the pending PLAN.md diff actually touched) and
+# what counts as unsafe; this script and plan_commit.sh both call it so the
+# two platform mirrors cannot drift on behaviour (TASK-033 review finding --
+# this file previously picked blocks from TASK IDs in the commit MESSAGE,
+# which could rewrite an untouched block's Updated_At or miss a changed one).
+$PyBin = $null
+foreach ($c in @("python", "python3", "py")) {
+    if (Get-Command $c -ErrorAction SilentlyContinue) { $PyBin = $c; break }
 }
-$Now = [DateTimeOffset]::UtcNow
-$Stamp = $Now.ToString('yyyy-MM-ddTHH:mm:ssZ')
-foreach ($id in $Affected) {
-    $EscapedId = [regex]::Escape($id)
-    $TaskPattern = "(?ms)^### $EscapedId\b.*?(?=^### TASK-\d+\b|\z)"
-    $PlanText = [regex]::Replace($PlanText, $TaskPattern, {
-        param($TaskMatch)
-        $Block = $TaskMatch.Value
-        $ValueMatch = [regex]::Match($Block, '(?m)^\*\*Updated_At:\*\*\s*(.+)$')
-        $Valid = $false
-        if ($ValueMatch.Success) {
-        try {
-            $Value = [DateTimeOffset]::ParseExact($ValueMatch.Groups[1].Value, 'yyyy-MM-ddTHH:mm:ssZ', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AssumeUniversal).ToUniversalTime()
-            $Valid = $Value -le $Now.AddMinutes(5) -and ($null -eq $PreviousTime -or $Value -ge $PreviousTime)
-        } catch { }
-        }
-        if ($Valid) { return $Block }
-        if ($ValueMatch.Success) { return [regex]::Replace($Block, '(?m)^\*\*Updated_At:\*\*.*$', "**Updated_At:** $Stamp", 1) }
-        return $Block.TrimEnd("`r", "`n") + $Newline + "**Updated_At:** $Stamp" + $Newline
-    }, 1)
+if (-not $PyBin) {
+    Write-Error "[plan_commit] Python is required to stamp Updated_At values."
+    exit 1
 }
-[IO.File]::WriteAllText($Plan, $PlanText, [Text.UTF8Encoding]::new($false))
+$StampScript = Join-Path $RepoRoot "scripts\plan_stamp.py"
+if (Test-Path $StampScript) {
+    $env:PLAN_COMMIT_DIFF = (git -C $RepoRoot diff --unified=0 -- PLAN.md | Out-String)
+    $env:PLAN_COMMIT_PREVIOUS = (git -C $RepoRoot log -1 --format=%cI HEAD -- PLAN.md | Select-Object -First 1)
+    & $PyBin $StampScript $Plan
+    Remove-Item Env:\PLAN_COMMIT_DIFF, Env:\PLAN_COMMIT_PREVIOUS -ErrorAction SilentlyContinue
+} else {
+    # A copied-tool fixture that predates plan_stamp.py's split-out (or omits
+    # it deliberately) still gets a commit -- just without clock-stamping.
+    Write-Warning "[plan_commit] scripts\plan_stamp.py not found -- Updated_At not clock-checked this commit."
+}
 
 # Retry around index.lock: two builders committing coordination state seconds
 # apart is legitimate, and the collision is transient rather than an error.
