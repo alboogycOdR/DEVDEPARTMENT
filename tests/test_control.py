@@ -321,6 +321,17 @@ class TestExtractFromLog:
                                        "2026-07-20T10:00:00Z")
         assert result.startswith("UNREPORTED:")
 
+    def test_template_control_is_unreported_with_capacity_hint(self, tmp_path):
+        repo = make_repo(tmp_path, FM + task(), git=False)
+        log = repo / "run.log"
+        template = control_block(task_id="TASK-NNN", test_evidence="your test evidence here")
+        log.write_text("provider is at capacity\n```devteam-control\n"
+                       + json.dumps(template) + "\n```\n", encoding="utf-8")
+        result = ctl.extract_from_log(repo, log, "TASK-500", "GB", "2026-07-20T10:00:00Z")
+        assert result.startswith("UNREPORTED:")
+        marker = repo / ctl.CONTROL_DIR_REL / result.split(":", 1)[1]
+        assert "CAPACITY" in marker.read_text(encoding="utf-8")
+
 
 # ==================================================== claim-at-dispatch ===
 class TestClaimForUnit:

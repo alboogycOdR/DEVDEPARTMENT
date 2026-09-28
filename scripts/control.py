@@ -531,6 +531,13 @@ def extract_from_log(repo: Path, log_path: Path, task: str, unit: str, ts: str) 
         log_text = ""
 
     block = parse_control_block(log_text)
+    # A prompt example pasted back verbatim is not a report.  Treat it the
+    # same as a missing fence: accepting it can incorrectly advance a real
+    # task (and is especially common when a provider stops mid-prompt).
+    # Do this at extraction rather than validation: the queued marker retains
+    # the run-log reference and follows the established UNREPORTED/P2 path.
+    if block is not None and _is_template_control(block):
+        block = None
     if block is not None:
         fname = f"{task}-{fs_ts}.json"
         (control_dir / fname).write_text(json.dumps(block), encoding="utf-8")
@@ -541,8 +548,27 @@ def extract_from_log(repo: Path, log_path: Path, task: str, unit: str, ts: str) 
         log_rel = str(log_path.resolve().relative_to(repo.resolve()))
     except ValueError:
         log_rel = str(log_path)
-    (control_dir / fname).write_text(log_rel, encoding="utf-8")
+    capacity_hint = ""
+    lowered = log_text.lower()
+    if any(marker in lowered for marker in ("at capacity", "usage limit", "http 402", " 402")):
+        capacity_hint = " probable provider capacity error (CAPACITY)"
+    (control_dir / fname).write_text(log_rel + capacity_hint, encoding="utf-8")
     return f"UNREPORTED:{fname}"
+
+
+def _is_template_control(block: dict) -> bool:
+    """Return true for the literal CONTROL example shipped in prompts.
+
+    The check is deliberately narrow: a real task ID may contain arbitrary
+    values, but the placeholder task ID or placeholder/example field values
+    can never be a genuine report.
+    """
+    if str(block.get("task", "")).strip().upper() == "TASK-NNN":
+        return True
+    placeholders = {"<task-id>", "<task_id>", "your progress note here",
+                    "your test evidence here", "example", "…"}
+    return any(isinstance(value, str) and value.strip().lower() in placeholders
+               for value in block.values())
 
 
 if __name__ == "__main__":
