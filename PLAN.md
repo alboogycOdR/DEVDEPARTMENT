@@ -1397,7 +1397,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-039
 **Title:** Wave E E-I — learning loop earns its sessions or stays off
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §11 (E-I.1–5)
@@ -1410,15 +1410,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] learning.enabled=false → no distiller session launched; existing config without the key → unchanged behaviour + one notice (E-I.1)
 - [ ] /devteam-status reports distiller last-run/runs/instincts (E-I.5)
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-039-cx
+**Started_At:** 2026-09-28T13:48:00Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-27T15:50:01Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-28T13:48:00Z
 
 ### TASK-040
 **Title:** Wave E E-J1 — rendered roster, retire_unit, briefing lint, per-unit briefing check
