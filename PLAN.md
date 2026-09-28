@@ -1204,13 +1204,14 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Progress_Notes:**
 - [2026-09-28T12:43:53Z] [CX] Durable Telegram/Slack inbox handoff and bounded `--once` Telegram poll implemented in commit 58133bf. Next: convert Slack fixtures and add cross-process `--once`, source-missing, and CONTROL-capacity coverage.
 - [2026-09-28T12:46:30Z] [CX] Converted transport fixtures to assert durable inbox records; focused listener/inbox/supervisor suite is green. Commits 58133bf, 961130f. Next: cross-process `--once`, source-missing, and CONTROL-capacity coverage.
+- [2026-09-28T13:42:48Z] [CX] Resumed after the harness interruption. Committed 713bad1: literal/template CONTROL fences are now recorded as UNREPORTED; provider-capacity text is retained in the marker. `python -m pytest -q tests/test_control.py` → 53 passed. Completing the remaining process-boundary and source-observability criteria.
 **Artifacts:**
 - scripts/tg_listener.py, scripts/slack_listener.py, scripts/inbox.py, scripts/supervisor.py, tests/test_tg_listener.py, dossiers/TASK-031.md
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-28T12:46:30Z
+**Updated_At:** 2026-09-28T13:42:48Z
 
 ### TASK-032
 **Title:** Wave E E-D — plan archive, notes cap, generated REVIEW tallies, machine-readable REVIEW.md
