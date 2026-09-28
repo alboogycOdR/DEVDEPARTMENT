@@ -1244,7 +1244,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-033
 **Title:** Wave E E-E — plan_commit stamps Updated_At from the clock; tests isolated from the live checkout
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H5, §7 (E-E)
@@ -1253,20 +1253,26 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-024
 **Description:** plan_commit.sh/.ps1 rewrite missing, unparseable, future or stale `Updated_At` values in the changed task blocks to the system UTC time before committing. Also fix the known flake (TASK-022 review): tests/test_plan_commit.py must resolve REPO_ROOT to a tmp fixture repo, never the live main checkout, so suites don't contend with concurrent sessions. **Protected-path grants (ORCH applies before dispatch):** scripts/plan_commit.sh, scripts/plan_commit.ps1.
 **Acceptance_Criteria:**
-- [ ] A changed block with a missing, unparseable, future (> now+5 min) or stale (older than the previous commit of PLAN.md) Updated_At is committed with the system UTC time; untouched blocks are unchanged (spec §7)
-- [ ] Same behaviour in plan_commit.sh and plan_commit.ps1 (both tested)
-- [ ] tests/test_plan_commit.py never writes to the live repository (asserted: live PLAN.md mtime and HEAD unchanged across the test run)
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+- [x] A changed block with a missing, unparseable, future (> now+5 min) or stale (older than the previous commit of PLAN.md) Updated_At is committed with the system UTC time; untouched blocks are unchanged (spec §7)
+- [x] Same behaviour in plan_commit.sh and plan_commit.ps1 (both tested)
+- [x] tests/test_plan_commit.py never writes to the live repository (asserted: live PLAN.md mtime and HEAD unchanged across the test run)
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-033-cx
 **Started_At:** 2026-09-28T13:50:44Z
 **Progress_Notes:**
 - [2026-09-28T13:51:25Z] [CX] Claimed and beginning implementation; inspecting both plan_commit mirrors and isolated fixture tests.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-28T14:14:06Z] [CX] Implemented clock stamping and isolated fixture coverage; commit 581d015 is ready for review.
+**Artifacts:**
+- [CX] `581d015` — scripts/plan_commit.sh, scripts/plan_commit.ps1, tests/test_plan_commit.py, dossiers/TASK-033.md
+**Test_Evidence:**
+- [CX] `python -m pytest -q tests/test_plan_commit.py::TestClockStampedUpdatedAt` — 6 passed.
+- [CX] `python -m pytest -q tests/test_plan_commit.py::TestCannotCarryCode tests/test_plan_commit.py::TestGuardRails tests/test_plan_commit.py::TestRunsFromALinkedWorktree` — 11 passed.
+- [CX] `python -m pytest -q` — 1092 collected; completed with no recorded failures.
+- [CX] `node hooks/run-tests.js` — 47 passed, 0 failed.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-28T13:51:25Z
+**Updated_At:** 2026-09-28T14:14:06Z
 
 ### TASK-034
 **Title:** Wave E E-F1 — plan_commit compare-and-swap, idempotent claim, legacy-mode blackboard guard
