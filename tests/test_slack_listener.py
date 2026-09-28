@@ -7,6 +7,7 @@ dependency path, since slack_sdk is not installed in this environment —
 exactly the "importable-absent" case the module must degrade cleanly on."""
 import queue
 import sys
+import tempfile
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,20 +15,27 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import slack_listener as sl  # noqa: E402
+import inbox  # noqa: E402
 from slack_listener import SlackListener  # noqa: E402
 
 
 def make_listener(client_factory=None, log=None):
     q: "queue.Queue" = queue.Queue()
     logs: list[str] = []
+    repo = Path(tempfile.mkdtemp())
     listener = SlackListener(
         app_token="xapp-test",
         bot_token="xoxb-test",
         out_queue=q,
+        repo=repo,
         client_factory=client_factory,
         log_fn=log or (lambda msg: logs.append(msg)),
     )
     return listener, q, logs
+
+
+def records(listener):
+    return inbox.drain_inbox(listener.repo, {})
 
 
 class FakeClient:
@@ -104,9 +112,8 @@ class TestSlashCommandHandling:
         client = FakeClient()
         listener._on_socket_request(client, slash_request("/approve", "TASK-045"))
 
-        assert q.qsize() == 1
-        item = q.get_nowait()
-        assert set(item.keys()) == {"cmd", "args", "chat_id", "update_id", "raw"}
+        assert len(records(listener)) == 1
+        item = records(listener)[0]
         assert item["cmd"] == "/approve"
         assert item["args"] == "TASK-045"
         assert item["chat_id"] == "C123"
@@ -118,7 +125,7 @@ class TestSlashCommandHandling:
         client = FakeClient()
         listener._on_socket_request(client, slash_request("/status", ""))
 
-        item = q.get_nowait()
+        item = records(listener)[0]
         assert item["cmd"] == "/status"
         assert item["args"] == ""
         assert item["raw"] == "/status"
@@ -149,7 +156,7 @@ class TestSlashCommandHandling:
         listener._on_socket_request(BoomClient(), slash_request("/status"))
         assert any("failed to ack" in m for m in logs)
         # ack failing must not prevent the command from still being queued
-        assert q.qsize() == 1
+        assert len(records(listener)) == 1
 
 
 # --------------------------------------------------- transport-level garbage
@@ -181,15 +188,11 @@ class TestGarbageRejection:
         assert q.empty()
         assert listener.rejected_count == 1
 
-    def test_unknown_command_name_is_queued_not_judged(self):
-        # Vocabulary judgment belongs to the shared drain (commands.py via
-        # TASK-018), never to this listener — an unrecognised command still
-        # gets queued so the drain can reject it uniformly with Telegram's.
+    def test_unknown_command_name_is_rejected_before_durable_write(self):
         listener, q, _ = make_listener()
         client = FakeClient()
         listener._on_socket_request(client, slash_request("/frobnicate", "whatever"))
-        assert q.qsize() == 1
-        assert q.get_nowait()["cmd"] == "/frobnicate"
+        assert records(listener) == []
 
 
 # -------------------------------------------------------------- run()/lifecycle
@@ -216,7 +219,7 @@ class TestRunLifecycleWithInjectedClient:
 
         # Drive an event through the now-registered callback, same as Slack would.
         listener._on_socket_request(fake_client, slash_request("/wave"))
-        assert q.get_nowait()["cmd"] == "/wave"
+        assert records(listener)[0]["cmd"] == "/wave"
 
         listener.stop()
         listener.join(timeout=5)

@@ -210,9 +210,11 @@ class TestFailureHandling:
         def boom(*a, **kw):
             raise OSError("disk full")
         monkeypatch.setattr(Path, "write_text", boom)
-        # Must not raise even though persistence fails.
+        # Must not raise; the durable-write boundary also keeps the offset at
+        # zero so Telegram can redeliver rather than silently losing it.
         assert listener.poll_once() is True
-        assert len(drained(tmp_path)) == 1
+        assert drained(tmp_path) == []
+        assert listener.offset == 0
 
 
 # ---------------------------------------------------------------- lifecycle
