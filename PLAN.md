@@ -1427,13 +1427,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-28T13:57:36Z] [CX] Implemented and committed learning gate, amendment lifecycle, retro effectiveness history, and digest observability (f43eac8). Focused Python suite: 109 passed; Node suite: 47 passed. Full Python suite is still running in this environment before review handoff.
 - [2026-09-28T15:44:20Z] [CX] Full verification complete; submitting f43eac8 for review.
 - [2026-09-28T20:40:00Z] [ORCH] Unblocked. SYNC_MISMATCH triaged (§7): cause was stale per-task worktrees wt-codex-033/039 holding task/TASK-033-cx and task/TASK-039-cx; both were clean and are removed, so wt-codex-DEVDEPARTMENT can now `git switch task/TASK-039-cx` (and 033). Rework findings unchanged. Note for CX: Blocked_Reason must be a bare vocabulary word or 'OTHER:<text>' — 'SYNC_MISMATCH: <text>' fails validate_plan.
+- [2026-09-28T20:51:55Z] [CX] Addressed all five review findings in e3e3e70: repaired retro rendering, added registry-derived per-unit reporting, added one-time P0 amendment actions, and surfaced effectiveness pauses in the digest. Focused suite and Node suite are green; full Python verification is running before handoff.
 **Artifacts:** scripts/distiller.py, scripts/retro.py, scripts/status_digest.py, .claude/commands/devteam-status.md, tests/test_distiller.py, tests/test_retro.py
 **Test_Evidence:**
 - [2026-09-28T15:44:20Z] [CX] `python -m pytest -q` → 1093 passed in 224.86s. `python -m pytest -q tests/test_distiller.py tests/test_retro.py tests/test_instincts.py tests/test_instincts_lifecycle.py tests/test_board_publisher.py` → 109 passed. `node hooks/run-tests.js` → 47 passed, 0 failed.
+- [2026-09-28T20:51:55Z] [CX] `python -m pytest -q tests/test_retro.py tests/test_distiller.py tests/test_instincts.py tests/test_instincts_lifecycle.py tests/test_board_publisher.py` → 112 passed. `node hooks/run-tests.js` → 47 passed, 0 failed.
 **Review_Findings:** REWORK (reviewer: claude-opus-5-5, 2026-09-28T20:09:15Z). Territory clean; ORCH re-run 1093 passed / Node 47 — green, but: (1) BUG scripts/retro.py _run: the new `if paused:` was inserted between `if eff["total_reviews"]:` and its `else:`, so the else now binds to `if paused` — every non-paused retro prints '- No reviews in window.' even when reviews exist. Restore the original if/else and add the paused line separately; add a test that renders a retro with reviews and asserts 'No reviews in window' is absent (and present when there are none). (2) E-I.4: the pause must be announced in the DIGEST — status_digest's learning line (or another digest line) must say distillation is paused by the effectiveness gate; test it. (3) E-I.2: pending amendments must appear once in the P0 digest with '/approve AMEND-NNN' / '/rework AMEND-NNN'; not implemented — add + test, including 'once' (not repeated every digest for the same amendment). (4) E-I.3: registry_units() only adds a display line; the retro's per-unit reporting must take its unit list from the registry (CX9 included) rather than any hardcoded roster — show it in a rendered retro fixture with a CX9 review row, and prove the active-instinct count with a fixture mixing active/probation/retired. (5) Minor: status_digest._distiller_line inserts into sys.path on every call — import once or guard.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-28T20:40:00Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-28T20:51:55Z
 
 ### TASK-040
 **Title:** Wave E E-J1 — rendered roster, retire_unit, briefing lint, per-unit briefing check
