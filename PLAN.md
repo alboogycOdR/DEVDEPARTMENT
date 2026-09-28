@@ -1,8 +1,8 @@
 ---
 plan_version: 6.4
-last_updated: 2026-09-28T20:19:34Z
+last_updated: 2026-09-28T20:40:00Z
 overall_status: in_progress
-orchestrator_notes: "DISPATCH 2026-09-28T20:19:34Z: CX launched detached (legacy mode) in wt-codex-DEVDEPARTMENT (on task/TASK-031-cx); transcript .devteam/launch/CX-20260928-201934.log. Rework queue 033/031/039 + TASK-035 ready (deps 027/032/026 done). REVIEW 2026-09-28T20:09:15Z: TASK-032 approved+merged (e8d90d7) -> TASK-035 unlocked for CX. TASK-033/031/039 returned to in_progress (rework, see Review_Findings); TASK-031 full suite was RED (3 fails). Priority for CX: 033 (unlocks 034) -> 035 -> 031 -> 039. Wave E in progress (plan v6.3). OWNER DECISIONS 2026-09-27: all build tasks go to CX; S5 receives no work; GB's Grok Build balance is exhausted (HTTP 402), so GB is idle too. S5 and GB WIP salvaged locally under .devteam/salvage/ (TASK-028-s5-wip*, TASK-032-gb-wip/). Work is serial on CX. Done: 023-028. Active: 029 (CX). Next critical path: 030 -> 031. KNOWN ENV ISSUE: dispatch-script tests in tests/test_dispatch_worktree.py (TestEmptyHuskReclaim, TestFreshClaimBranchFromBaseTip) fail or hang only inside Codex sessions; CX runs the rest with those deselected, records it, and submits; ORCH verifies; root cause is TASK-037's. ORCH merge procedure: register new framework files in sync-manifest.json, then re-run the full suites on master after every real merge. Reviews on claude-opus-5-5. Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md. Decompose record: docs/handovers/2026-09-26-wave-e-decompose.md."
+orchestrator_notes: "STATUS 2026-09-28T20:40:00Z: CX session 20:19 blocked TASK-039 (worktree held elsewhere) and exited; ORCH removed stale wt-codex-033/039 worktrees, TASK-039 back to in_progress. Validator/dispatch-prompt mismatch on Blocked_Reason format noted (prompt says starts-with; validator wants bare word) — fix in TASK-035 territory (validate_plan.py). DISPATCH 2026-09-28T20:19:34Z: CX launched detached (legacy mode) in wt-codex-DEVDEPARTMENT (on task/TASK-031-cx); transcript .devteam/launch/CX-20260928-201934.log. Rework queue 033/031/039 + TASK-035 ready (deps 027/032/026 done). REVIEW 2026-09-28T20:09:15Z: TASK-032 approved+merged (e8d90d7) -> TASK-035 unlocked for CX. TASK-033/031/039 returned to in_progress (rework, see Review_Findings); TASK-031 full suite was RED (3 fails). Priority for CX: 033 (unlocks 034) -> 035 -> 031 -> 039. Wave E in progress (plan v6.3). OWNER DECISIONS 2026-09-27: all build tasks go to CX; S5 receives no work; GB's Grok Build balance is exhausted (HTTP 402), so GB is idle too. S5 and GB WIP salvaged locally under .devteam/salvage/ (TASK-028-s5-wip*, TASK-032-gb-wip/). Work is serial on CX. Done: 023-028. Active: 029 (CX). Next critical path: 030 -> 031. KNOWN ENV ISSUE: dispatch-script tests in tests/test_dispatch_worktree.py (TestEmptyHuskReclaim, TestFreshClaimBranchFromBaseTip) fail or hang only inside Codex sessions; CX runs the rest with those deselected, records it, and submits; ORCH verifies; root cause is TASK-037's. ORCH merge procedure: register new framework files in sync-manifest.json, then re-run the full suites on master after every real merge. Reviews on claude-opus-5-5. Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md. Decompose record: docs/handovers/2026-09-26-wave-e-decompose.md."
 ---
 
 # Project Plan
@@ -1408,7 +1408,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-039
 **Title:** Wave E E-I — learning loop earns its sessions or stays off
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §11 (E-I.1–5)
@@ -1426,13 +1426,14 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Progress_Notes:**
 - [2026-09-28T13:57:36Z] [CX] Implemented and committed learning gate, amendment lifecycle, retro effectiveness history, and digest observability (f43eac8). Focused Python suite: 109 passed; Node suite: 47 passed. Full Python suite is still running in this environment before review handoff.
 - [2026-09-28T15:44:20Z] [CX] Full verification complete; submitting f43eac8 for review.
+- [2026-09-28T20:40:00Z] [ORCH] Unblocked. SYNC_MISMATCH triaged (§7): cause was stale per-task worktrees wt-codex-033/039 holding task/TASK-033-cx and task/TASK-039-cx; both were clean and are removed, so wt-codex-DEVDEPARTMENT can now `git switch task/TASK-039-cx` (and 033). Rework findings unchanged. Note for CX: Blocked_Reason must be a bare vocabulary word or 'OTHER:<text>' — 'SYNC_MISMATCH: <text>' fails validate_plan.
 **Artifacts:** scripts/distiller.py, scripts/retro.py, scripts/status_digest.py, .claude/commands/devteam-status.md, tests/test_distiller.py, tests/test_retro.py
 **Test_Evidence:**
 - [2026-09-28T15:44:20Z] [CX] `python -m pytest -q` → 1093 passed in 224.86s. `python -m pytest -q tests/test_distiller.py tests/test_retro.py tests/test_instincts.py tests/test_instincts_lifecycle.py tests/test_board_publisher.py` → 109 passed. `node hooks/run-tests.js` → 47 passed, 0 failed.
 **Review_Findings:** REWORK (reviewer: claude-opus-5-5, 2026-09-28T20:09:15Z). Territory clean; ORCH re-run 1093 passed / Node 47 — green, but: (1) BUG scripts/retro.py _run: the new `if paused:` was inserted between `if eff["total_reviews"]:` and its `else:`, so the else now binds to `if paused` — every non-paused retro prints '- No reviews in window.' even when reviews exist. Restore the original if/else and add the paused line separately; add a test that renders a retro with reviews and asserts 'No reviews in window' is absent (and present when there are none). (2) E-I.4: the pause must be announced in the DIGEST — status_digest's learning line (or another digest line) must say distillation is paused by the effectiveness gate; test it. (3) E-I.2: pending amendments must appear once in the P0 digest with '/approve AMEND-NNN' / '/rework AMEND-NNN'; not implemented — add + test, including 'once' (not repeated every digest for the same amendment). (4) E-I.3: registry_units() only adds a display line; the retro's per-unit reporting must take its unit list from the registry (CX9 included) rather than any hardcoded roster — show it in a rendered retro fixture with a CX9 review row, and prove the active-instinct count with a fixture mixing active/probation/retired. (5) Minor: status_digest._distiller_line inserts into sys.path on every call — import once or guard.
-**Blocked_Reason:** SYNC_MISMATCH: CX session is attached to wt-codex-DEVDEPARTMENT on task/TASK-031-cx while TASK-039 is checked out by another registered worktree (wt-codex-039-DEVDEPARTMENT); cannot safely modify TASK-039 code from this worktree.
-**Updated_By:** CX
-**Updated_At:** 2026-09-28T20:20:19Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-28T20:40:00Z
 
 ### TASK-040
 **Title:** Wave E E-J1 — rendered roster, retire_unit, briefing lint, per-unit briefing check
