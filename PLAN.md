@@ -1246,7 +1246,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-033
 **Title:** Wave E E-E — plan_commit stamps Updated_At from the clock; tests isolated from the live checkout
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H5, §7 (E-E)
@@ -1264,17 +1264,20 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Progress_Notes:**
 - [2026-09-28T13:51:25Z] [CX] Claimed and beginning implementation; inspecting both plan_commit mirrors and isolated fixture tests.
 - [2026-09-28T14:14:06Z] [CX] Implemented clock stamping and isolated fixture coverage; commit 581d015 is ready for review.
+- [2026-09-29T00:20:00Z] [CX] Rework: extracted the shared affected-block/validity rule into scripts/plan_stamp.py (env-var handoff of the diff + previous commit time); both plan_commit.sh and plan_commit.ps1 now call it, and each falls open to an unstamped commit if it is absent (keeps fixtures that copy only one wrapper working). Added test_message_naming_an_untouched_block_does_not_stamp_it for both mirrors; parametrized the PowerShell test over all four unsafe cases. Commits a82c3f0 (fix), 07574c5 (dossier), on top of merge e6d1b58.
 **Artifacts:**
 - [CX] `581d015` — scripts/plan_commit.sh, scripts/plan_commit.ps1, tests/test_plan_commit.py, dossiers/TASK-033.md
+- [CX] `a82c3f0` — scripts/plan_stamp.py (new), scripts/plan_commit.sh, scripts/plan_commit.ps1, tests/test_plan_commit.py
 **Test_Evidence:**
 - [CX] `python -m pytest -q tests/test_plan_commit.py::TestClockStampedUpdatedAt` — 6 passed.
 - [CX] `python -m pytest -q tests/test_plan_commit.py::TestCannotCarryCode tests/test_plan_commit.py::TestGuardRails tests/test_plan_commit.py::TestRunsFromALinkedWorktree` — 11 passed.
 - [CX] `python -m pytest -q` — 1092 collected; completed with no recorded failures.
 - [CX] `node hooks/run-tests.js` — 47 passed, 0 failed.
+- [2026-09-29T00:20:00Z] [CX] `python -m pytest -q tests/test_plan_commit.py` → 22 passed. After merging master: `python -m pytest -q` → 1113 passed in 249.52s; `node hooks/run-tests.js` → 47 passed, 0 failed.
 **Review_Findings:** REWORK (reviewer: claude-opus-5-5, 2026-09-28T20:09:15Z). Territory clean; ORCH re-run 1092 passed / Node 47 — green. Blocking: AC2 'Same behaviour in plan_commit.sh and plan_commit.ps1' is not met. plan_commit.sh selects blocks from the pending PLAN.md diff hunks; plan_commit.ps1 selects blocks from TASK IDs in the commit MESSAGE. Consequences: (a) a message that names a task whose block did not change (e.g. 'unblocks TASK-034') rewrites that untouched block's Updated_At in the ps1 — every untouched block is 'stale' by definition — violating AC1 'untouched blocks are unchanged'; (b) a changed block not named in the message is never stamped by the ps1. Fix: make the ps1 derive affected blocks from `git diff --unified=0 -- PLAN.md` hunks exactly like the sh (or share one Python helper invoked by both). Tests: parametrize the ps1 test over all four unsafe cases (missing, unparseable, future, stale) like the sh, and add for BOTH scripts a case where the message names an unchanged block with an old Updated_At and assert that block is byte-identical after commit. Minor: ps1 rewrites PLAN.md unconditionally (WriteAllText) even when nothing is stamped — skip the write when unchanged.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-28T20:09:15Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-29T00:20:00Z
 
 ### TASK-034
 **Title:** Wave E E-F1 — plan_commit compare-and-swap, idempotent claim, legacy-mode blackboard guard
