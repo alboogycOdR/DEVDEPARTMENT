@@ -224,8 +224,17 @@ def apply_control_to_plan(plan_text: str, block: dict, ts: str) -> ApplyResult:
     return ApplyResult("\n".join(lines), True, f"CONTROL {task_id}: {unit} -> {status}")
 
 
-def apply_unreported_to_plan(plan_text: str, task_id: str, ts: str, log_rel_path: str) -> ApplyResult:
-    """§6 no-block fallback: state unchanged, Progress_Note only."""
+def apply_unreported_to_plan(plan_text: str, task_id: str, ts: str, log_rel_path: str,
+                             capacity: bool = False) -> ApplyResult:
+    """§6 no-block fallback: Progress_Note only, Status unchanged.
+
+    E-K.4: when the run log shows a probable provider-capacity error,
+    ``Blocked_Reason`` is set to the plain string ``CAPACITY`` (Wave G's
+    registry, when it exists, replaces this with a richer value — until
+    then this is deliberately not a full vocabulary entry, and Status stays
+    untouched, so validate_plan's blocked-status vocabulary check — which
+    only fires when Status is actually 'blocked' — never sees it).
+    """
     lines = plan_text.split("\n")
     span = tgc._task_span(lines, task_id)
     if span is None:
@@ -233,10 +242,15 @@ def apply_unreported_to_plan(plan_text: str, task_id: str, ts: str, log_rel_path
     start, end = span
     if tgc._field_line_index(lines, start, end, "Progress_Notes") is None:
         return ApplyResult(plan_text, False, f"UNREPORTED {task_id}: malformed task block — no edit made")
+    suffix = " (probable provider capacity error)" if capacity else ""
     bullet = (f"- [{ts}] [SV] run ended without CONTROL block — state unchanged, "
-             f"see {log_rel_path}")
+             f"see {log_rel_path}{suffix}")
     lines = tgc._append_to_field(lines, start, end, "Progress_Notes", bullet)
-    return ApplyResult("\n".join(lines), True, f"UNREPORTED {task_id}: logged, state unchanged")
+    if capacity and tgc._field_line_index(lines, start, end, "Blocked_Reason") is not None:
+        lines = tgc._set_field(lines, start, end, "Blocked_Reason", "CAPACITY")
+        start, end = tgc._task_span(lines, task_id)
+    detail = f"UNREPORTED {task_id}: logged, state unchanged" + (", Blocked_Reason=CAPACITY" if capacity else "")
+    return ApplyResult("\n".join(lines), True, detail)
 
 
 # --------------------------------------------------------- file-level apply -
@@ -321,9 +335,12 @@ def drain_unreported_queue(repo: Path, ts: str) -> list[tuple[str, str, bool]]:
     applied_dir = repo / CONTROL_APPLIED_DIR_REL
     for p in files:
         try:
-            log_rel = p.read_text(encoding="utf-8").strip() or p.stem
+            raw = p.read_text(encoding="utf-8").strip()
         except OSError:
-            log_rel = p.stem
+            raw = ""
+        raw_lines = raw.splitlines()
+        log_rel = (raw_lines[0] if raw_lines else "") or p.stem
+        capacity = len(raw_lines) > 1 and raw_lines[1].strip() == "CAPACITY"
         # filename convention: <task>-<ts>.unreported
         task_id = p.stem.rsplit("-", 6)[0] if "-" in p.stem else p.stem
         m = re.match(r"^(TASK-[A-Z0-9-]+)-\d{4}", p.stem)
@@ -332,7 +349,7 @@ def drain_unreported_queue(repo: Path, ts: str) -> list[tuple[str, str, bool]]:
         tgc.git_pull(repo)
         plan_path = repo / "PLAN.md"
         plan_text = plan_path.read_text(encoding="utf-8")
-        result = apply_unreported_to_plan(plan_text, task_id, ts, log_rel)
+        result = apply_unreported_to_plan(plan_text, task_id, ts, log_rel, capacity=capacity)
         if result.changed:
             plan_path.write_text(result.text, encoding="utf-8")
             tgc.git_commit_and_push(repo, f"chore(plan): {result.detail} [SV]")
@@ -548,12 +565,27 @@ def extract_from_log(repo: Path, log_path: Path, task: str, unit: str, ts: str) 
         log_rel = str(log_path.resolve().relative_to(repo.resolve()))
     except ValueError:
         log_rel = str(log_path)
-    capacity_hint = ""
-    lowered = log_text.lower()
-    if any(marker in lowered for marker in ("at capacity", "usage limit", "http 402", " 402")):
-        capacity_hint = " probable provider capacity error (CAPACITY)"
-    (control_dir / fname).write_text(log_rel + capacity_hint, encoding="utf-8")
+    marker = "\nCAPACITY" if _is_capacity_error(log_text) else ""
+    (control_dir / fname).write_text(log_rel + marker, encoding="utf-8")
     return f"UNREPORTED:{fname}"
+
+
+_CAPACITY_PATTERN = re.compile(
+    r"at capacity|usage limit|http[\s/]*402\b|\b402\s+payment\s+required\b|"
+    r"status\s*(?:code)?\s*[:=]?\s*402\b",
+    re.IGNORECASE,
+)
+
+
+def _is_capacity_error(log_text: str) -> bool:
+    """Provider-capacity signal in a run log (E-K.4).
+
+    Deliberately narrower than a bare ' 402' substring match, which a stray
+    line number, port, or byte count anywhere in a build log could trigger
+    (a known false-positive class) — this requires 402 to appear with HTTP/
+    payment-required/status-code context, or one of the two prose phrases.
+    """
+    return bool(_CAPACITY_PATTERN.search(log_text))
 
 
 def _is_template_control(block: dict) -> bool:

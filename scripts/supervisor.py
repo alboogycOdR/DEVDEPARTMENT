@@ -1753,6 +1753,19 @@ def main(argv: list[str]) -> int:
     slack_listener, slack_queue = _start_slack_listener(repo, cfg)
     tg_token = _os.environ.get("DEVTEAM_TG_TOKEN", "")
 
+    # E-K.5: under --once there is no background listener lifetime, so a
+    # command handed off between processes lives entirely in the durable
+    # inbox. A repo that has never seen .devteam/inbox/ is either brand new
+    # (fine) or a legacy install that predates the durable inbox and is about
+    # to silently lose two-way commands under --once — warn loudly either way
+    # rather than let onboarding.drain_inbox's per-tick SOURCE_MISSING be the
+    # only signal.
+    if args.once and not (repo / ".devteam" / "inbox").is_dir():
+        print("[supervisor] WARNING: --once with no .devteam/inbox/ yet — if this is a "
+              "legacy install (pre-durable-inbox), two-way commands sent between ticks "
+              "will be lost. A brand-new install will create it on first use.",
+              file=sys.stderr)
+
     start = time.monotonic()
     ticks = 0
     stopped = False

@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import usage_probe as up  # noqa: E402
 import budget  # noqa: E402
 import tg_commands as tgc  # noqa: E402
+import inbox  # noqa: E402
 
 
 def make_repo(tmp_path: Path) -> Path:
@@ -423,3 +424,16 @@ class TestFrontendJsSanity:
         assert "function renderUsageMeter" in html
         assert "pct_5h==null && entry.pct_7d==null" in html or "pct_5h == null" in html.replace(" ", " ")
         assert "(b.usage||{})" in html  # defensive against pre-Wave-I board JSON with no usage key
+
+
+class TestLoadCacheSourceMissing:
+    """usage_probe.load_cache reports SOURCE_MISSING once per process for an
+    absent cache file (E-K.3, H6) rather than treating it as a silently-empty
+    cache indistinguishable from 'no usage yet on a healthy install'."""
+
+    def test_missing_cache_file_is_reported_once(self, tmp_path, capsys):
+        inbox._MISSING_SOURCES.clear()
+        assert up.load_cache(tmp_path) == {"claude": dict(up.EMPTY_PROBE), "codex": dict(up.EMPTY_PROBE)}
+        assert "SOURCE_MISSING usage_cache" in capsys.readouterr().err
+        assert up.load_cache(tmp_path) == {"claude": dict(up.EMPTY_PROBE), "codex": dict(up.EMPTY_PROBE)}
+        assert "SOURCE_MISSING" not in capsys.readouterr().err

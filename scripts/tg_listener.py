@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 from datetime import datetime, timezone
 import urllib.request
@@ -35,7 +36,10 @@ import inbox
 
 log = logging.getLogger("tg_listener")
 
-API_ROOT = "https://api.telegram.org"
+# Overridable only for tests (a real --once subprocess against a local fake
+# server, exercising supervisor.py's own poll path rather than an injected
+# fetch): DEVTEAM_TG_API_ROOT never has a legitimate production value.
+API_ROOT = os.environ.get("DEVTEAM_TG_API_ROOT", "") or "https://api.telegram.org"
 LONG_POLL_TIMEOUT_S = 25
 MAX_BACKOFF_S = 60
 

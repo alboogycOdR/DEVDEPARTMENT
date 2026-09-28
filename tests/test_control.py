@@ -332,6 +332,42 @@ class TestExtractFromLog:
         marker = repo / ctl.CONTROL_DIR_REL / result.split(":", 1)[1]
         assert "CAPACITY" in marker.read_text(encoding="utf-8")
 
+    def test_capacity_marker_sets_blocked_reason_on_drain(self, tmp_path):
+        """E-K.4: a capacity-flagged UNREPORTED marker sets Blocked_Reason
+        to the plain string CAPACITY on the task's own block, without
+        touching Status (so validate_plan's blocked-status vocabulary check
+        — which only fires when Status is 'blocked' — never sees it)."""
+        repo = make_repo(tmp_path, FM + task())
+        log = repo / "run.log"
+        log.write_text("provider is at capacity, please retry later\n", encoding="utf-8")
+        result = ctl.extract_from_log(repo, log, "TASK-500", "GB", "2026-07-20T10:00:00Z")
+        assert result.startswith("UNREPORTED:")
+        results = ctl.drain_unreported_queue(repo, "2026-07-20T10:05:00Z")
+        assert results and results[0][:2] == ("TASK-500", "UNREPORTED TASK-500: logged, state unchanged, Blocked_Reason=CAPACITY")
+        plan_text = (repo / "PLAN.md").read_text(encoding="utf-8")
+        assert "**Blocked_Reason:** CAPACITY" in plan_text
+        assert "**Status:** in_progress" in plan_text  # unchanged
+
+    def test_stray_402_in_a_log_does_not_falsely_flag_capacity(self, tmp_path):
+        """A line number, byte count, or port that happens to be '402'
+        anywhere in a build log must not trigger the capacity heuristic —
+        only HTTP/payment-required/status-code context, or the two prose
+        phrases, count (review finding: bare ' 402' substring match)."""
+        repo = make_repo(tmp_path, FM + task(), git=False)
+        log = repo / "run.log"
+        log.write_text("Ran 402 tests in 12.3s\nBuild artifact is 402 bytes\n", encoding="utf-8")
+        result = ctl.extract_from_log(repo, log, "TASK-500", "GB", "2026-07-20T10:00:00Z")
+        marker = repo / ctl.CONTROL_DIR_REL / result.split(":", 1)[1]
+        assert "CAPACITY" not in marker.read_text(encoding="utf-8")
+
+    def test_http_402_still_flags_capacity(self, tmp_path):
+        repo = make_repo(tmp_path, FM + task(), git=False)
+        log = repo / "run.log"
+        log.write_text("request failed: HTTP 402 Payment Required\n", encoding="utf-8")
+        result = ctl.extract_from_log(repo, log, "TASK-500", "GB", "2026-07-20T10:00:00Z")
+        marker = repo / ctl.CONTROL_DIR_REL / result.split(":", 1)[1]
+        assert "CAPACITY" in marker.read_text(encoding="utf-8")
+
 
 # ==================================================== claim-at-dispatch ===
 class TestClaimForUnit:
