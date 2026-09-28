@@ -1142,6 +1142,7 @@ def _dossier_heartbeats(repo: Path) -> dict[str, datetime]:
     out: dict[str, datetime] = {}
     d = repo / "dossiers"
     if not d.is_dir():
+        inbox.report_source_missing(repo, "dossiers", d)
         return out
     for p in d.glob("TASK-*.md"):
         m = re.match(r"^(TASK-[A-Z0-9-]+)\.md$", p.name)
@@ -1233,6 +1234,9 @@ def _gateguard_denials(repo: Path, unit: str) -> int:
     p = repo / ".devteam" / "gateguard" / "denials" / f"{unit}.json"
     try:
         return int(json.loads(p.read_text(encoding="utf-8")).get("count", 0))
+    except FileNotFoundError:
+        inbox.report_source_missing(repo, "gateguard", p)
+        return 0
     except (OSError, json.JSONDecodeError, ValueError, TypeError):
         return 0
 

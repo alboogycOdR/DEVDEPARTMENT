@@ -353,6 +353,14 @@ def load_cache(repo: str | Path = ".") -> dict:
             "claude": {**EMPTY_PROBE, **(raw.get("claude") or {})},
             "codex": {**EMPTY_PROBE, **(raw.get("codex") or {})},
         }
+    except FileNotFoundError:
+        # E-K/H6: absent telemetry is distinct from a genuinely empty cache.
+        try:
+            import inbox
+            inbox.report_source_missing(Path(repo), "usage_cache", p)
+        except Exception:
+            pass
+        return {"claude": dict(EMPTY_PROBE), "codex": dict(EMPTY_PROBE)}
     except Exception:
         return {"claude": dict(EMPTY_PROBE), "codex": dict(EMPTY_PROBE)}
 

@@ -25,10 +25,29 @@ import commands
 REQUIRED_KEYS = frozenset({"id", "issued_at", "source", "actor", "command", "args"})
 _CONSUMED_FILE = ".consumed_ids.json"
 _PATH_KEY = "_inbox_path"
+_MISSING_SOURCES: dict[tuple[str, str], str] = {}
 
 
 def _warn(message: str) -> None:
     print(f"[inbox] {message}", file=sys.stderr)
+
+
+def report_source_missing(repo: Path, name: str, path: Path,
+                          *, now: time.struct_time | None = None) -> bool:
+    """Emit a missing-input warning once per process and UTC day.
+
+    Missing optional sources are observability, not an empty value.  The
+    in-process day key lets a long-running loop report again after midnight;
+    a new ``--once`` process receives one startup warning of its own.
+    """
+    del repo  # retained so all source readers share one stable API
+    today = time.strftime("%Y-%m-%d", now or time.gmtime())
+    key = (name, str(path))
+    if _MISSING_SOURCES.get(key) == today:
+        return False
+    _MISSING_SOURCES[key] = today
+    _warn(f"SOURCE_MISSING {name} {path}")
+    return True
 
 
 def _inbox_dir(repo: Path) -> Path:
@@ -183,6 +202,7 @@ def drain_inbox(repo: Path, cfg: dict[str, Any] | None = None) -> list[dict[str,
     del cfg
     directory = _inbox_dir(Path(repo))
     if not directory.is_dir():
+        report_source_missing(Path(repo), "inbox", directory)
         return []
     consumed = _load_consumed(directory)
     accepted_ids: set[str] = set()
