@@ -1399,7 +1399,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-039
 **Title:** Wave E E-I — learning loop earns its sessions or stays off
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §11 (E-I.1–5)
@@ -1414,13 +1414,14 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-039-cx
 **Started_At:** 2026-09-28T13:48:00Z
-**Progress_Notes:** —
-**Artifacts:** —
+**Progress_Notes:**
+- [2026-09-28T13:57:36Z] [CX] Implemented and committed learning gate, amendment lifecycle, retro effectiveness history, and digest observability (f43eac8). Focused Python suite: 109 passed; Node suite: 47 passed. Full Python suite is still running in this environment before review handoff.
+**Artifacts:** scripts/distiller.py, scripts/retro.py, scripts/status_digest.py, .claude/commands/devteam-status.md, tests/test_distiller.py, tests/test_retro.py
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-28T13:48:00Z
+**Updated_At:** 2026-09-28T13:57:36Z
 
 ### TASK-040
 **Title:** Wave E E-J1 — rendered roster, retire_unit, briefing lint, per-unit briefing check
