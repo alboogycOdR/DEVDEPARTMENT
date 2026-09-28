@@ -2,11 +2,12 @@
 """maintenance.py — Nightly self-audit routine (Wave B, Pillar 3).
 
 The system keeps itself healthy without a human watching: once per configured
-UTC hour, run_nightly_audit() runs six steps — harness audit, validator +
-test suites, hygiene, backup, result handling, and a digest summary line —
-each independently wrapped so one failure never blocks the rest. Idempotent
-via scripts/scheduling.py's daily marker, so a supervisor restart mid-day
-never re-runs it, and calling it twice in the same UTC day is a safe no-op.
+UTC hour, run_nightly_audit() runs the ordered steps — harness audit,
+validator + test suites, hygiene, backup, ATLAS, and (when PLAN.md exceeds
+maintenance.plan_archive_kb) plan archive — each independently wrapped so
+one failure never blocks the rest. Idempotent via scripts/scheduling.py's
+daily marker, so a supervisor restart mid-day never re-runs it, and calling
+it twice in the same UTC day is a safe no-op.
 
 Usage:
     python scripts/maintenance.py --repo .                 # run now if due
@@ -37,7 +38,7 @@ except Exception:  # pragma: no cover
 
 UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
-DEFAULT_MAINTENANCE_CFG = {"hour_utc": 2, "backup_retain_days": 7}
+DEFAULT_MAINTENANCE_CFG = {"hour_utc": 2, "backup_retain_days": 7, "plan_archive_kb": 60}
 
 # Which Owned_Paths a failed step implicates, for the auto-filed TASK-MAINT
 # block's territory — kept conservative/broad since these are DIAGNOSTIC
@@ -50,6 +51,7 @@ FAILURE_OWNED_PATHS: dict[str, list[str]] = {
     "hygiene": ["scripts/**"],
     "backup": ["backups/**"],
     "atlas": [".devteam/**"],
+    "plan_archive": ["PLAN.md", "plan/**"],
 }
 
 
@@ -450,6 +452,53 @@ def _file_maint_task(repo: Path, failed_steps: list[StepResult], now: datetime) 
 
 
 # ========================================================= orchestration ====
+def _step_plan_archive(repo: Path) -> StepResult:
+    """E-D: rotate oversized orchestrator_notes, and when PLAN.md exceeds
+    maintenance.plan_archive_kb move done blocks older than the current wave
+    into plan/archive/. Writing the files is the nightly action; committing
+    them is ORCH's wave-close step (git_commit_and_push only stages PLAN.md,
+    which would leave the archive untracked)."""
+    plan_path = repo / "PLAN.md"
+    if not plan_path.exists():
+        return StepResult("plan_archive", True, "no PLAN.md — archive skipped")
+    try:
+        import plan_archive
+        cfg_path = repo / "autopilot.json"
+        try:
+            cfg = json.loads(cfg_path.read_text(encoding="utf-8")) if cfg_path.exists() else {}
+        except json.JSONDecodeError as exc:
+            return StepResult("plan_archive", False, f"autopilot.json is not valid JSON: {exc}")
+        m_cfg = {**DEFAULT_MAINTENANCE_CFG, **(cfg.get("maintenance") or {})}
+        try:
+            threshold_kb = int(m_cfg.get("plan_archive_kb", 60))
+            cap = int((cfg.get("plan") or {}).get("notes_max_chars", plan_archive.NOTES_MAX_CHARS_DEFAULT))
+        except (TypeError, ValueError) as exc:
+            return StepResult("plan_archive", False, f"archive config is not an int: {exc}")
+        original = plan_path.read_text(encoding="utf-8")
+        original_bytes = len(original.encode("utf-8"))
+        notes: list[str] = []
+        rotated, handover = plan_archive.rotate_notes(original, repo, datetime.now(timezone.utc), cap)
+        if handover is not None:
+            plan_path.write_text(rotated, encoding="utf-8", newline="\n")
+            notes.append(f"rotated orchestrator_notes to {handover.as_posix()}")
+            original = rotated
+        if original_bytes > threshold_kb * 1024:
+            result = plan_archive.apply_archive(repo, original)
+            if result.changed:
+                plan_path.write_text(result.text, encoding="utf-8", newline="\n")
+                notes.append(f"archived {len(result.blocks)} done block(s) older than the current wave")
+            else:
+                notes.append(
+                    f"PLAN.md is {original_bytes} bytes (>{threshold_kb} KB) but no done block "
+                    f"is older than the current wave"
+                )
+        else:
+            notes.append(f"PLAN.md is {original_bytes} bytes, under {threshold_kb} KB — archive skipped")
+        return StepResult("plan_archive", True, "; ".join(notes))
+    except Exception as exc:  # noqa: BLE001 — one step must never crash the audit
+        return StepResult("plan_archive", False, f"plan archive crashed: {exc}")
+
+
 _ORDERED_STEPS = (
     "_step_harness_audit",
     "_step_validate_plan",
@@ -458,11 +507,12 @@ _ORDERED_STEPS = (
     "_step_hygiene",
     "_step_backup",
     "_step_atlas",
+    "_step_plan_archive",
 )
 
 
 def run_nightly_audit(repo: Path, cfg: dict, now: datetime | None = None, force: bool = False) -> MaintenanceResult:
-    """Run the six-step nightly self-audit if due (or always, if force=True).
+    """Run the nightly self-audit if due (or always, if force=True).
 
     Idempotent: internally re-checks scheduling.should_run_daily() against
     the SAME .devteam/last_audit_date.txt marker the supervisor's outer

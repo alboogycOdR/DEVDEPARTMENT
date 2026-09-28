@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from validate_plan import (  # noqa: E402
     validate, globs_intersect, parse_owned_paths, grant_within_owned,
-    _apply_registry, predict_dispatch_task,
+    _apply_registry, predict_dispatch_task, lint_review, main,
 )
 
 FM = """---
@@ -252,3 +252,66 @@ def test_owned_paths_new_annotation_is_not_part_of_glob():
         "scripts/a.py", "tests/x/**", "b.md"]
     assert globs_intersect(parse_owned_paths("scripts/a.py (new)"),
                               parse_owned_paths("scripts/a.py"))
+
+
+def test_archived_stub_is_done_without_the_full_field_set():
+    text = FM + """
+### TASK-001
+**Status:** done
+**Archived:** plan/archive/2026-01.md
+
+""" + task_block(tid="TASK-002", deps="TASK-001")
+    rep = validate(text)
+    assert rep.ok, rep.errors
+
+
+def test_warns_when_notes_exceed_the_cap():
+    notes = "n" * 4001
+    text = f"""---
+plan_version: 1.0
+last_updated: 2026-07-12T10:00:00Z
+overall_status: in_progress
+orchestrator_notes: "{notes}"
+---
+""" + task_block()
+    rep = validate(text)
+    assert rep.ok, rep.errors
+    assert any("plan.notes_max_chars=4000" in w and "4001" in w for w in rep.warnings)
+
+
+def test_warns_when_plan_exceeds_150kb():
+    text = FM + ("x" * (150 * 1024)) + task_block()
+    rep = validate(text)
+    assert any("over 150 KB" in w for w in rep.warnings)
+
+
+_REVIEW_HEADER = """# REVIEW
+
+## Verdicts
+
+| Task | Unit | Verdict | Findings | First-pass | Timestamp |
+|---|---|---|---|---|---|
+"""
+
+
+def test_review_lint_rejects_a_blank_line_that_splits_the_table():
+    text = _REVIEW_HEADER + (
+        "| TASK-001 | GB | approved | ok | yes | 2026-07-12T10:00:01Z |\n"
+        "\n"
+        "| TASK-002 | CX | approved | ok | yes | 2026-07-12T10:00:02Z |\n"
+    )
+    rep = lint_review(text)
+    assert any("blank line inside the verdict table" in e for e in rep.errors)
+
+
+def test_review_lint_rejects_a_broken_row_and_accepts_a_clean_table(tmp_path, capsys):
+    broken = _REVIEW_HEADER + "| not a row |\n"
+    assert any("broken verdict row" in e for e in lint_review(broken).errors)
+    clean = _REVIEW_HEADER + "| TASK-001 | GB | approved | ok | yes | 2026-07-12T10:00:01Z |\n"
+    assert lint_review(clean).ok
+    path = tmp_path / "REVIEW.md"
+    path.write_text(clean, encoding="utf-8")
+    assert main(["--review", str(path)]) == 0
+    assert "machine-readable" in capsys.readouterr().out
+    path.write_text(broken, encoding="utf-8")
+    assert main(["--review", str(path)]) == 1
