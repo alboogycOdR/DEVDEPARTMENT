@@ -22,7 +22,9 @@ Usage:
 """
 from __future__ import annotations
 
+import argparse
 import fnmatch
+import json
 import re
 import sys
 from dataclasses import dataclass, field
@@ -49,6 +51,10 @@ REQUIRED_FIELDS = [
     "Updated_By", "Updated_At",
 ]
 BRANCH_SUFFIX = {"GB": "-gb", "CX": "-cx", "S5": "-s5"}
+# E-D: orchestrator_notes cap and the size at which PLAN.md should have been
+# archived. Both are warnings — a fat plan is still a legal plan.
+NOTES_MAX_CHARS_DEFAULT = 4000
+PLAN_SIZE_WARN_BYTES = 150 * 1024
 
 
 def _apply_registry(repo: str = "."):
@@ -267,7 +273,8 @@ def predict_dispatch_task(repo: str = ".", unit: str = "") -> str:
 
 
 def validate(text: str, control_mode: str = "legacy",
-             registry_views: tuple | None = None) -> Report:
+             registry_views: tuple | None = None,
+             notes_max_chars: int = NOTES_MAX_CHARS_DEFAULT) -> Report:
     # registry_views = (valid_units, valid_assignees, branch_suffixes) from
     # _apply_registry(); None (the safe default, e.g. standalone/test calls)
     # means the legacy module constants — same precedent as control_mode.
@@ -276,11 +283,12 @@ def validate(text: str, control_mode: str = "legacy",
         else (set(VALID_UNITS), set(VALID_ASSIGNEES), dict(BRANCH_SUFFIX)))
     builder_units = valid_units - {"ORCH", "SV"}
     rep = Report()
-    parse_frontmatter(text, rep)
+    fm = parse_frontmatter(text, rep)
     tasks = parse_tasks(text, rep)
 
     if not tasks:
         rep.warn("No task blocks found (### TASK-NNN). Empty plan.")
+        _warn_plan_bulk(text, fm, rep, notes_max_chars)
         return rep
 
     seen: dict[str, int] = {}
@@ -291,11 +299,17 @@ def validate(text: str, control_mode: str = "legacy",
         else:
             seen[t.task_id] = t.line
 
-        for fld in REQUIRED_FIELDS:
-            if fld not in t.fields or t.is_empty(fld):
-                rep.error(f"{ctx}: required field '{fld}' missing or empty")
-
         status = t.get("Status")
+        # E-D stubs carry only Status + Archived. The full block lives in
+        # plan/archive/<YYYY-MM>.md; the id stays done for Depends_On.
+        archived = not t.is_empty("Archived")
+        if archived:
+            if status != "done":
+                rep.error(f"{ctx}: an archived stub must have Status done (got '{status or 'empty'}')")
+        else:
+            for fld in REQUIRED_FIELDS:
+                if fld not in t.fields or t.is_empty(fld):
+                    rep.error(f"{ctx}: required field '{fld}' missing or empty")
         if status and status not in VALID_STATUSES:
             rep.error(f"{ctx}: illegal Status '{status}' (allowed: {sorted(VALID_STATUSES)})")
 
@@ -438,11 +452,91 @@ def validate(text: str, control_mode: str = "legacy",
                 f"both active. Sequence them with Depends_On, or never dispatch them together"
             )
 
+    _warn_plan_bulk(text, fm, rep, notes_max_chars)
+    return rep
+
+
+def _warn_plan_bulk(text: str, fm: dict[str, str], rep: Report, notes_max_chars: int) -> None:
+    notes = fm.get("orchestrator_notes", "")
+    if len(notes) > notes_max_chars:
+        rep.warn(
+            f"PLAN: orchestrator_notes is {len(notes)} chars, "
+            f"over plan.notes_max_chars={notes_max_chars}"
+        )
+    nbytes = len(text.encode("utf-8"))
+    if nbytes > PLAN_SIZE_WARN_BYTES:
+        rep.warn(f"PLAN: PLAN.md is {nbytes} bytes, over 150 KB")
+
+
+_REVIEW_HEADER = re.compile(r"^\|\s*Task\s*\|\s*Unit\s*\|\s*Verdict\s*\|", re.IGNORECASE)
+_REVIEW_SEP = re.compile(r"^\|[\s:\-|]+\|$")
+
+
+def lint_review(text: str) -> Report:
+    """Reject a verdict table that a blank line splits, or a row the grammar misses.
+
+    The row grammar is team_stats.ROW_RE — the same parser the tallies use.
+    """
+    from team_stats import ROW_RE
+
+    rep = Report()
+    lines = text.splitlines()
+    header_at = next((i for i, line in enumerate(lines) if _REVIEW_HEADER.match(line.strip())), None)
+    if header_at is None:
+        rep.error("REVIEW: verdict table header not found")
+        return rep
+    if header_at + 1 >= len(lines) or not _REVIEW_SEP.match(lines[header_at + 1].strip()):
+        rep.error("REVIEW: verdict table is missing its separator row")
+        return rep
+    i = header_at + 2
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if stripped.startswith("##"):
+            break
+        if stripped == "":
+            for nxt in lines[i + 1:]:
+                nxt_s = nxt.strip()
+                if nxt_s.startswith("##") or (nxt_s and not nxt_s.startswith("|")):
+                    break
+                if nxt_s.startswith("|"):
+                    rep.error(
+                        f"REVIEW: blank line inside the verdict table at line {i + 1} "
+                        f"— later rows fall outside the table"
+                    )
+                    return rep
+            break
+        if stripped.startswith("|"):
+            if not ROW_RE.match(stripped):
+                rep.error(f"REVIEW: broken verdict row at line {i + 1}")
+        else:
+            break
+        i += 1
     return rep
 
 
 def main(argv: list[str]) -> int:
-    path = Path(argv[1]) if len(argv) > 1 else Path("PLAN.md")
+    ap = argparse.ArgumentParser(description="Protocol linter for PLAN.md")
+    ap.add_argument("path", nargs="?", default="PLAN.md")
+    ap.add_argument(
+        "--review", nargs="?", const="", default=None,
+        help="lint a REVIEW.md verdict table instead of PLAN.md (default path: REVIEW.md)",
+    )
+    args = ap.parse_args(argv)
+    if args.review is not None:
+        path = Path(args.review) if args.review else Path("REVIEW.md")
+        if not path.exists():
+            print(f"ERROR: {path} not found", file=sys.stderr)
+            return 2
+        rep = lint_review(path.read_text(encoding="utf-8"))
+        for e in rep.errors:
+            print(f"ERROR {e}", file=sys.stderr)
+        if rep.ok:
+            print(f"OK    {path} verdict table is machine-readable")
+            return 0
+        print(f"FAIL  {len(rep.errors)} violation(s) in {path}", file=sys.stderr)
+        return 1
+
+    path = Path(args.path)
     if not path.exists():
         print(f"ERROR: {path} not found", file=sys.stderr)
         return 2
@@ -450,15 +544,16 @@ def main(argv: list[str]) -> int:
     # next to the plan; fail-open to legacy defaults per _apply_registry().
     repo_dir = str(path.resolve().parent)
     control_mode = "legacy"
+    notes_max = NOTES_MAX_CHARS_DEFAULT
     try:
-        import json as _json
-        _cfg = _json.loads((Path(repo_dir) / "autopilot.json").read_text(encoding="utf-8"))
+        _cfg = json.loads((Path(repo_dir) / "autopilot.json").read_text(encoding="utf-8"))
         if (_cfg.get("control") or {}).get("mode") == "strict":
             control_mode = "strict"
+        notes_max = int((_cfg.get("plan") or {}).get("notes_max_chars", NOTES_MAX_CHARS_DEFAULT))
     except Exception:
         pass
     rep = validate(path.read_text(encoding="utf-8"), control_mode=control_mode,
-                   registry_views=_apply_registry(repo_dir))
+                   registry_views=_apply_registry(repo_dir), notes_max_chars=notes_max)
     for w in rep.warnings:
         print(f"WARN  {w}", file=sys.stderr)
     for e in rep.errors:
@@ -471,4 +566,4 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    sys.exit(main(sys.argv[1:]))
