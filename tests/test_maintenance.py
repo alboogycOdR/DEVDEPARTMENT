@@ -172,7 +172,7 @@ class TestAllStepsPass:
         assert result.passed is True
         assert result.task_id is None
         assert result.digest_line == "Self-audit: PASS"
-        assert len(result.steps) == 7
+        assert len(result.steps) == 8
 
     def test_plan_md_unchanged_when_all_pass(self, tmp_path, monkeypatch):
         all_pass(monkeypatch)
@@ -196,7 +196,7 @@ class TestIndividualStepFailures:
         (repo / "PLAN.md").write_text(SIMPLE_PLAN, encoding="utf-8")
         result = maint.run_nightly_audit(repo, {}, now=NOW)
         assert result.passed is False
-        assert len(result.steps) == 7  # all 7 still ran
+        assert len(result.steps) == 8  # every ordered step still ran
         assert result.task_id == f"TASK-MAINT-{NOW.strftime('%Y-%m-%d')}"
         plan = (repo / "PLAN.md").read_text(encoding="utf-8")
         assert result.task_id in plan
@@ -631,3 +631,81 @@ class TestCLI:
         (repo / "autopilot.json").write_text('{"maintenance": {"hour_utc": 23}}', encoding="utf-8")
         rc = maint.main(["--repo", str(repo)])
         assert rc in (0, 1)  # must not crash regardless of real current UTC hour
+
+
+def test_plan_archive_step_skips_a_small_plan(tmp_path):
+    (tmp_path / "PLAN.md").write_text(SIMPLE_PLAN, encoding="utf-8")
+    result = maint._step_plan_archive(tmp_path)
+    assert result.passed is True
+    assert "archive skipped" in result.detail
+    assert (tmp_path / "PLAN.md").read_text(encoding="utf-8") == SIMPLE_PLAN
+    assert not (tmp_path / "plan").exists()
+
+
+def test_plan_archive_step_rotates_notes_and_archives_when_over_threshold(tmp_path):
+    notes = "N" * 4001
+    fat = "y" * 200
+    plan = f"""---
+plan_version: 1.0
+last_updated: 2026-09-01T00:00:00Z
+overall_status: in_progress
+orchestrator_notes: "{notes}"
+---
+
+### TASK-001
+**Title:** Wave A old
+**Status:** done
+**Assigned_To:** GB
+**Priority:** low
+**Spec_References:** specs/x.md
+**Owned_Paths:** src/a/**
+**Depends_On:** —
+**Description:** {fat}
+**Acceptance_Criteria:**
+- [x] done
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-01-15T01:02:03Z
+
+### TASK-002
+**Title:** Wave E open
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** high
+**Spec_References:** specs/x.md
+**Owned_Paths:** src/b/**
+**Depends_On:** TASK-001
+**Description:** stays
+**Acceptance_Criteria:**
+- [ ] open
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-01T08:00:01Z
+"""
+    (tmp_path / "PLAN.md").write_text(plan, encoding="utf-8")
+    (tmp_path / "autopilot.json").write_text(
+        '{"maintenance": {"plan_archive_kb": 1}}', encoding="utf-8")
+    result = maint._step_plan_archive(tmp_path)
+    assert result.passed, result.detail
+    assert "archived 1 done block" in result.detail
+    saved = (tmp_path / "PLAN.md").read_text(encoding="utf-8")
+    assert "**Archived:** plan/archive/2026-01.md" in saved
+    assert "Wave E open" in saved
+    assert notes not in saved
+    handover = list((tmp_path / "docs" / "handovers").glob("*-notes.md"))
+    assert len(handover) == 1
+    assert notes in handover[0].read_text(encoding="utf-8")
+    archive = (tmp_path / "plan" / "archive" / "2026-01.md").read_text(encoding="utf-8")
+    assert "Wave A old" in archive
