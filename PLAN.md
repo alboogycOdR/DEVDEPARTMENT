@@ -1250,8 +1250,8 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H5, §7 (E-E)
-**Owned_Paths:** scripts/plan_commit.sh, scripts/plan_commit.ps1, tests/test_plan_commit.py, dossiers/TASK-033.md
-**Protected_Grants:** scripts/plan_commit.sh, scripts/plan_commit.ps1
+**Owned_Paths:** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/plan_stamp.py, tests/test_plan_commit.py, dossiers/TASK-033.md
+**Protected_Grants:** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/plan_stamp.py
 **Depends_On:** TASK-024
 **Description:** plan_commit.sh/.ps1 rewrite missing, unparseable, future or stale `Updated_At` values in the changed task blocks to the system UTC time before committing. Also fix the known flake (TASK-022 review): tests/test_plan_commit.py must resolve REPO_ROOT to a tmp fixture repo, never the live main checkout, so suites don't contend with concurrent sessions. **Protected-path grants (ORCH applies before dispatch):** scripts/plan_commit.sh, scripts/plan_commit.ps1.
 **Acceptance_Criteria:**
