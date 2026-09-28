@@ -1366,8 +1366,14 @@ def _process_tg_command(item: dict, repo: Path, cfg: dict, state: RuntimeState,
         existed = p.exists()
         if existed:
             p.unlink()
+        # E-C: /resume is also the explicit operator escape hatch for the
+        # durable P1/WAVE_DONE park state.  Merely clearing STOP would leave
+        # a --once supervisor silently parked forever on its next start.
+        was_parked = bool(state.parked)
+        state.parked = {}
         _tg_log(repo, cmd, None)
-        tgc.send_reply(token, chat_id, "▶️ STOP cleared — resuming." if existed else "Already running (no STOP file).")
+        tgc.send_reply(token, chat_id,
+                       "▶️ Resuming." if existed or was_parked else "Already running (no STOP file).")
         return None
 
     if cmd == "/wave":
