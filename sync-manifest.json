@@ -65,6 +65,7 @@
     "scripts/notify_needs_review.py",
     "scripts/plan_commit.ps1",
     "scripts/plan_commit.sh",
+    "scripts/plan_stamp.py",
     "scripts/plan_guard.py",
     "scripts/preflight_paths.py",
     "scripts/retro.py",
@@ -126,11 +127,16 @@
     "tests/test_sync_adopt.py",
     "tests/test_supervisor_ledgers.py",
     "tests/tick_harness.py",
-    "tests/test_supervisor_park.py"
+    "tests/test_supervisor_park.py",
+    "scripts/plan_archive.py",
+    "tests/test_plan_archive.py",
+    "tests/test_team_stats.py",
+    "tests/fixtures/plan_archive/sample_plan.md"
   ],
   "project_owned": [
     "PLAN.md",
     "REVIEW.md",
+    "plan/archive/",
     "INSTINCTS.md",
     "AUTOPILOT_LOG.md",
     "README.md",
