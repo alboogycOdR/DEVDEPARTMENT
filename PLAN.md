@@ -2,7 +2,7 @@
 plan_version: 6.3
 last_updated: 2026-09-27T19:07:45Z
 overall_status: in_progress
-orchestrator_notes: "Wave E in progress (plan v6.3). OWNER DECISIONS 2026-09-27: all build tasks go to CX; S5 receives no work; GB's Grok Build balance is exhausted (HTTP 402), so GB is idle too. S5 and GB WIP salvaged locally under .devteam/salvage/ (TASK-028-s5-wip*, TASK-032-gb-wip/). Work is serial on CX. Done: 023-028. Active: 029 (CX). Next critical path: 030 -> 031. KNOWN ENV ISSUE: TestEmptyHuskReclaim fails only inside Codex sessions; CX records it and submits; ORCH verifies; root cause is TASK-037's. ORCH merge procedure: register new framework files in sync-manifest.json, then re-run the full suites on master after every real merge. Reviews on claude-opus-5-5. Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md. Decompose record: docs/handovers/2026-09-26-wave-e-decompose.md."
+orchestrator_notes: "Wave E in progress (plan v6.3). OWNER DECISIONS 2026-09-27: all build tasks go to CX; S5 receives no work; GB's Grok Build balance is exhausted (HTTP 402), so GB is idle too. S5 and GB WIP salvaged locally under .devteam/salvage/ (TASK-028-s5-wip*, TASK-032-gb-wip/). Work is serial on CX. Done: 023-028. Active: 029 (CX). Next critical path: 030 -> 031. KNOWN ENV ISSUE: dispatch-script tests in tests/test_dispatch_worktree.py (TestEmptyHuskReclaim, TestFreshClaimBranchFromBaseTip) fail or hang only inside Codex sessions; CX runs the rest with those deselected, records it, and submits; ORCH verifies; root cause is TASK-037's. ORCH merge procedure: register new framework files in sync-manifest.json, then re-run the full suites on master after every real merge. Reviews on claude-opus-5-5. Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md. Decompose record: docs/handovers/2026-09-26-wave-e-decompose.md."
 ---
 
 # Project Plan
@@ -1134,7 +1134,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-030
 **Title:** Wave E E-C — durable park state, git heartbeat, on-disk in-flight tracking
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H3/H5, §5 (E-C.1–3)
@@ -1155,6 +1155,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-27T19:32:04Z] [CX] Implemented and committed durable park state, on-disk inflight launch/reap, aggregate git/dossier/PLAN heartbeats, STOP exit semantics, and focused E-C regressions on `task/TASK-030-cx` (`473dd82`). Python full-suite run stalls after 26% in pre-existing Tower tick tests; isolating before review.
 - [2026-09-27T20:01:42Z] [ORCH] Diagnosis of your stalled suite on task/TASK-030-cx @473dd82 (run by ORCH): (1) tests/test_supervisor_control.py::TestDossierHeartbeatStaleDetection::test_legacy_mode_ignores_dossier_heartbeats fails — it asserts the OLD rule; E-C.2 now makes dossier mtime a heartbeat source in every mode. That file was missing from your territory (ORCH carve error): it is now in Owned_Paths — update the test to the new rule and cite E-C.2. (2) tests/test_supervisor_ledgers.py::test_p1_ledger_renotifies_only_after_one_hour fails — parking suppresses the hourly P1 re-send. Spec reconciliation (ORCH): E-B requires a frozen task's P1 to re-send after 1 h; E-C requires one P1 notification across 10 --once processes (50 min at 5-min ticks) with the loop parked. Both hold if a PARKED tick still runs the escalation ledger's P1 renotify timer. Fix the code; do NOT change that test. (3) your own tests/test_supervisor_park.py::test_durable_inflight_reaped_by_next_process fails. (4) the full-suite hang appears only in the ordered full run, just after (3) — tests/test_supervisor_telegram.py passes alone — so (3) most likely leaves a live child process or lock behind; make that test clean up (and bound any subprocess waits with timeouts). Then run BOTH full suites to completion and submit.
 - [2026-09-27T20:06:21Z] [CX] Fixed all three diagnosed E-C regressions in `4a4b511`: Windows generic dead-PID errors now reap and count; E-C.2's newest heartbeat source is asserted in legacy mode too; a parked frozen P1 re-notifies only at its durable hourly ledger interval. `python -m pytest -q tests/test_supervisor_park.py tests/test_supervisor_control.py tests/test_supervisor_ledgers.py` passed (31). Full Python suite still stops at `tests/test_dispatch_worktree.py::TestFreshClaimBranchFromBaseTip::test_dispatch_sh_creates_fresh_claim_branch_from_base_tip`, outside TASK-030 Owned_Paths (TASK-035 territory); awaiting its resolution before full-suite evidence/review.
+- [2026-09-28T12:16:21Z] [ORCH] Unblocked — not a blocker, same Codex-sandbox class as TestEmptyHuskReclaim: on task/TASK-030-cx @4a4b511 in ORCH's environment, TestFreshClaimBranchFromBaseTip passes (2 in 6 s) and the FULL suite passes: pytest 1083 passed in 232 s, node 37->47 passed / 0 failed. Record that ORCH evidence plus your 31 targeted tests in Test_Evidence, self-check the criteria, and submit needs_review now; ORCH's review re-runs both suites on the merged tree.
 **Artifacts:**
 - `473dd82` — supervisor/status digest/PM2 updates and `tests/test_supervisor_park.py`
 - `4a4b511` — parked P1 re-notification, Windows durable-PID reaping, E-C.2 heartbeat regression update
@@ -1165,9 +1166,9 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - `python -m pytest -q tests/test_supervisor_park.py tests/test_supervisor_control.py tests/test_supervisor_ledgers.py` — 31 passed in 26.30s.
 - `python -m pytest -q` / `python -m pytest -vv tests/test_dispatch_worktree.py` — both stop at `TestFreshClaimBranchFromBaseTip::test_dispatch_sh_creates_fresh_claim_branch_from_base_tip`; not acceptable full-suite evidence, outside this task's territory.
 **Review_Findings:** —
-**Blocked_Reason:** OTHER: full Python suite is blocked by TASK-035-owned dispatch fresh-claim test hanging at TestFreshClaimBranchFromBaseTip
-**Updated_By:** CX
-**Updated_At:** 2026-09-27T20:06:21Z
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-28T12:16:21Z
 
 ### TASK-031
 **Title:** Wave E E-K — commands through the durable inbox; source-missing once; template CONTROL = UNREPORTED
