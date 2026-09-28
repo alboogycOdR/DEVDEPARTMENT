@@ -119,7 +119,7 @@ DEFAULT_CONFIG = {
     # Wave A-remainder: two-way Telegram. Listener only starts if
     # "telegram" is in notify_channels AND both DEVTEAM_TG_TOKEN/DEVTEAM_TG_CHAT
     # env vars are set (never read from a tracked file — see notify.py).
-    "telegram": {"chat_allowlist": [], "poll_interval_seconds": 20},
+    "telegram": {"chat_allowlist": [], "poll_interval_seconds": 20, "once_poll_seconds": 10},
     # Wave B: nightly self-maintenance + dispatch ceiling.
     "maintenance": dict(maintenance.DEFAULT_MAINTENANCE_CFG),
     "budget": dict(budget.DEFAULT_BUDGET_CFG),
@@ -1643,7 +1643,7 @@ def load_config(repo: Path) -> dict:
     return cfg
 
 
-def _start_tg_listener(repo: Path, cfg: dict) -> tuple[TelegramListener | None, "queue.Queue", "threading.Event"]:
+def _start_tg_listener(repo: Path, cfg: dict, *, start: bool = True) -> tuple[TelegramListener | None, "queue.Queue", "threading.Event"]:
     """Start the Telegram listener thread if configured. Returns (listener_or_None, queue, wave_event).
     The queue and wave_event are always returned (usable even with no listener) so the
     main loop's drain call and sleep-wait logic don't need two code paths."""
@@ -1670,13 +1670,14 @@ def _start_tg_listener(repo: Path, cfg: dict) -> tuple[TelegramListener | None, 
         offset_path=offset_path,
         poll_interval_seconds=tg_cfg.get("poll_interval_seconds", 20),
     )
-    listener.start()
-    print(f"[supervisor] Telegram listener started "
-          f"(allowlist size={len(tg_cfg.get('chat_allowlist') or []) or 1}).")
+    if start:
+        listener.start()
+        print(f"[supervisor] Telegram listener started "
+              f"(allowlist size={len(tg_cfg.get('chat_allowlist') or []) or 1}).")
     return listener, tg_queue, wave_event
 
 
-def _start_slack_listener(cfg: dict) -> tuple["SlackListener | None", "queue.Queue"]:
+def _start_slack_listener(repo: Path, cfg: dict) -> tuple["SlackListener | None", "queue.Queue"]:
     """Start the Slack listener thread if configured — same fail-open
     posture as _start_tg_listener: 'slack' in notify_channels but missing
     env vars → one warning, listener NOT started (never read credentials
@@ -1701,7 +1702,7 @@ def _start_slack_listener(cfg: dict) -> tuple["SlackListener | None", "queue.Que
               file=sys.stderr)
         return None, slack_queue
 
-    listener = SlackListener(app_token=app_token, bot_token=bot_token, out_queue=slack_queue)
+    listener = SlackListener(app_token=app_token, bot_token=bot_token, out_queue=slack_queue, repo=repo)
     listener.start()
     if listener.available:
         print("[supervisor] Slack listener started.")
@@ -1744,8 +1745,8 @@ def main(argv: list[str]) -> int:
         log_line(repo, f"STATE_CORRUPT: {state._corrupt_note}")
         notify(cfg, "P2", f"supervisor state file was corrupt: {state._corrupt_note}", repo)
 
-    tg_listener, tg_queue, wave_event = _start_tg_listener(repo, cfg)
-    slack_listener, slack_queue = _start_slack_listener(cfg)
+    tg_listener, tg_queue, wave_event = _start_tg_listener(repo, cfg, start=not args.once)
+    slack_listener, slack_queue = _start_slack_listener(repo, cfg)
     tg_token = _os.environ.get("DEVTEAM_TG_TOKEN", "")
 
     start = time.monotonic()
@@ -1774,11 +1775,11 @@ def main(argv: list[str]) -> int:
                 reap_inflight(inflight, cfg, state, repo, now)
                 _reap_durable_inflight(cfg, state, repo, now)
 
-            # Drain Telegram + Slack commands BEFORE deciding, so /answer /
-            # /rework edits (and /stop) are visible to this tick's decision
-            # and PLAN.md read (SLACK §5: one drain path for both queues).
-            queue_actions = drain_command_queue([tg_queue, slack_queue], repo, cfg, state, wave_event, now, tg_token) \
-                if not args.dry_run else []
+            # E-K: in --once mode there is no background listener lifetime.
+            # Poll once, bounded by config, then drain the durable inbox below.
+            if args.once and tg_listener is not None and not args.dry_run:
+                tg_listener.poll_once(timeout=int(cfg["telegram"].get("once_poll_seconds", 10)))
+            queue_actions: list[Action] = []
 
             # TOWER P2: drain .devteam/inbox/ BEFORE decide() too (spec
             # wording is exact — "in supervisor.py, before decide()"),

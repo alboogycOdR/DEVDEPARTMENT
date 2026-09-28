@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,51 @@ def _warn(message: str) -> None:
 
 def _inbox_dir(repo: Path) -> Path:
     return Path(repo) / ".devteam" / "inbox"
+
+
+def enqueue(repo: Path, *, command_id: str, source: str, actor: str,
+            command: str, args: str | dict[str, Any] = "",
+            issued_at: str | None = None) -> Path | None:
+    """Atomically persist one transport command for a later supervisor tick.
+
+    A listener must call this *before* acknowledging its upstream transport.
+    The returned path is only visible after ``replace()``, so a killed listener
+    cannot leave a half-written command that looks valid to ``drain_inbox``.
+    """
+    directory = _inbox_dir(Path(repo))
+    safe_id = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in command_id)
+    if not safe_id:
+        return None
+    issued_at = issued_at or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    # Inbox envelopes are transport-neutral dicts.  Convert slash-command
+    # strings at the durable boundary, once, so a later process does not
+    # need the originating listener's in-memory parsing context.
+    normalized_command = command
+    normalized_args: dict[str, Any] | None
+    if command == "/board" and not str(args).strip():
+        normalized_command, normalized_args = "board", {}
+    else:
+        ok, normalized = commands.validate(command, args)
+        if not ok:
+            _warn(f"could not persist invalid command {command_id}: {normalized}")
+            return None
+        normalized_command, normalized_args = normalized["command"], normalized["args"]
+    envelope = {
+        "id": command_id, "issued_at": issued_at, "source": source,
+        "actor": actor, "command": normalized_command, "args": normalized_args,
+    }
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        target = directory / f"{issued_at.replace(':', '-')}-{safe_id}.json"
+        if target.exists():
+            return target  # duplicate delivery: its durable first write wins
+        tmp = directory / f".{target.name}.{uuid.uuid4().hex}.tmp"
+        tmp.write_text(json.dumps(envelope, sort_keys=True) + "\n", encoding="utf-8")
+        tmp.replace(target)
+        return target
+    except OSError as exc:
+        _warn(f"could not persist command {command_id}: {exc}")
+        return None
 
 
 def _load_consumed(directory: Path) -> set[str]:
@@ -82,12 +128,15 @@ def _validate_envelope(value: Any) -> tuple[dict[str, Any] | None, str | None]:
             return None, f"malformed envelope: {name} must be a non-empty string"
     if not isinstance(value["args"], dict):
         return None, "malformed envelope: args must be an object"
-    ok, normalized = commands.validate(value["command"], value["args"])
-    if not ok:
-        return None, str(normalized)
-    assert isinstance(normalized, dict)
-    command = normalized["command"]
-    args = normalized["args"]
+    if value["command"] == "board" and value["args"] == {}:
+        command, args = "board", {}
+    else:
+        ok, normalized = commands.validate(value["command"], value["args"])
+        if not ok:
+            return None, str(normalized)
+        assert isinstance(normalized, dict)
+        command = normalized["command"]
+        args = normalized["args"]
     # Keep the cmd/args surface that supervisor's Telegram queue drain already
     # accepts.  TASK-018 can therefore put either transport's entries through
     # one handler without a second validator.  P2 metadata remains available
@@ -101,6 +150,12 @@ def _validate_envelope(value: Any) -> tuple[dict[str, Any] | None, str | None]:
         legacy_args = " ".join(str(args[key]) for key in ("task_id", "text") if args.get(key))
     else:
         legacy_args = ""
+    update_id = None
+    if value["source"] == "telegram" and value["id"].startswith("telegram-"):
+        try:
+            update_id = int(value["id"].rsplit("-", 1)[1])
+        except ValueError:
+            pass
     return {
         "id": value["id"],
         "issued_at": value["issued_at"],
@@ -110,8 +165,10 @@ def _validate_envelope(value: Any) -> tuple[dict[str, Any] | None, str | None]:
         "p2_args": args,
         "cmd": f"/{command}",
         "args": legacy_args,
-        "chat_id": None,
-        "update_id": None,
+        # Replies use the originating transport's address. Tower commands
+        # remain reply-less, while Telegram/Slack retain their actor ID.
+        "chat_id": value["actor"] if value["source"] in {"telegram", "slack"} else None,
+        "update_id": update_id,
         "raw": f"/{command} {legacy_args}".rstrip(),
     }, None
 

@@ -24,13 +24,14 @@ from __future__ import annotations
 
 import json
 import logging
-import queue
 import threading
+from datetime import datetime, timezone
 import urllib.request
 from pathlib import Path
 from typing import Callable
 
 import tg_commands as tgc
+import inbox
 
 log = logging.getLogger("tg_listener")
 
@@ -47,7 +48,7 @@ class TelegramListener(threading.Thread):
         token: str,
         allowlist: list[str],
         default_chat: str,
-        out_queue: "queue.Queue",
+        out_queue: object | None,
         offset_path: Path,
         poll_interval_seconds: int = 20,
         fetch: Callable[[str, int], dict] | None = None,
@@ -59,6 +60,7 @@ class TelegramListener(threading.Thread):
         self.default_chat = default_chat or ""
         self.out_queue = out_queue
         self.offset_path = Path(offset_path)
+        self.repo = self.offset_path.parent.parent
         self.poll_interval_seconds = max(1, int(poll_interval_seconds or 20))
         self._fetch = fetch or self._http_fetch
         self._log = log_fn or (lambda msg: log.info(msg))
@@ -93,11 +95,11 @@ class TelegramListener(threading.Thread):
             return json.loads(resp.read().decode())
 
     # ------------------------------------------------------- one cycle -----
-    def poll_once(self) -> bool:
+    def poll_once(self, timeout: int | None = None) -> bool:
         """Fetch + handle exactly one batch of updates. Returns True on success,
         False on any failure (caller is responsible for backing off)."""
         try:
-            data = self._fetch("getUpdates", LONG_POLL_TIMEOUT_S)
+            data = self._fetch("getUpdates", min(LONG_POLL_TIMEOUT_S, max(1, int(timeout or LONG_POLL_TIMEOUT_S))))
         except Exception as exc:  # noqa: BLE001 — network errors must never kill the thread
             self._log(f"[tg_listener] poll failed: {exc}")
             return False
@@ -113,29 +115,36 @@ class TelegramListener(threading.Thread):
 
     def _handle_update(self, update: dict) -> None:
         update_id = update.get("update_id")
-        if isinstance(update_id, int):
-            self._save_offset(update_id + 1)
 
         message = update.get("message") or update.get("edited_message") or {}
         chat = message.get("chat") or {}
         chat_id = str(chat.get("id", "")) if chat.get("id") is not None else ""
         text = message.get("text", "") or ""
         if not text.strip():
+            if isinstance(update_id, int):
+                self._save_offset(update_id + 1)
             return  # non-text update (photo, sticker, etc.) — nothing to command
 
         if not tgc.is_allowed(chat_id, self.allowlist, self.default_chat):
             self.rejected_count += 1
             self._log(f"[tg_listener] REJECTED chat_id={chat_id!r} — not in allowlist, no reply sent")
+            if isinstance(update_id, int):
+                self._save_offset(update_id + 1)
             return
 
         cmd, args = tgc.parse_command(text)
-        self.out_queue.put({
-            "cmd": cmd,
-            "args": args,
-            "chat_id": chat_id,
-            "update_id": update_id,
-            "raw": text,
-        })
+        if not isinstance(update_id, int):
+            self._log("[tg_listener] REJECTED update without integer update_id")
+            return
+        persisted = inbox.enqueue(
+            self.repo, command_id=f"telegram-{update_id}", source="telegram",
+            actor=chat_id, command=cmd, args=args,
+            issued_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
+        if persisted is None:
+            self._log(f"[tg_listener] command {update_id} not persisted; offset unchanged")
+            return
+        self._save_offset(update_id + 1)
 
     # ------------------------------------------------------------ thread ---
     def stop(self) -> None:

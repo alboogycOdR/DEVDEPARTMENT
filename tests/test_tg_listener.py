@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from tg_listener import TelegramListener  # noqa: E402
+import inbox  # noqa: E402
 
 
 def make_listener(tmp_path, fetch=None, allowlist=None, default_chat="12345", poll=20):
@@ -30,9 +31,13 @@ def update(update_id, chat_id, text):
     return {"update_id": update_id, "message": {"chat": {"id": chat_id}, "text": text}}
 
 
+def drained(tmp_path):
+    return inbox.drain_inbox(tmp_path, {})
+
+
 # ---------------------------------------------------------------- basic flow
 class TestBasicFlow:
-    def test_valid_command_from_allowed_chat_is_queued(self, tmp_path):
+    def test_valid_command_from_allowed_chat_is_durably_queued(self, tmp_path):
         calls = []
 
         def fetch(method, timeout):
@@ -41,8 +46,8 @@ class TestBasicFlow:
 
         listener, q = make_listener(tmp_path, fetch=fetch)
         assert listener.poll_once() is True
-        assert q.qsize() == 1
-        item = q.get_nowait()
+        assert len(drained(tmp_path)) == 1
+        item = drained(tmp_path)[0]
         assert item["cmd"] == "/status"
         assert item["chat_id"] == "12345"
         assert item["update_id"] == 1
@@ -53,7 +58,7 @@ class TestBasicFlow:
 
         listener, q = make_listener(tmp_path, fetch=fetch)
         listener.poll_once()
-        item = q.get_nowait()
+        item = drained(tmp_path)[0]
         assert item["cmd"] == "/answer"
         assert item["args"] == "TASK-016 use exponential backoff"
 
@@ -63,7 +68,7 @@ class TestBasicFlow:
 
         listener, q = make_listener(tmp_path, fetch=fetch)
         listener.poll_once()
-        assert q.empty()
+        assert drained(tmp_path) == []
 
     def test_multiple_updates_in_one_batch(self, tmp_path):
         def fetch(method, timeout):
@@ -75,7 +80,7 @@ class TestBasicFlow:
 
         listener, q = make_listener(tmp_path, fetch=fetch)
         listener.poll_once()
-        assert q.qsize() == 3
+        assert len(drained(tmp_path)) == 3
 
 
 # ------------------------------------------------------------------ allowlist
@@ -86,7 +91,7 @@ class TestAllowlistAtListener:
 
         listener, q = make_listener(tmp_path, fetch=fetch, default_chat="12345")
         listener.poll_once()
-        assert q.empty()
+        assert drained(tmp_path) == []
         assert listener.rejected_count == 1
 
     def test_allowlisted_multi_chat(self, tmp_path):
@@ -95,7 +100,7 @@ class TestAllowlistAtListener:
 
         listener, q = make_listener(tmp_path, fetch=fetch, allowlist=["111", "222", "333"], default_chat="999")
         listener.poll_once()
-        assert q.qsize() == 1
+        assert len(drained(tmp_path)) == 1
 
     def test_mixed_batch_only_allowed_queued(self, tmp_path):
         def fetch(method, timeout):
@@ -107,7 +112,7 @@ class TestAllowlistAtListener:
 
         listener, q = make_listener(tmp_path, fetch=fetch, default_chat="12345")
         listener.poll_once()
-        assert q.qsize() == 2
+        assert len(drained(tmp_path)) == 2
         assert listener.rejected_count == 1
 
     def test_offset_still_advances_past_rejected_updates(self, tmp_path):
@@ -151,8 +156,8 @@ class TestOffsetPersistence:
         listener2, q2 = make_listener(tmp_path, fetch=fetch2)
         assert listener2.offset == 102  # picked up from disk, did not reset to 0
         listener2.poll_once()
-        assert q2.qsize() == 1
-        assert q2.get_nowait()["cmd"] == "/wave"
+        assert len(drained(tmp_path)) == 3
+        assert [item["cmd"] for item in drained(tmp_path)][-1] == "/wave"
         assert listener2.offset == 103
 
     def test_missing_offset_file_starts_at_zero(self, tmp_path):
@@ -175,7 +180,7 @@ class TestFailureHandling:
 
         listener, q = make_listener(tmp_path, fetch=fetch)
         assert listener.poll_once() is False
-        assert q.empty()
+        assert drained(tmp_path) == []
 
     def test_api_not_ok_response_returns_false(self, tmp_path):
         def fetch(method, timeout):
@@ -193,8 +198,8 @@ class TestFailureHandling:
 
         listener, q = make_listener(tmp_path, fetch=fetch)
         assert listener.poll_once() is True
-        assert q.qsize() == 1
-        assert q.get_nowait()["cmd"] == "/status"
+        assert len(drained(tmp_path)) == 1
+        assert drained(tmp_path)[0]["cmd"] == "/status"
 
     def test_offset_persist_failure_does_not_crash(self, tmp_path, monkeypatch):
         def fetch(method, timeout):
@@ -207,7 +212,7 @@ class TestFailureHandling:
         monkeypatch.setattr(Path, "write_text", boom)
         # Must not raise even though persistence fails.
         assert listener.poll_once() is True
-        assert q.qsize() == 1
+        assert len(drained(tmp_path)) == 1
 
 
 # ---------------------------------------------------------------- lifecycle
