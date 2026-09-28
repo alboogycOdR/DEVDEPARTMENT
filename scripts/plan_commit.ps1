@@ -82,6 +82,40 @@ if ($LASTEXITCODE -eq 0) {
     exit 0
 }
 
+# H5: coordination timestamps are evidence from the clock, not text invented
+# by a builder.  Limit rewriting to task blocks touched by this pending diff so
+# a plan-only commit cannot silently churn unrelated blocks.
+$PreviousPlanCommit = (git -C $RepoRoot log -1 --format=%cI HEAD -- PLAN.md | Select-Object -First 1)
+$PlanText = Get-Content -LiteralPath $Plan -Raw -Encoding UTF8
+$Newline = if ($PlanText.Contains("`r`n")) { "`r`n" } else { "`n" }
+$Affected = @([regex]::Matches($Message, 'TASK-\d+') | ForEach-Object { $_.Value } | Select-Object -Unique)
+$PreviousTime = $null
+if ($PreviousPlanCommit) {
+    try { $PreviousTime = [DateTimeOffset]::Parse($PreviousPlanCommit).ToUniversalTime() } catch { }
+}
+$Now = [DateTimeOffset]::UtcNow
+$Stamp = $Now.ToString('yyyy-MM-ddTHH:mm:ssZ')
+foreach ($id in $Affected) {
+    $EscapedId = [regex]::Escape($id)
+    $TaskPattern = "(?ms)^### $EscapedId\b.*?(?=^### TASK-\d+\b|\z)"
+    $PlanText = [regex]::Replace($PlanText, $TaskPattern, {
+        param($TaskMatch)
+        $Block = $TaskMatch.Value
+        $ValueMatch = [regex]::Match($Block, '(?m)^\*\*Updated_At:\*\*\s*(.+)$')
+        $Valid = $false
+        if ($ValueMatch.Success) {
+        try {
+            $Value = [DateTimeOffset]::ParseExact($ValueMatch.Groups[1].Value, 'yyyy-MM-ddTHH:mm:ssZ', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AssumeUniversal).ToUniversalTime()
+            $Valid = $Value -le $Now.AddMinutes(5) -and ($null -eq $PreviousTime -or $Value -ge $PreviousTime)
+        } catch { }
+        }
+        if ($Valid) { return $Block }
+        if ($ValueMatch.Success) { return [regex]::Replace($Block, '(?m)^\*\*Updated_At:\*\*.*$', "**Updated_At:** $Stamp", 1) }
+        return $Block.TrimEnd("`r", "`n") + $Newline + "**Updated_At:** $Stamp" + $Newline
+    }, 1)
+}
+[IO.File]::WriteAllText($Plan, $PlanText, [Text.UTF8Encoding]::new($false))
+
 # Retry around index.lock: two builders committing coordination state seconds
 # apart is legitimate, and the collision is transient rather than an error.
 # Stray-block guard: PLAN.md is committed whole, so an edit outside your own
