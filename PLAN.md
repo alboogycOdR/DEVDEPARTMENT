@@ -1201,13 +1201,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-031-cx
 **Started_At:** 2026-09-28T12:38:32Z
-**Progress_Notes:** —
-**Artifacts:** —
+**Progress_Notes:**
+- [2026-09-28T12:43:53Z] [CX] Durable Telegram/Slack inbox handoff and bounded `--once` Telegram poll implemented in commit 58133bf. Next: convert Slack fixtures and add cross-process `--once`, source-missing, and CONTROL-capacity coverage.
+**Artifacts:**
+- scripts/tg_listener.py, scripts/slack_listener.py, scripts/inbox.py, scripts/supervisor.py, tests/test_tg_listener.py, dossiers/TASK-031.md
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-28T12:39:30Z
+**Updated_At:** 2026-09-28T12:43:53Z
 
 ### TASK-032
 **Title:** Wave E E-D — plan archive, notes cap, generated REVIEW tallies, machine-readable REVIEW.md
