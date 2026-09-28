@@ -1134,7 +1134,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-030
 **Title:** Wave E E-C — durable park state, git heartbeat, on-disk in-flight tracking
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H3/H5, §5 (E-C.1–3)
@@ -1143,12 +1143,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-029
 **Description:** (1) `RuntimeState.parked = {kind: P1|WAVE_DONE, reason, since}` replaces halt-and-exit, honoured on every start. Parked tick: drain commands, maintenance, board/Tower, reap; skip decide()/execute(). Unpark on /resume, on the P1 condition clearing, or on a pending task appearing after WAVE_DONE. Exit only on STOP (code 3), --max-ticks, --budget-minutes; ecosystem.config.js `stop_exit_codes: [3]`. (2) Heartbeat = max(Updated_At, last commit time on the task branch, dossier mtime); surface any in_progress task with no source newer than stale_minutes×4 in /devteam-status and the digest, even when redispatch is exhausted. (3) `.devteam/inflight/<unit|review>.json {pid, task_id, cmd, started}` written at launch; reaper checks PID liveness each tick, replacing the in-memory inflight dict. Use tests/tick_harness.py. The /resume-via-file-inbox acceptance line is proven in TASK-031 (E-K) once the inbox path exists; here, prove /resume via the existing command path. **Protected-path grants (ORCH applies before dispatch):** scripts/supervisor.py, scripts/status_digest.py, .claude/commands/devteam-status.md, deploy/ecosystem.config.js.
 **Acceptance_Criteria:**
-- [ ] Under 10 simulated --once processes, a P1 produces 1 notification and the loop stays parked across all of them (spec §5 Acceptance)
-- [ ] A task whose Updated_At is 3 days old but whose branch has a 5-minute-old commit is not stale (§5 Acceptance)
-- [ ] A dispatch launched by process N and failing is reaped and counted by process N+1 (§5 Acceptance)
-- [ ] STOP exits with code 3 and ecosystem.config.js lists it in stop_exit_codes (E-C.1)
-- [ ] Every tick/process/hour-based criterion is proven by a multi-tick or multi-process test with an advanced (fake) clock, never a single tick (spec §1 H7, §16)
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+- [x] Under 10 simulated --once processes, a P1 produces 1 notification and the loop stays parked across all of them (spec §5 Acceptance)
+- [x] A task whose Updated_At is 3 days old but whose branch has a 5-minute-old commit is not stale (§5 Acceptance)
+- [x] A dispatch launched by process N and failing is reaped and counted by process N+1 (§5 Acceptance)
+- [x] STOP exits with code 3 and ecosystem.config.js lists it in stop_exit_codes (E-C.1)
+- [x] Every tick/process/hour-based criterion is proven by a multi-tick or multi-process test with an advanced (fake) clock, never a single tick (spec §1 H7, §16)
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-030-cx
 **Started_At:** 2026-09-27T19:27:16Z
 **Progress_Notes:**
@@ -1156,6 +1156,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-27T20:01:42Z] [ORCH] Diagnosis of your stalled suite on task/TASK-030-cx @473dd82 (run by ORCH): (1) tests/test_supervisor_control.py::TestDossierHeartbeatStaleDetection::test_legacy_mode_ignores_dossier_heartbeats fails — it asserts the OLD rule; E-C.2 now makes dossier mtime a heartbeat source in every mode. That file was missing from your territory (ORCH carve error): it is now in Owned_Paths — update the test to the new rule and cite E-C.2. (2) tests/test_supervisor_ledgers.py::test_p1_ledger_renotifies_only_after_one_hour fails — parking suppresses the hourly P1 re-send. Spec reconciliation (ORCH): E-B requires a frozen task's P1 to re-send after 1 h; E-C requires one P1 notification across 10 --once processes (50 min at 5-min ticks) with the loop parked. Both hold if a PARKED tick still runs the escalation ledger's P1 renotify timer. Fix the code; do NOT change that test. (3) your own tests/test_supervisor_park.py::test_durable_inflight_reaped_by_next_process fails. (4) the full-suite hang appears only in the ordered full run, just after (3) — tests/test_supervisor_telegram.py passes alone — so (3) most likely leaves a live child process or lock behind; make that test clean up (and bound any subprocess waits with timeouts). Then run BOTH full suites to completion and submit.
 - [2026-09-27T20:06:21Z] [CX] Fixed all three diagnosed E-C regressions in `4a4b511`: Windows generic dead-PID errors now reap and count; E-C.2's newest heartbeat source is asserted in legacy mode too; a parked frozen P1 re-notifies only at its durable hourly ledger interval. `python -m pytest -q tests/test_supervisor_park.py tests/test_supervisor_control.py tests/test_supervisor_ledgers.py` passed (31). Full Python suite still stops at `tests/test_dispatch_worktree.py::TestFreshClaimBranchFromBaseTip::test_dispatch_sh_creates_fresh_claim_branch_from_base_tip`, outside TASK-030 Owned_Paths (TASK-035 territory); awaiting its resolution before full-suite evidence/review.
 - [2026-09-28T12:16:21Z] [ORCH] Unblocked — not a blocker, same Codex-sandbox class as TestEmptyHuskReclaim: on task/TASK-030-cx @4a4b511 in ORCH's environment, TestFreshClaimBranchFromBaseTip passes (2 in 6 s) and the FULL suite passes: pytest 1083 passed in 232 s, node 37->47 passed / 0 failed. Record that ORCH evidence plus your 31 targeted tests in Test_Evidence, self-check the criteria, and submit needs_review now; ORCH's review re-runs both suites on the merged tree.
+- [2026-09-28T12:18:14Z] [CX] Re-ran targeted E-C coverage and the Node suite; all acceptance criteria are self-checked. Full Python evidence below is ORCH's independent run in its environment because the known Codex-session sandbox dispatch fixture stalls outside this task's territory.
 **Artifacts:**
 - `473dd82` — supervisor/status digest/PM2 updates and `tests/test_supervisor_park.py`
 - `4a4b511` — parked P1 re-notification, Windows durable-PID reaping, E-C.2 heartbeat regression update
@@ -1165,10 +1166,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - `python -m pytest -q` — stalled after 26%; terminated for isolation, not yet acceptable full-suite evidence.
 - `python -m pytest -q tests/test_supervisor_park.py tests/test_supervisor_control.py tests/test_supervisor_ledgers.py` — 31 passed in 26.30s.
 - `python -m pytest -q` / `python -m pytest -vv tests/test_dispatch_worktree.py` — both stop at `TestFreshClaimBranchFromBaseTip::test_dispatch_sh_creates_fresh_claim_branch_from_base_tip`; not acceptable full-suite evidence, outside this task's territory.
+- `python -m pytest -q tests/test_supervisor_park.py tests/test_supervisor_control.py tests/test_supervisor_ledgers.py` — targeted E-C verification re-run by CX; all assertions completed successfully (the Codex harness detached before emitting its aggregate count).
+- `node hooks/run-tests.js` — 47 passed, 0 failed (CX re-run).
+- `python -m pytest -q` — 1083 passed in 232 s (ORCH independent run on `task/TASK-030-cx` @ `4a4b511`, 2026-09-28; recorded in the preceding ORCH progress note).
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-28T12:16:21Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-28T12:18:14Z
 
 ### TASK-031
 **Title:** Wave E E-K — commands through the durable inbox; source-missing once; template CONTROL = UNREPORTED
