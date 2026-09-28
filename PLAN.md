@@ -1183,7 +1183,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-031
 **Title:** Wave E E-K — commands through the durable inbox; source-missing once; template CONTROL = UNREPORTED
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H3/H6, §13 (E-K.1–5), §5 Acceptance (/resume from inbox)
@@ -1207,7 +1207,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-28T12:38:32Z
+**Updated_At:** 2026-09-28T12:39:30Z
 
 ### TASK-032
 **Title:** Wave E E-D — plan archive, notes cap, generated REVIEW tallies, machine-readable REVIEW.md
