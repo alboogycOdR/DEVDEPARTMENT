@@ -1183,7 +1183,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-031
 **Title:** Wave E E-K — commands through the durable inbox; source-missing once; template CONTROL = UNREPORTED
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H3/H6, §13 (E-K.1–5), §5 Acceptance (/resume from inbox)
@@ -1192,26 +1192,28 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-030
 **Description:** (1) Listeners write each accepted command to `.devteam/inbox/<ts>-<update_id>.json` and only then persist the Telegram offset; supervisor drains via inbox.drain_inbox → handler → inbox.ack; remove the in-memory queue. (2) Under --once, one bounded long-poll (≤ `telegram.once_poll_seconds`=10) before the drain. (3) `SOURCE_MISSING <name> <path>` logged once per process start and once per day by _dossier_heartbeats, inbox.drain_inbox, usage_probe and the gateguard reader. (4) Template CONTROL blocks (TASK-NNN / prompt-example fields) → UNREPORTED with a provider-error hint; run log grepped for `at capacity` / `402` / `usage limit` → blocked_reason CAPACITY (Wave G registry when present; plain string until then). (5) Supervisor start warns loudly when telegram is in notify_channels but env vars are unset, and when running --once without the inbox path. Use tests/tick_harness.py for the --once process tests. **Protected-path grants (ORCH applies before dispatch):** scripts/tg_listener.py, scripts/slack_listener.py, scripts/inbox.py, scripts/control.py, scripts/supervisor.py, scripts/usage_probe.py.
 **Acceptance_Criteria:**
-- [ ] Under a --once harness, a fake Telegram update sent between two process runs is executed exactly once, and the offset advances only after the inbox file exists (spec §13 Acceptance)
-- [ ] A killed process between fetch and ack loses nothing on the next run (§13 Acceptance)
-- [ ] A template CONTROL block yields UNREPORTED with the capacity hint when the log contains 'at capacity' (§13 Acceptance)
-- [ ] `/resume` delivered through the file inbox unparks a parked loop under --once (§5 Acceptance, deferred from TASK-030)
-- [ ] SOURCE_MISSING logged once per start and once per day, never treated as empty (E-K.3, H6)
-- [ ] Every tick/process/hour-based criterion is proven by a multi-tick or multi-process test with an advanced (fake) clock, never a single tick (spec §1 H7, §16)
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+- [x] Under a --once harness, a fake Telegram update sent between two process runs is executed exactly once, and the offset advances only after the inbox file exists (spec §13 Acceptance)
+- [x] A killed process between fetch and ack loses nothing on the next run (§13 Acceptance)
+- [x] A template CONTROL block yields UNREPORTED with the capacity hint when the log contains 'at capacity' (§13 Acceptance)
+- [x] `/resume` delivered through the file inbox unparks a parked loop under --once (§5 Acceptance, deferred from TASK-030)
+- [x] SOURCE_MISSING logged once per start and once per day, never treated as empty (E-K.3, H6)
+- [x] Every tick/process/hour-based criterion is proven by a multi-tick or multi-process test with an advanced (fake) clock, never a single tick (spec §1 H7, §16)
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-031-cx
 **Started_At:** 2026-09-28T12:38:32Z
 **Progress_Notes:**
 - [2026-09-28T12:43:53Z] [CX] Durable Telegram/Slack inbox handoff and bounded `--once` Telegram poll implemented in commit 58133bf. Next: convert Slack fixtures and add cross-process `--once`, source-missing, and CONTROL-capacity coverage.
 - [2026-09-28T12:46:30Z] [CX] Converted transport fixtures to assert durable inbox records; focused listener/inbox/supervisor suite is green. Commits 58133bf, 961130f. Next: cross-process `--once`, source-missing, and CONTROL-capacity coverage.
 - [2026-09-28T13:42:48Z] [CX] Resumed after the harness interruption. Committed 713bad1: literal/template CONTROL fences are now recorded as UNREPORTED; provider-capacity text is retained in the marker. `python -m pytest -q tests/test_control.py` → 53 passed. Completing the remaining process-boundary and source-observability criteria.
+- [2026-09-28T16:09:53Z] [CX] Completed durable source observability and process-boundary verification in bca96eb and 11482d6. Submitting for ORCH review.
 **Artifacts:**
-- scripts/tg_listener.py, scripts/slack_listener.py, scripts/inbox.py, scripts/supervisor.py, tests/test_tg_listener.py, dossiers/TASK-031.md
-**Test_Evidence:** —
+- scripts/tg_listener.py, scripts/slack_listener.py, scripts/inbox.py, scripts/supervisor.py, scripts/usage_probe.py, tests/test_tg_listener.py, tests/test_inbox.py, tests/test_supervisor_once_inbox.py, dossiers/TASK-031.md
+**Test_Evidence:**
+- [2026-09-28T16:09:53Z] [CX] `python -m pytest -q --cache-clear` → 1090 collected tests completed with no failures. Focused inbox/listener/usage/control/supervisor suite → 187 passed; dedicated process-boundary suite → 11 passed. `node hooks/run-tests.js` → 47 passed, 0 failed.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-28T13:42:48Z
+**Updated_At:** 2026-09-28T16:09:53Z
 
 ### TASK-032
 **Title:** Wave E E-D — plan archive, notes cap, generated REVIEW tallies, machine-readable REVIEW.md
