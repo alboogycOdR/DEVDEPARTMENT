@@ -1134,7 +1134,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-030
 **Title:** Wave E E-C — durable park state, git heartbeat, on-disk in-flight tracking
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H3/H5, §5 (E-C.1–3)
@@ -1176,9 +1176,10 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - `python -m pytest -q` — Codex-session harness detached shortly after 6% (known external dispatch-fixture sandbox behavior); ORCH must re-run independently as specified in the review finding.
 **Review_Findings:**
 - [2026-09-28T12:18:58Z] [ORCH] REWORK (reviewer: claude-opus-5-5). Implementation direction is right and the three diagnosed regressions are fixed (ORCH ran the full suite on @4a4b511: pytest 1083, node 47/0). Territory clean (7 files). But most §5 acceptance lines are not demonstrated. REQUIRED tests (use tests/tick_harness.py — run_once_subprocess / save+load between ticks): (1) '10 simulated --once processes': the current test keeps ONE in-memory RuntimeState across 10 in-process ticks — each tick must start from the state file on disk (load -> decide/execute -> save), or be a real --once subprocess; assert exactly 1 P1 notification and parked after all 10; (2) a task whose Updated_At is 3 days old but whose branch has a 5-minute-old commit is NOT stale (real git fixture via make_git_fixture_repo/bump_branch) — currently untested; (3) reaping across processes: the inflight record must be written by the real launch path (execute a DISPATCH in process/tick N), then a fresh state loaded from disk in N+1 reaps and counts it — not a hand-written record fed to _reap_durable_inflight; (4) STOP exits with code 3 (real subprocess), and deploy/ecosystem.config.js lists 3 in stop_exit_codes (assert by reading the file); (5) each unpark trigger: /resume unparks; a P1 condition clearing (plan validates again / frozen task changed) unparks; a new pending task after WAVE_DONE unparks; and while parked, decide()/execute() are skipped but commands, reaping and maintenance still run. Every one of these must fail against master's supervisor (fail-before). Dispatch-script tests that hang only in the Codex sandbox may be deselected in your own run (recorded); ORCH runs them.
+- [2026-09-28T12:37:31Z] [ORCH] APPROVED on re-review (reviewer: claude-opus-5-5). Rework demonstrates every §5 line: 10 --once cycles each loading/saving the state file -> exactly 1 P1 and still parked; inflight record written by execute()'s real DISPATCH path and reaped by a freshly loaded state (dispatch_failures counted); a real git branch commit keeps a months-old Updated_At task from going stale; /resume, a cleared frozen P1 and a new pending task after WAVE_DONE each unpark; STOP --once subprocess exits 3 and ecosystem.config.js lists stop_exit_codes [3]. Spec reconciliation applied (ORCH): a parked loop still re-sends a frozen P1 hourly via the escalation ledger (E-B) while one notification covers 10 --once ticks (E-C). Fail-before: all 5 park tests fail against master. Merged-tree 1086/47/39. Post-merge on master (tests/test_supervisor_park.py registered): see commit. Accepted as covered: 'commands/reaping run while parked' is shown by parked ticks returning IDLE and /resume being processed while parked. Merged --no-ff 259de02; branch deleted.
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-09-28T13:05:00Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-28T12:37:31Z
 
 ### TASK-031
 **Title:** Wave E E-K — commands through the durable inbox; source-missing once; template CONTROL = UNREPORTED

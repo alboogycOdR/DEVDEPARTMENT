@@ -125,7 +125,8 @@
     "scripts/autopilot-tick.ps1",
     "tests/test_sync_adopt.py",
     "tests/test_supervisor_ledgers.py",
-    "tests/tick_harness.py"
+    "tests/tick_harness.py",
+    "tests/test_supervisor_park.py"
   ],
   "project_owned": [
     "PLAN.md",
