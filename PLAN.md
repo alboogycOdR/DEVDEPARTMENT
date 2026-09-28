@@ -1183,7 +1183,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-031
 **Title:** Wave E E-K — commands through the durable inbox; source-missing once; template CONTROL = UNREPORTED
-**Status:** pending
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** critical
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H3/H6, §13 (E-K.1–5), §5 Acceptance (/resume from inbox)
@@ -1199,15 +1199,18 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] SOURCE_MISSING logged once per start and once per day, never treated as empty (E-K.3, H6)
 - [ ] Every tick/process/hour-based criterion is proven by a multi-tick or multi-process test with an advanced (fake) clock, never a single tick (spec §1 H7, §16)
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
-**Artifacts:** —
+**Branch:** task/TASK-031-cx
+**Started_At:** 2026-09-28T12:38:32Z
+**Progress_Notes:**
+- [2026-09-28T12:43:53Z] [CX] Durable Telegram/Slack inbox handoff and bounded `--once` Telegram poll implemented in commit 58133bf. Next: convert Slack fixtures and add cross-process `--once`, source-missing, and CONTROL-capacity coverage.
+- [2026-09-28T12:46:30Z] [CX] Converted transport fixtures to assert durable inbox records; focused listener/inbox/supervisor suite is green. Commits 58133bf, 961130f. Next: cross-process `--once`, source-missing, and CONTROL-capacity coverage.
+**Artifacts:**
+- scripts/tg_listener.py, scripts/slack_listener.py, scripts/inbox.py, scripts/supervisor.py, tests/test_tg_listener.py, dossiers/TASK-031.md
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-27T15:50:01Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-28T12:46:30Z
 
 ### TASK-032
 **Title:** Wave E E-D — plan archive, notes cap, generated REVIEW tallies, machine-readable REVIEW.md

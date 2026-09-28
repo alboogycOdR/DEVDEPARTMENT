@@ -9,7 +9,7 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +39,13 @@ class TickResult:
 def make_fixture_repo(tmp_path: Path, plan_text: str, autopilot_log: str = "") -> Path:
     (tmp_path / "PLAN.md").write_text(plan_text, encoding="utf-8")
     (tmp_path / "AUTOPILOT_LOG.md").write_text(autopilot_log, encoding="utf-8")
+    # Keep --once fixtures hermetic: without these markers the real nightly
+    # self-audit and weekly retro fire depending on the wall clock, which slows
+    # each process by 10-15 s and reorders multi-process tests.
+    import scheduling
+    now = datetime.now(timezone.utc)
+    scheduling.mark_done_daily(tmp_path / ".devteam" / "last_audit_date.txt", now)
+    scheduling.mark_done_weekly(tmp_path / ".devteam" / "last_retro_week.txt", now)
     return tmp_path
 
 
