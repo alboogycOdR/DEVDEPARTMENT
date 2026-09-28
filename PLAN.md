@@ -1215,7 +1215,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-032
 **Title:** Wave E E-D — plan archive, notes cap, generated REVIEW tallies, machine-readable REVIEW.md
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §6 (E-D)
@@ -1224,22 +1224,23 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-027
 **Description:** `plan_archive.py` moves done blocks older than the current wave to `plan/archive/<YYYY-MM>.md` (append-only), leaving one stub per task; validate_plan.parse_tasks treats stubs as done (every module imports that parser — check control._deps_done and instincts._deps_done see archived IDs as done). Nightly via maintenance.py when PLAN.md exceeds `maintenance.plan_archive_kb`=60. Notes cap: `plan.notes_max_chars`=4000, overflow rotates to `docs/handovers/<date>-notes.md` with a pointer (the tool writes it; builders never commit into docs/ — tests use tmp dirs), validate_plan warns over the cap. validate_plan warns when PLAN.md >150 KB. `team_stats.py --write-tallies` generates REVIEW.md's tallies block from rows. `validate_plan.py --review` rejects blank lines/broken rows inside the verdict table; team_stats flags `:00:00Z`-rounded stamps. (The review command's clock-stamped verdict time is a .claude/commands edit — TASK-042.) Do NOT run the archiver on this repo's PLAN.md; ORCH does that at wave close. Oikonomos's 11,134-line PLAN.md may be copied read-only from C:/CLAUDECODE_TOOLSETS/oikonomos/PLAN.md into a tmp dir, or use a synthetic 366-done-task fixture. **Protected-path grants (ORCH applies before dispatch):** scripts/plan_archive.py, scripts/team_stats.py, scripts/maintenance.py, scripts/validate_plan.py.
 **Acceptance_Criteria:**
-- [ ] On a copy of oikonomos's PLAN.md or a synthetic 366-done-task equivalent, the archived result is under 60 KB, validates, and every archived block round-trips byte-for-byte (spec §6 Acceptance)
-- [ ] The generated tallies equal a recount of the rows (§6 Acceptance)
-- [ ] validate_plan warns over notes_max_chars and over 150 KB; `--review` rejects a verdict table split by a blank line; team_stats flags :00:00Z stamps (E-D bullets)
-- [ ] Archived task IDs satisfy Depends_On in validate_plan, control and instincts
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+- [x] On a copy of oikonomos's PLAN.md or a synthetic 366-done-task equivalent, the archived result is under 60 KB, validates, and every archived block round-trips byte-for-byte (spec §6 Acceptance)
+- [x] The generated tallies equal a recount of the rows (§6 Acceptance)
+- [x] validate_plan warns over notes_max_chars and over 150 KB; `--review` rejects a verdict table split by a blank line; team_stats flags :00:00Z stamps (E-D bullets)
+- [x] Archived task IDs satisfy Depends_On in validate_plan, control and instincts
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-032-cx
 **Started_At:** 2026-09-28T13:50:42Z
 **Progress_Notes:**
 - [2026-09-27T19:07:45Z] [ORCH] Reassigned GB -> CX (owner decision 2026-09-27: all build tasks to CX; GB's Grok Build balance is exhausted, HTTP 402). GB never committed. Its unreviewed WIP is kept as optional reference in the main checkout at .devteam/salvage/TASK-032-gb-wip/ (modified.patch = maintenance/team_stats/validate_plan + their tests; new/ = plan_archive.py, test_plan_archive.py, test_team_stats.py, fixtures/plan_archive/sample_plan.md). Treat it as an untrusted draft: verify against the spec; start from a fresh branch task/TASK-032-cx.
 - [2026-09-28T13:52:20Z] [CX] Recovered the preserved GB draft into the dedicated CX branch; focused archive, maintenance, tally, and validator tests pass (96).
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-28T14:04:25Z] [CX] Archive, validator, maintenance, and REVIEW tally work is committed as 5727154; full Python and Node suites completed green.
+**Artifacts:** `scripts/plan_archive.py`; `scripts/team_stats.py`; `scripts/maintenance.py`; `scripts/validate_plan.py`; archive/tally fixtures and tests
+**Test_Evidence:** `python -m pytest -q` -> 1102 passed in 550.63s; `node hooks/run-tests.js` -> 47 passed, 0 failed; focused TASK-032 suite -> 96 passed
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-28T13:52:20Z
+**Updated_At:** 2026-09-28T14:04:25Z
 
 ### TASK-033
 **Title:** Wave E E-E — plan_commit stamps Updated_At from the clock; tests isolated from the live checkout
