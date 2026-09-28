@@ -1408,7 +1408,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-039
 **Title:** Wave E E-I — learning loop earns its sessions or stays off
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §11 (E-I.1–5)
@@ -1430,9 +1430,9 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Test_Evidence:**
 - [2026-09-28T15:44:20Z] [CX] `python -m pytest -q` → 1093 passed in 224.86s. `python -m pytest -q tests/test_distiller.py tests/test_retro.py tests/test_instincts.py tests/test_instincts_lifecycle.py tests/test_board_publisher.py` → 109 passed. `node hooks/run-tests.js` → 47 passed, 0 failed.
 **Review_Findings:** REWORK (reviewer: claude-opus-5-5, 2026-09-28T20:09:15Z). Territory clean; ORCH re-run 1093 passed / Node 47 — green, but: (1) BUG scripts/retro.py _run: the new `if paused:` was inserted between `if eff["total_reviews"]:` and its `else:`, so the else now binds to `if paused` — every non-paused retro prints '- No reviews in window.' even when reviews exist. Restore the original if/else and add the paused line separately; add a test that renders a retro with reviews and asserts 'No reviews in window' is absent (and present when there are none). (2) E-I.4: the pause must be announced in the DIGEST — status_digest's learning line (or another digest line) must say distillation is paused by the effectiveness gate; test it. (3) E-I.2: pending amendments must appear once in the P0 digest with '/approve AMEND-NNN' / '/rework AMEND-NNN'; not implemented — add + test, including 'once' (not repeated every digest for the same amendment). (4) E-I.3: registry_units() only adds a display line; the retro's per-unit reporting must take its unit list from the registry (CX9 included) rather than any hardcoded roster — show it in a rendered retro fixture with a CX9 review row, and prove the active-instinct count with a fixture mixing active/probation/retired. (5) Minor: status_digest._distiller_line inserts into sys.path on every call — import once or guard.
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-28T20:09:15Z
+**Blocked_Reason:** SYNC_MISMATCH: CX session is attached to wt-codex-DEVDEPARTMENT on task/TASK-031-cx while TASK-039 is checked out by another registered worktree (wt-codex-039-DEVDEPARTMENT); cannot safely modify TASK-039 code from this worktree.
+**Updated_By:** CX
+**Updated_At:** 2026-09-28T20:20:19Z
 
 ### TASK-040
 **Title:** Wave E E-J1 — rendered roster, retire_unit, briefing lint, per-unit briefing check
