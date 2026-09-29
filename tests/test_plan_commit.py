@@ -21,6 +21,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -123,14 +124,14 @@ def powershell() -> str | None:
     return shutil.which("powershell") or shutil.which("pwsh")
 
 
-def run_commit_ps1(repo: Path, message: str):
+def run_commit_ps1(repo: Path, message: str, env: dict[str, str] | None = None):
     shell = powershell()
     if shell is None:
         pytest.skip("PowerShell is not available")
     return subprocess.run(
         [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
          "scripts/plan_commit.ps1", message],
-        cwd=repo, capture_output=True, text=True, timeout=60,
+        cwd=repo, env=env, capture_output=True, text=True, timeout=60,
     )
 
 
@@ -178,6 +179,37 @@ class TestGuardRails:
         r = run_commit(repo, "chore(plan): claim TASK-007 [S5]")
         assert r.returncode == 0
         assert "nothing to record" in r.stdout
+        assert git(repo, "rev-parse", "HEAD").stdout.strip() == before
+
+    def test_duplicate_claim_is_a_noop_without_a_commit(self, repo):
+        first_claim = plan(status="claimed", branch="task/TASK-007-s5", by="S5")
+        (repo / "PLAN.md").write_text(first_claim, encoding="utf-8", newline="\n")
+        assert run_commit(repo, "chore(plan): claim TASK-007 [S5]").returncode == 0
+        before = git(repo, "rev-parse", "HEAD").stdout.strip()
+        # Model a dispatcher re-flipping/re-stamping an already claimed block,
+        # rather than merely invoking plan_commit with a clean working tree.
+        duplicate = first_claim.replace("**Status:** claimed", "**Status:** in_progress", 1)
+        duplicate = duplicate.replace("**Updated_At:** 2026-08-04T00:00:00Z",
+                                      "**Updated_At:** 2026-08-05T00:00:00Z", 1)
+        (repo / "PLAN.md").write_text(duplicate, encoding="utf-8", newline="\n")
+        result = run_commit(repo, "chore(plan): claim TASK-007 [S5]")
+        assert result.returncode == 0
+        assert "duplicate claim" in result.stdout.lower()
+        assert git(repo, "rev-parse", "HEAD").stdout.strip() == before
+
+    def test_duplicate_claim_of_in_progress_task_is_a_noop(self, repo):
+        current = plan(status="in_progress", branch="task/TASK-007-s5", by="S5")
+        (repo / "PLAN.md").write_text(current, encoding="utf-8", newline="\n")
+        git(repo, "commit", "-q", "-am", "already in progress")
+        # A stale claimant flips it back to claimed and re-stamps the block.
+        duplicate = current.replace("**Status:** in_progress", "**Status:** claimed", 1)
+        duplicate = duplicate.replace("**Updated_At:** 2026-08-04T00:00:00Z",
+                                      "**Updated_At:** 2026-08-05T00:00:00Z", 1)
+        (repo / "PLAN.md").write_text(duplicate, encoding="utf-8", newline="\n")
+        before = git(repo, "rev-parse", "HEAD").stdout.strip()
+        result = run_commit(repo, "chore(plan): claim TASK-007 [S5]")
+        assert result.returncode == 0
+        assert "duplicate claim" in result.stdout.lower()
         assert git(repo, "rev-parse", "HEAD").stdout.strip() == before
 
     def test_refuses_when_checkout_is_on_the_wrong_branch(self, repo):
@@ -247,6 +279,256 @@ class TestGuardRails:
         assert r.returncode == 1
         assert git(repo, "rev-parse", "HEAD").stdout.strip() == before, "must not have committed"
 
+    def test_parallel_processes_commit_different_task_blocks(self, repo, tmp_path):
+        """Two real plan_commit processes preserve both independent edits."""
+        second = plan().replace("TASK-007", "TASK-009").replace("S5", "GB").replace(
+            "lib/a", "lib/b").replace("**Updated_By:** ORCH", "**Updated_By:** GB")
+        baseline = plan() + "\n" + second
+        (repo / "PLAN.md").write_text(baseline, encoding="utf-8", newline="\n")
+        git(repo, "commit", "-q", "-am", "seed two tasks")
+
+        entered = tmp_path / "first-entered-commit"
+        release = tmp_path / "release-first-commit"
+        bash_env = tmp_path / "bash_env.sh"
+        bash_env.write_text(
+            "git() {\n"
+            "  local is_commit=0 has_plan=0 arg\n"
+            "  for arg in \"$@\"; do\n"
+            "    [ \"$arg\" = commit ] && is_commit=1\n"
+            "    [ \"$arg\" = PLAN.md ] && has_plan=1\n"
+            "  done\n"
+            "  if [ \"$is_commit\" = 1 ] && [ \"$has_plan\" = 1 ] && [ \"${HOLD_FIRST_COMMIT:-0}\" = 1 ] && [ ! -e \"$HOLD_ENTERED\" ]; then\n"
+            "    : > \"$HOLD_ENTERED\"\n"
+            "    while [ ! -e \"$HOLD_RELEASE\" ]; do sleep 0.05; done\n"
+            "  fi\n"
+            "  command \"$REAL_GIT\" \"$@\"\n"
+            "}\n",
+            encoding="utf-8", newline="\n",
+        )
+        env_a = os.environ.copy()
+        env_a["BASH_ENV"] = str(bash_env)
+        env_a["REAL_GIT"] = shutil.which("git") or "git"
+        env_a["HOLD_FIRST_COMMIT"] = "1"
+        env_a["HOLD_ENTERED"] = str(entered)
+        env_a["HOLD_RELEASE"] = str(release)
+        env_b = env_a.copy()
+        env_b["HOLD_FIRST_COMMIT"] = "0"
+
+        desired_a = baseline.replace(
+            "**Progress_Notes:** —", "**Progress_Notes:**\n- [2026-09-29T11:00:00Z] [S5] concurrent A", 1)
+        (repo / "PLAN.md").write_text(desired_a, encoding="utf-8", newline="\n")
+        first = subprocess.Popen(
+            [_bash(), "scripts/plan_commit.sh", "chore(plan): progress TASK-007 [S5]"],
+            cwd=repo, env=env_a, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.monotonic() + 15
+            while not entered.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            if not entered.exists():
+                release.write_text("abort", encoding="utf-8")
+                out, err = first.communicate(timeout=10)
+                pytest.fail(f"first process never reached the delayed commit: {out}\n{err}")
+
+            task9 = baseline.split("### TASK-009", 1)
+            desired_b = task9[0] + "### TASK-009" + task9[1].replace(
+                "**Status:** pending", "**Status:** claimed", 1).replace(
+                "**Branch:** —", "**Branch:** task/TASK-009-gb", 1).replace(
+                "**Started_At:** —", "**Started_At:** 2026-09-29T11:00:00Z", 1)
+            (repo / "PLAN.md").write_text(desired_b, encoding="utf-8", newline="\n")
+            second_result = subprocess.run(
+                [_bash(), "scripts/plan_commit.sh", "chore(plan): claim TASK-009 [GB]"],
+                cwd=repo, env=env_b, capture_output=True, text=True, timeout=30)
+            assert second_result.returncode == 0, second_result.stderr
+        finally:
+            release.write_text("go", encoding="utf-8")
+        out, err = first.communicate(timeout=30)
+        assert first.returncode == 0, f"stdout={out} stderr={err}"
+        final_plan = (repo / "PLAN.md").read_text(encoding="utf-8")
+        assert "concurrent A" in final_plan
+        assert "**Branch:** task/TASK-009-gb" in final_plan
+        assert git(repo, "log", "--format=%s", "-2").stdout.count("TASK-") == 2
+
+    def test_parallel_processes_same_task_block_second_fails_without_overwrite(self, repo, tmp_path):
+        """The later writer must lose loudly when both read the same task block."""
+        entered_commit = tmp_path / "first-entered-commit"
+        release_commit = tmp_path / "release-first-commit"
+        entered_check = tmp_path / "second-entered-cas-check"
+        release_check = tmp_path / "release-second-cas-check"
+        first_plan = tmp_path / "first-plan.md"
+        bash_env = tmp_path / "bash_env_same_block.sh"
+        bash_env.write_text(
+            "git() {\n"
+            "  local args=\"$*\" count_file=\"$SECOND_COUNT_FILE\" count=0\n"
+            "  if [[ \"$args\" == *\"commit\"* && \"$args\" == *\"PLAN.md\"* && \"${HOLD_FIRST_COMMIT:-0}\" == 1 && ! -e \"$FIRST_ENTERED\" ]]; then\n"
+            "    : > \"$FIRST_ENTERED\"\n"
+            "    while [[ ! -e \"$FIRST_RELEASE\" ]]; do sleep 0.05; done\n"
+            "    cp \"$FIRST_PLAN\" \"$REPO_ROOT/PLAN.md\"\n"
+            "  fi\n"
+            "  if [[ \"$args\" == *\"rev-parse HEAD:PLAN.md\"* && \"${HOLD_SECOND_CHECK:-0}\" == 1 ]]; then\n"
+            "    count=0; [[ -f \"$count_file\" ]] && count=$(<\"$count_file\")\n"
+            "    count=$((count + 1)); printf '%s' \"$count\" > \"$count_file\"\n"
+            "    if [[ $count -eq 2 ]]; then\n"
+            "      : > \"$SECOND_ENTERED\"\n"
+            "      while [[ ! -e \"$SECOND_RELEASE\" ]]; do sleep 0.05; done\n"
+            "    fi\n"
+            "  fi\n"
+            "  command \"$REAL_GIT\" \"$@\"\n"
+            "}\n",
+            encoding="utf-8", newline="\n",
+        )
+        env_a = os.environ.copy()
+        env_a.update({
+            "BASH_ENV": str(bash_env), "REAL_GIT": shutil.which("git") or "git",
+            "HOLD_FIRST_COMMIT": "1", "FIRST_ENTERED": str(entered_commit),
+            "FIRST_RELEASE": str(release_commit), "FIRST_PLAN": str(first_plan),
+            "HOLD_SECOND_CHECK": "0", "SECOND_COUNT_FILE": str(tmp_path / "first-count"),
+            "SECOND_ENTERED": str(entered_check), "SECOND_RELEASE": str(release_check),
+        })
+        env_b = env_a.copy()
+        env_b.update({
+            "HOLD_FIRST_COMMIT": "0", "HOLD_SECOND_CHECK": "1",
+            "SECOND_COUNT_FILE": str(tmp_path / "second-count"),
+            "SECOND_ENTERED": str(entered_check), "SECOND_RELEASE": str(release_check),
+        })
+
+        desired_a = plan(status="in_progress", branch="task/TASK-007-s5", notes="writer A", by="S5")
+        desired_b = plan(status="in_progress", branch="task/TASK-007-s5", notes="writer B", by="S5")
+        first_plan.write_text(desired_a, encoding="utf-8", newline="\n")
+        (repo / "PLAN.md").write_text(desired_a, encoding="utf-8", newline="\n")
+        first = subprocess.Popen(
+            [_bash(), "scripts/plan_commit.sh", "chore(plan): progress TASK-007 [S5]"],
+            cwd=repo, env=env_a, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        second = None
+        try:
+            deadline = time.monotonic() + 15
+            while not entered_commit.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            assert entered_commit.exists(), "first process never reached its commit barrier"
+
+            (repo / "PLAN.md").write_text(desired_b, encoding="utf-8", newline="\n")
+            second = subprocess.Popen(
+                [_bash(), "scripts/plan_commit.sh", "chore(plan): progress TASK-007 [S5]"],
+                cwd=repo, env=env_b, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            deadline = time.monotonic() + 15
+            while not entered_check.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            assert entered_check.exists(), "second process never reached its CAS check"
+
+            release_commit.write_text("go", encoding="utf-8")
+            out_a, err_a = first.communicate(timeout=30)
+            assert first.returncode == 0, f"first process failed: {out_a}\n{err_a}"
+            release_check.write_text("go", encoding="utf-8")
+            out_b, err_b = second.communicate(timeout=30)
+            assert second.returncode != 0, f"second process unexpectedly succeeded: {out_b}\n{err_b}"
+            assert "CAS conflict" in err_b or "refusing to overwrite" in err_b
+        finally:
+            release_commit.write_text("go", encoding="utf-8")
+            release_check.write_text("go", encoding="utf-8")
+            if first.poll() is None:
+                first.communicate(timeout=30)
+            if second is not None and second.poll() is None:
+                second.communicate(timeout=30)
+
+        final_plan = (repo / "PLAN.md").read_text(encoding="utf-8")
+        assert "writer A" in final_plan
+        assert "writer B" not in final_plan
+        assert git(repo, "log", "--format=%s", "-1").stdout.count("TASK-") == 1
+
+
+class TestPowerShellCasBytes:
+    def test_cas_reapply_preserves_utf8_plan_bytes_and_concurrent_block(self, repo, tmp_path):
+        shell = powershell()
+        if shell is None:
+            pytest.skip("PowerShell is not available")
+
+        _, task_fields = plan().split("### TASK-007", 1)
+        other = "### TASK-009" + task_fields.replace("S5", "GB").replace(
+            "lib/a", "lib/b").replace("**Updated_By:** ORCH", "**Updated_By:** GB")
+        baseline = plan() + "\n" + other
+        (repo / "PLAN.md").write_text(baseline, encoding="utf-8", newline="\n")
+        git(repo, "commit", "-q", "-am", "seed two blocks")
+
+        entered = tmp_path / "ps-cas-check-entered"
+        release = tmp_path / "ps-cas-check-release"
+        counter = tmp_path / "ps-cas-check-count"
+        hook = tmp_path / "git_hook.py"
+        hook.write_text(
+            "import os, subprocess, sys, time\n"
+            "args = sys.argv[1:]\n"
+            "if args[-2:] == ['rev-parse', 'HEAD:PLAN.md']:\n"
+            "    count_path = os.environ['CAS_COUNT']\n"
+            "    try: count = int(open(count_path, encoding='ascii').read())\n"
+            "    except FileNotFoundError: count = 0\n"
+            "    count += 1\n"
+            "    open(count_path, 'w', encoding='ascii').write(str(count))\n"
+            "    if count == 2:\n"
+            "        open(os.environ['CAS_ENTERED'], 'w').close()\n"
+            "        while not os.path.exists(os.environ['CAS_RELEASE']): time.sleep(0.05)\n"
+            "p = subprocess.run([os.environ['REAL_GIT'], *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE)\n"
+            "sys.stdout.buffer.write(p.stdout); sys.stderr.buffer.write(p.stderr); sys.exit(p.returncode)\n",
+            encoding="utf-8", newline="\n",
+        )
+        shim_dir = tmp_path / "git-shim"
+        shim_dir.mkdir()
+        (shim_dir / "git.cmd").write_text(
+            '@echo off\r\n"%PYTHON_EXE%" "%GIT_HOOK%" %*\r\nexit /b %ERRORLEVEL%\r\n',
+            encoding="ascii", newline="",
+        )
+        env = os.environ.copy()
+        env.update({
+            "PATH": f"{shim_dir}{os.pathsep}{env.get('PATH', '')}",
+            "REAL_GIT": shutil.which("git") or "git",
+            "PYTHON_EXE": sys.executable,
+            "GIT_HOOK": str(hook), "CAS_ENTERED": str(entered),
+            "CAS_RELEASE": str(release), "CAS_COUNT": str(counter),
+        })
+
+        desired = baseline.replace("**Status:** pending", "**Status:** claimed", 1)
+        desired = desired.replace("**Branch:** —", "**Branch:** task/TASK-007-s5", 1)
+        (repo / "PLAN.md").write_text(desired, encoding="utf-8", newline="\n")
+        process = subprocess.Popen(
+            [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+             "scripts/plan_commit.ps1", "chore(plan): claim TASK-007 [S5]"],
+            cwd=repo, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        try:
+            deadline = time.monotonic() + 20
+            while not entered.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            assert entered.exists(), "PowerShell process did not reach its CAS check"
+
+            # Land a concurrent change to the other block without touching the
+            # pending worktree file that plan_commit is about to replay.
+            head = git(repo, "rev-parse", "HEAD").stdout.strip()
+            latest = subprocess.run(["git", "show", "HEAD:PLAN.md"], cwd=repo,
+                                    capture_output=True, check=True).stdout.decode("utf-8")
+            before_other, other_block = latest.split("### TASK-009", 1)
+            updated = before_other + "### TASK-009" + other_block.replace(
+                "**Progress_Notes:** —", "**Progress_Notes:** concurrent other task", 1)
+            blob = subprocess.run(["git", "hash-object", "-w", "--stdin"], cwd=repo,
+                                  input=updated.encode("utf-8"), capture_output=True, check=True).stdout.decode().strip()
+            index = tmp_path / "concurrent-index"
+            index_env = os.environ.copy()
+            index_env["GIT_INDEX_FILE"] = str(index)
+            subprocess.run(["git", "read-tree", head], cwd=repo, env=index_env, check=True, capture_output=True)
+            subprocess.run(["git", "update-index", "--add", "--cacheinfo", "100644", blob, "PLAN.md"],
+                           cwd=repo, env=index_env, check=True, capture_output=True)
+            tree = subprocess.run(["git", "write-tree"], cwd=repo, env=index_env,
+                                  check=True, capture_output=True, text=True).stdout.strip()
+            commit = subprocess.run(["git", "commit-tree", tree, "-p", head, "-m", "parallel TASK-009 update"],
+                                    cwd=repo, check=True, capture_output=True, text=True).stdout.strip()
+            subprocess.run(["git", "update-ref", "refs/heads/main", commit, head], cwd=repo, check=True,
+                           capture_output=True)
+        finally:
+            release.write_text("go", encoding="ascii")
+        stdout, stderr = process.communicate(timeout=60)
+        assert process.returncode == 0, f"stdout={stdout}\nstderr={stderr}"
+        final = subprocess.run(["git", "show", "HEAD:PLAN.md"], cwd=repo,
+                               capture_output=True, check=True).stdout.decode("utf-8")
+        assert "concurrent other task" in final
+        assert "**Status:** claimed" in final
+        assert "**Depends_On:** —" in final, "UTF-8 em dash must survive the PowerShell CAS snapshot"
+
 
 class TestRunsFromALinkedWorktree:
     """The invocation builders ACTUALLY use — and the one that was broken.
@@ -276,12 +558,12 @@ class TestRunsFromALinkedWorktree:
         wt = self._worktree(repo)
         (repo / "PLAN.md").write_text(plan(status="claimed", by="GB"),
                                       encoding="utf-8", newline="\n")
-        r = subprocess.run([_bash(), "scripts/plan_commit.sh", "chore(plan): claim [GB]"],
+        r = subprocess.run([_bash(), "scripts/plan_commit.sh", "chore(plan): claim TASK-007 [S5]"],
                            cwd=wt, capture_output=True, text=True, timeout=60)
         assert r.returncode == 0, f"stdout={r.stdout} stderr={r.stderr}"
         # The commit must exist on the MAIN checkout's integration branch...
         log = git(repo, "log", "--oneline", "-1").stdout
-        assert "claim [GB]" in log
+        assert "claim TASK-007 [S5]" in log
         assert files_in_head(repo) == {"PLAN.md"}
         # ...and the worktree must still be detached, untouched.
         head = git(wt, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
@@ -362,21 +644,17 @@ class TestClockStampedUpdatedAt:
         self._assert_stamped(repo, before)
 
     @pytest.mark.parametrize("runner", [run_commit, run_commit_ps1])
-    def test_message_naming_an_untouched_block_does_not_stamp_it(self, repo, runner):
-        """AC1: 'untouched blocks are unchanged' — even one the COMMIT MESSAGE
-        names. Both mirrors must pick affected blocks from the pending diff,
-        never from TASK IDs parsed out of the message (TASK-033 review): a
-        message that merely mentions TASK-009 (e.g. "unblocks TASK-009") must
-        not touch TASK-009's block, which this diff never changed."""
+    def test_untouched_block_is_not_stamped(self, repo, runner):
+        """Both mirrors stamp blocks selected from the diff, not the task roster."""
         baseline = self._two_blocks("2026-08-04T00:00:00Z").replace("**Status:** claimed", "**Status:** pending", 1)
         (repo / "PLAN.md").write_text(baseline, encoding="utf-8", newline="\n")
         git(repo, "commit", "-q", "-am", "add untouched block")
-        # Only TASK-007 changes in this diff; the message names TASK-009 too.
+        # Only TASK-007 changes in this diff; TASK-009 remains untouched.
         (repo / "PLAN.md").write_text(self._two_blocks("2026-08-04T00:00:00Z"), encoding="utf-8", newline="\n")
-        result = runner(repo, "chore(plan): claim TASK-007, unblocks TASK-009 [S5]")
+        result = runner(repo, "chore(plan): claim TASK-007 [S5]")
         assert result.returncode == 0, result.stderr
         content = (repo / "PLAN.md").read_text(encoding="utf-8")
-        assert "**Updated_At:** 2099-01-01T00:00:00Z" in content  # TASK-009: named in the message, never touched
+        assert "**Updated_At:** 2099-01-01T00:00:00Z" in content  # TASK-009's timestamp is preserved
 
     def test_fixture_suite_never_mutates_the_live_checkout(self, repo):
         """Fixtures copy the tools; no invocation points at the source checkout."""
