@@ -1,5 +1,5 @@
 ---
-plan_version: 6.6
+plan_version: 6.7
 last_updated: 2026-09-29T11:08:08Z
 overall_status: in_progress
 orchestrator_notes: "REVIEW 2026-09-29T11:08:08Z (claude-opus-5): TASK-040 REWORK. Tests/territory/PLAN discipline all clean and evidence matched exactly (1164/47 re-run by ORCH); AC1 and AC3 independently reproduced. Two blocking defects: (1) briefing path lint skips backtick-quoted paths via its (?<![`\w]) lookbehind, missing ~half the path mentions in the real briefings; (2) render_rosters uses an un-escaped re.subn replacement, so a backslash in a registry value raises re.error (not a ValueError, so uncaught) AND retire_unit writes autopilot.json before rendering, leaving a half-applied state. DISPATCH 2026-09-29T09:58:17Z: CX redispatched to resume TASK-040 (stalled pre-submission last session, no error, just deferred the full suite past its one-shot turn) - worktree correctly recognized as resumable (has_resumable_task), left on task/TASK-040-cx. transcript .devteam/launch/CX-20260929-095817.log. STATUS 2026-09-29T09:55:21Z: CX session for TASK-040 ended ~08:26Z after committing 4f49fbc (focused 101 + Node 47 passing) but before running the full suite or submitting -- stalled ~90min, no active process. Redispatching to resume. TASK-034 (high) still untouched. STATUS 2026-09-29T08:46:29Z: CX ignored the DEVTEAM_TASK=TASK-034 dispatch hint and self-claimed TASK-040 (medium) instead of TASK-034 (high, both deps done) — a priority-order deviation from its own claim procedure, not a territory violation (040 diff is clean, 7/7 files in Owned_Paths). Letting it finish 040 since its deps are legitimately met; TASK-034 remains pending and should be the next explicit dispatch target. DISPATCH 2026-09-29T08:21:59Z: CX launched detached for TASK-034 (E-F1: plan_commit compare-and-swap, idempotent claim, legacy-mode blackboard guard); transcript .devteam/launch/CX-20260929-082159.log. DIRECTIVE 2026-09-29T10:15:00Z (Alister): all build work routes to CX. S5/GB receive no work; do not dispatch either. All pending tasks (034, 036-043) already Assigned_To: CX. ORCH's own role stays plan/dispatch/review only from here — the direct-build detour this session (ORCH implementing 031/033/035/039 itself) was a one-off exception, not the standing procedure. REVIEW 2026-09-29T10:00:00Z (claude-opus-4-8): TASK-031/039 approved+merged (date-brittle test reworks). ORCH found+fixed one real gap post-merge: tests/test_supervisor_once_inbox.py was missing from sync-manifest.json; master now clean (1160 Python + 47 Node). PRIOR: TASK-035/033 approved+merged (E-F2/E-E). Wave E done: 031/032/033/035/039. Ready-next: TASK-034 (deps 033+027 done), TASK-040 (dep 035 done); TASK-036 needs 034+031(done); TASK-037/038/041/042/043 further downstream — see Depends_On per task. ENV CAVEAT: shell-driven suites (test_plan_commit/test_dispatch_worktree/test_notify_needs_review) can show spurious MSYS worktree-path failures in some session environments (git-in-worktree path resolution); TASK-037 owns the harness fix — verify with your own from-scratch full-suite run before trusting a reviewer's reported failure count. GB idle (Grok Build balance exhausted, HTTP 402). Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md."
@@ -1285,7 +1285,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-034
 **Title:** Wave E E-F1 — plan_commit compare-and-swap, idempotent claim, legacy-mode blackboard guard
-**Status:** needs_review
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H4, §8 (E-F.1, E-F.2, E-F.6)
@@ -1321,10 +1321,10 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Test_Evidence:**
 - [2026-09-29T11:17:30Z] [CX] `node hooks/run-tests.js` → 47 passed, 0 failed. Focused `tests/test_plan_guard.py tests/test_plan_commit.py` collection → 43 tests; final complete foreground result still pending.
 - [2026-09-29T12:03:06Z] [CX] `python -m pytest -q tests/test_plan_commit.py tests/test_plan_guard.py` → 44 passed in 51.84s; `node hooks/run-tests.js` → 47 passed, 0 failed; `python -m pytest -q` → 1167 passed in 418.30s.
-**Review_Findings:** —
+**Review_Findings:** REWORK (ORCH, claude-opus-5-5, 2026-09-29T12:46:13Z). Territory clean 6/6; preflight present. BLOCKING: (1) E-F.2 idempotent claim NOT implemented — test_duplicate_claim_is_a_noop_without_a_commit re-runs with an unchanged PLAN.md, so it only hits the pre-existing 'nothing to record' path; a claim that re-flips/re-stamps an already claimed/in_progress block by the same unit still commits. Detect it in plan_commit (sh+ps1) and exit 0 with no commit; test with a real re-claim edit. (2) Same-block concurrency (§8 Acceptance + AC5 'real parallel processes') only tested at the plan_guard --cas-* level; add a barrier-coordinated two-process plan_commit.sh test where both edit the same block — second exits non-zero loudly, HEAD holds only the first. (3) Spec §8.1 says retry up to 3 on CAS; loop allows 5 — cap CAS replays at 3 (index.lock retries may stay separate). (4) plan_commit.ps1 writes CAS base via `git show | Set-Content` — PowerShell pipeline re-decodes with console encoding (mangles the em-dash in every block → false conflicts) and adds CRLF; write git's bytes directly (e.g. git show HEAD:PLAN.md > via cmd /c or [IO.File]::WriteAllBytes) and add a ps1 CAS test (skipped when no powershell). NON-BLOCKING: check-then-commit TOCTOU window remains between rev-parse and commit; note it in the dossier. ORCH independent full-suite re-run was still in flight at verdict time; counts to be appended to REVIEW.md.
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-09-29T12:03:30Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-29T12:46:13Z
 
 ### TASK-035
 **Title:** Wave E E-F2 — verified claim, pinned base, dirty-PLAN refusal, strict Owned_Paths grammar, strict-by-default onboarding
