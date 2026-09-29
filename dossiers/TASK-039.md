@@ -17,3 +17,4 @@
 Write the failing test first (it must fail against current master — spec §1 H7), then implement, then run BOTH full suites. Ported code cites its origin SHA and lists anything not ported, with the reason, in the Work Log.
 
 ## Work Log
+- [2026-09-29T00:00:00Z] [CX/ORCH] Merged master into branch (picks up TASK-032's sync-manifest registrations). Full suite green: 1112 Python passed in 223.85s; 47 Node passed. All four rework findings addressed: learning.enabled gate + one-time notice, amendment de-dup/missing-target-reject/expiry, P0 digest /approve|/rework lines (once), effectiveness-gate pause with digest + retro announcement, registry-driven per-unit retro (CX9 fixture). Submitting for review.

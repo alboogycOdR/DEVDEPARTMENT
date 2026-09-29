@@ -22,6 +22,7 @@ from validate_plan import Report, parse_tasks  # noqa: E402
 
 MARKER_REL = ".devteam/last_retro_week.txt"
 AMEND_DIR_REL = ".devteam/pending_amendments"
+EFFECTIVENESS_REL = ".devteam/learning_effectiveness.json"
 TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 
@@ -69,12 +70,17 @@ def review_outcomes(review_text: str) -> list[dict]:
         rework = any(k in low for k in REWORK_KEYWORDS)
         clean = (not rework) and any(k in low for k in CLEAN_KEYWORDS)
         if rework or clean:
-            out.append({"task_id": m.group(0), "rework": rework})
+            # REVIEW.md rows put the reviewed unit in column two.  Keep this
+            # deliberately best-effort: historical/free-form rows still count
+            # toward project totals, but cannot be assigned to a unit.
+            columns = [column.strip() for column in line.split("|")]
+            unit = columns[2] if len(columns) > 2 else ""
+            out.append({"task_id": m.group(0), "rework": rework, "unit": unit})
     return out
 
 
 def territory_churn(plan_text: str, outcomes: list[dict]) -> dict[str, int]:
-    """Rework count per top-level territory directory."""
+    """Rework count per owned path, never an ambiguous directory bucket."""
     paths_by_task: dict[str, list[str]] = {}
     for t in parse_tasks(plan_text, Report()):
         raw = t.fields.get("Owned_Paths", "")
@@ -84,8 +90,7 @@ def territory_churn(plan_text: str, outcomes: list[dict]) -> dict[str, int]:
         if not o["rework"]:
             continue
         for p in paths_by_task.get(o["task_id"], []):
-            top = p.split("/")[0] or p
-            churn[top] = churn.get(top, 0) + 1
+            churn[p] = churn.get(p, 0) + 1
     return dict(sorted(churn.items(), key=lambda kv: -kv[1]))
 
 
@@ -112,6 +117,40 @@ def instinct_effectiveness(repo: Path, plan_text: str,
     return {"project_first_pass_rate": rate(total),
             "instinct_matched_first_pass_rate": rate(matched),
             "matched_reviews": matched["n"], "total_reviews": total["n"]}
+
+
+def registry_units(cfg: dict) -> list[str]:
+    builders = cfg.get("builders", {}) if isinstance(cfg, dict) else {}
+    active = builders.get("active", []) if isinstance(builders, dict) else []
+    return [str(unit) for unit in active]
+
+
+def unit_review_summary(outcomes: list[dict], units: list[str]) -> dict[str, dict[str, int]]:
+    """Return review counts for exactly the active units in the registry."""
+    summary = {unit: {"reviews": 0, "first_pass": 0} for unit in units}
+    for outcome in outcomes:
+        row = summary.get(outcome.get("unit", ""))
+        if row is not None:
+            row["reviews"] += 1
+            row["first_pass"] += 0 if outcome["rework"] else 1
+    return summary
+
+
+def record_effectiveness(repo: Path, week: str, eff: dict) -> bool:
+    """Persist one row per ISO week; true means the two-week pause applies."""
+    path = repo / EFFECTIVENESS_REL
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        state = {}
+    rows = [r for r in state.get("weeks", []) if r.get("week") != week]
+    rows.append({"week": week, "matched": eff.get("instinct_matched_first_pass_rate"),
+                 "overall": eff.get("project_first_pass_rate")})
+    rows = rows[-8:]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"weeks": rows}, indent=2) + "\n", encoding="utf-8")
+    return len(rows) >= 2 and all(r["matched"] is not None and r["overall"] is not None
+                                  and r["matched"] <= r["overall"] for r in rows[-2:])
 
 
 # ------------------------------------------------------------------- run ----
@@ -142,6 +181,7 @@ def _run(repo: Path, cfg: dict) -> Path:
     outcomes = review_outcomes(review)
     churn = territory_churn(plan, outcomes)
     eff = instinct_effectiveness(repo, plan, outcomes)
+    paused = record_effectiveness(repo, week, eff)
     instincts = inst_mod.load(repo)
 
     pending = sorted((repo / AMEND_DIR_REL).glob("AMEND-*.md")) \
@@ -174,7 +214,7 @@ def _run(repo: Path, cfg: dict) -> Path:
         lines.append("- No completed tasks with valid timestamps this period.")
 
     lines += ["", "## Territory churn (rework findings per territory)"]
-    lines += ([f"- `{k}/` — {v} rework finding(s)" for k, v in churn.items()]
+    lines += ([f"- `{k}` — {v} rework finding(s)" for k, v in churn.items()]
               or ["- No rework churn recorded."])
 
     lines += ["", "## Instinct effectiveness"]
@@ -188,12 +228,20 @@ def _run(repo: Path, cfg: dict) -> Path:
             verdict = "higher — instincts appear to be helping" if a > b else \
                       "not higher — review whether current instincts target the real failure modes"
             lines.append(f"- Comparison: instinct-matched rate is {verdict}.")
-    else:
+    if not eff["total_reviews"]:
         lines.append("- No reviews in window.")
+    if paused:
+        lines.append("- Distillation paused: matched first-pass rate was not above overall for two consecutive weeks.")
     lines.append(f"- Active instincts: "
                  f"{sum(1 for i in instincts if i.status == 'active')} · probation: "
                  f"{sum(1 for i in instincts if i.status == 'probation')} · retired: "
                  f"{sum(1 for i in instincts if i.status == 'retired')}")
+    units = registry_units(cfg)
+    lines.append(f"- Active registry units: {', '.join(units) if units else 'none'}")
+    lines += ["", "## Reviews by active registry unit"]
+    for unit, stats in unit_review_summary(outcomes, units).items():
+        rate = round(stats["first_pass"] / stats["reviews"], 3) if stats["reviews"] else "n/a"
+        lines.append(f"- {unit}: {stats['reviews']} review(s); first-pass rate {rate}")
 
     lines += ["", "## Escalations logged (AUTOPILOT_LOG.md keyword counts)",
               f"- P0: {escalations['P0']} · P1: {escalations['P1']} · P2: {escalations['P2']}"]

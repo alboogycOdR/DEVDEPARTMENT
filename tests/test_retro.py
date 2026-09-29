@@ -57,7 +57,7 @@ class TestCycleTime:
 class TestChurnAndEffectiveness:
     def test_territory_churn(self):
         churn = rm.territory_churn(PLAN, rm.review_outcomes(REVIEW))
-        assert churn == {"python": 1}
+        assert churn == {"python/orb/**": 1}
 
     def test_instinct_effectiveness_comparison(self, tmp_path):
         # Instinct covering python/orb/** — TASK-301 (rework) and TASK-304 (clean)
@@ -70,11 +70,34 @@ class TestChurnAndEffectiveness:
         assert eff["project_first_pass_rate"] == 0.75
         assert eff["instinct_matched_first_pass_rate"] == round(2 / 3, 3)
 
+    def test_registry_includes_cx9_and_effectiveness_pause(self, tmp_path):
+        assert rm.registry_units({"builders": {"active": ["GB", "CX9"]}}) == ["GB", "CX9"]
+        weak = {"instinct_matched_first_pass_rate": 0.4, "project_first_pass_rate": 0.5}
+        assert not rm.record_effectiveness(tmp_path, "2026-W01", weak)
+        assert rm.record_effectiveness(tmp_path, "2026-W02", weak)
+
+    def test_unit_summary_uses_registry_and_counts_only_active_instincts(self, tmp_path):
+        outcomes = rm.review_outcomes(REVIEW + "\n| TASK-302 | CX9 | approved first-pass | — | note | now |")
+        assert rm.unit_review_summary(outcomes, ["GB", "CX9"]) == {
+            "GB": {"reviews": 3, "first_pass": 2},
+            "CX9": {"reviews": 1, "first_pass": 1},
+        }
+        im.save_atomic(tmp_path, [
+            im.Instinct("INST-001", "a", ["python/**"], 0.7, ["x"], "active"),
+            im.Instinct("INST-002", "b", ["python/**"], 0.7, ["x"], "probation"),
+            im.Instinct("INST-003", "c", ["python/**"], 0.7, ["x"], "retired"),
+        ])
+        assert sum(i.status == "active" for i in im.load(tmp_path)) == 1
+
 
 class TestRetroRun:
     def test_drafts_file_and_never_mutates_state(self, tmp_path):
         (tmp_path / "PLAN.md").write_text(PLAN, encoding="utf-8")
-        (tmp_path / "REVIEW.md").write_text(REVIEW, encoding="utf-8")
+        # CX9 proves the rendered per-unit section derives its roster from the
+        # registry, rather than from the historic GB/CX hard-coded roster.
+        (tmp_path / "REVIEW.md").write_text(
+            REVIEW + "\n| TASK-302 | CX9 | approved first-pass | — | note | now |",
+            encoding="utf-8")
         (tmp_path / "AUTOPILOT_LOG.md").write_text("- [ts] P2 escalation\n", encoding="utf-8")
         im.save_atomic(tmp_path, [im.Instinct(
             inst_id="INST-001", rule="r", territory=["python/**"],
@@ -84,12 +107,15 @@ class TestRetroRun:
         (d / "AMEND-002.md").write_text("# AMEND-002\n**Status:** pending\nx\n", encoding="utf-8")
 
         before_instincts = (tmp_path / "INSTINCTS.md").read_bytes()
-        out = rm.run(tmp_path, {})
+        out = rm.run(tmp_path, {"builders": {"active": ["GB", "CX9"]}})
         assert out and out.name.startswith("RETRO-") and out.exists()
         text = out.read_text(encoding="utf-8")
         assert "TASK-301 (4.5h)" in text
         assert "AMEND-002" in text and "/approve AMEND-002" in text
         assert "Instinct effectiveness" in text
+        assert "No reviews in window" not in text
+        assert "- CX9: 1 review(s); first-pass rate 1.0" in text
+        assert "- Active instincts: 1 · probation: 0 · retired: 0" in text
         # descriptive only — no mutation
         assert (tmp_path / "INSTINCTS.md").read_bytes() == before_instincts
 
@@ -97,6 +123,7 @@ class TestRetroRun:
         out = rm.run(tmp_path, {})
         assert out is not None  # still drafts a (sparse) retro
         assert "No completed tasks" in out.read_text(encoding="utf-8")
+        assert "No reviews in window" in out.read_text(encoding="utf-8")
 
 
 class TestScheduling:

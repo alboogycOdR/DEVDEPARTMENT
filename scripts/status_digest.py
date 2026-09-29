@@ -24,6 +24,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import distiller  # noqa: E402
+import instincts  # noqa: E402
 from validate_plan import parse_tasks, Report  # noqa: E402
 
 UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
@@ -87,6 +89,42 @@ def _behind_pack_line(repo: Path) -> str | None:
         return None
 
 
+def _distiller_line(repo: Path) -> str:
+    """Read-only learning observability; never starts a distillation session."""
+    marker = repo / ".devteam" / "last_distill_ts.txt"
+    try:
+        last = marker.read_text(encoding="utf-8").strip() or "never ran"
+    except OSError:
+        last = "never ran"
+    try:
+        log = (repo / "AUTOPILOT_LOG.md").read_text(encoding="utf-8")
+        runs = sum(1 for line in log.splitlines() if "DISTILL ok " in line)
+    except OSError:
+        runs = 0
+    try:
+        produced = len(instincts.load(repo))
+    except Exception:
+        produced = 0
+    paused = "; paused by effectiveness gate" if distiller.effectiveness_paused(repo) else ""
+    return f"Learning: distiller last-run {last}; runs {runs}; instincts produced {produced}{paused}"
+
+
+def _pending_amendment_lines(repo: Path, announced: set[str]) -> list[str]:
+    """Return newly-pending constitutional amendments for one P0 digest only."""
+    directory = repo / ".devteam" / "pending_amendments"
+    if not directory.is_dir():
+        return []
+    pending = []
+    for proposal in sorted(directory.glob("AMEND-*.md")):
+        try:
+            is_pending = "**Status:** pending" in proposal.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if is_pending and proposal.stem not in announced:
+            pending.append(proposal.stem)
+    return pending
+
+
 def _heartbeat(repo: Path, task) -> datetime | None:
     """Newest of the recorded plan time, branch commit and dossier mtime."""
     candidates = [_parse_ts(task.get("Updated_At"))]
@@ -106,7 +144,8 @@ def _heartbeat(repo: Path, task) -> datetime | None:
     return max((item for item in candidates if item is not None), default=None)
 
 
-def build(repo: Path, now: datetime, since: datetime | None = None, cfg: dict | None = None) -> str:
+def build(repo: Path, now: datetime, since: datetime | None = None, cfg: dict | None = None,
+          announced_amendments: set[str] | None = None) -> str:
     """The digest body WITHOUT the trailing local-time line (so it can be hashed for change detection)."""
     tasks = parse_tasks((repo / "PLAN.md").read_text(encoding="utf-8"), Report())
     by_id = {t.task_id: t for t in tasks}
@@ -140,6 +179,12 @@ def build(repo: Path, now: datetime, since: datetime | None = None, cfg: dict | 
     if unassigned:
         queue.append(f"{unassigned} unassigned (backlog/maintenance)")
 
+    amendments = _pending_amendment_lines(repo, announced_amendments or set())
+    pending_action.extend(
+        f"P0 {amendment} — /approve {amendment} or /rework {amendment} <reason>"
+        for amendment in amendments
+    )
+
     lines = ["Merged (since last update):", *_section(_merged_since(repo, since)),
              "In progress:", *_section(in_progress + in_review),
              "Queue:", *_section(queue),
@@ -147,6 +192,7 @@ def build(repo: Path, now: datetime, since: datetime | None = None, cfg: dict | 
              "Prod: not touched by the autopilot (deploys are manual)"]
     if behind := _behind_pack_line(repo):
         lines.append(behind)
+    lines.append(_distiller_line(repo))
     return "\n".join(lines)
 
 
@@ -172,15 +218,24 @@ def run(repo: Path, cfg: dict | None = None, now: datetime | None = None,
         last = json.loads(state_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         last = {}
-    body = build(repo, now, since=_parse_ts(last.get("ts", "")), cfg=cfg)
+    announced = set(last.get("announced_amendments", []))
+    body = build(repo, now, since=_parse_ts(last.get("ts", "")), cfg=cfg,
+                 announced_amendments=announced)
     digest = f"{body}\n{_local_time_line(now)}"
     (repo / ".devteam").mkdir(exist_ok=True)
     (repo / ".devteam" / "STATUS.md").write_text(digest + "\n", encoding="utf-8")
 
+    newly_announced = _pending_amendment_lines(repo, announced)
+    if newly_announced:
+        announced.update(newly_announced)
+        last["announced_amendments"] = sorted(announced)
+        state_path.write_text(json.dumps(last), encoding="utf-8")
+
     body_hash = hashlib.sha1(body.encode("utf-8")).hexdigest()
     if send and (force or body_hash != last.get("hash")):
         _notify(cfg, repo, digest)
-        state_path.write_text(json.dumps({"ts": now.strftime(UTC_FMT), "hash": body_hash}), encoding="utf-8")
+        last.update({"ts": now.strftime(UTC_FMT), "hash": body_hash})
+        state_path.write_text(json.dumps(last), encoding="utf-8")
     return digest
 
 
