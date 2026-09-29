@@ -76,6 +76,7 @@ def create_fixture_project(parent: Path, unit: str = "CX", cli: str = "codex",
     for name in ("dispatch.sh", "validate_plan.py", "instincts.py", "builder_registry.py"):
         shutil.copyfile(SCRIPTS / name, root / "scripts" / name)
     (root / "scripts" / "dispatch.sh").chmod(0o755)
+    _write_stub(root / "scripts" / "plan_commit.sh", "#!/usr/bin/env bash\nexit 0\n")
     entry = {
         "cli": cli, "model": None, "auth": {"mode": "default"},
         "worktree_suffix": suffix, "branch_suffix": suffix,
@@ -89,6 +90,12 @@ def create_fixture_project(parent: Path, unit: str = "CX", cli: str = "codex",
     relative_output = f"smoke-output/{unit}/dispatch-smoke.txt"
     (root / entry["briefing"]).write_text(
         f"Create `{relative_output}` with the CLI version, then exit.\n", encoding="utf-8")
+    (root / "AGENTS.md").write_text(
+        f"This is a disposable smoke fixture. Create `{relative_output}` with the CLI version "
+        "and exit without asking for input. The fixture plan_commit helper intentionally "
+        "succeeds without publishing coordination state.\n",
+        encoding="utf-8",
+    )
     (root / "PLAN.md").write_text(f"""---
 plan_version: 1.0
 last_updated: 2026-09-29T00:00:00Z
@@ -168,7 +175,10 @@ def run_dispatch_smoke(root: Path, unit: str, cli: str, fakebin: Path | None,
         # for a completed CLI session.
         time.sleep(0.25)
     if not output_file.is_file():
-        raise SmokeFailure(f"{unit}: CLI exited 0 but did not write its Owned_Paths smoke file")
+        raise SmokeFailure(
+            f"{unit}: CLI exited 0 but did not write its Owned_Paths smoke file:\\n"
+            f"{result.stdout}\\n{result.stderr}"
+        )
     return SmokeResult(unit, version.stdout.strip(), output_file, result.stdout + result.stderr)
 
 
