@@ -1403,7 +1403,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.1–3, E-H.5)
@@ -1435,15 +1435,16 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-29T12:17:09Z] [CX] Implemented permitted E-H.1/E-H.2/E-H.5 work in `90b389a`; focused Windows/worktree checks and Node tests pass. E-H.3 cannot be completed within current ownership: `scripts/dispatch.sh` and `scripts/plan_commit.sh` both parse Python output and are not in TASK-037 Owned_Paths. No edits made to either. Requesting ORCH to extend/reassign ownership before resuming.
 - [2026-09-29T14:19:46Z] [CX] Resumed after ORCH's re-carve and committed `32ae268`: CR is now stripped at every Python-command-substitution boundary in dispatch.sh and for the Python-derived base branch in plan_commit.sh. The new master-base CRLF fixture passes. Full Python verification is blocked by master-owned sync registration: test_sync_from_pack reports `tests/test_retire_unit.py` is present on master but absent from the manifest; this task cannot modify the manifest.
 - [2026-09-29T16:20:00Z] [CX] Merged the manifest fix, then verified locally: `python -m pytest -q` → 1181 passed in 581.05s; `node hooks/run-tests.js` → 47 passed. Published CI run 36596198456 exposed one remaining framework registration gap: owned new `tests/test_worktree_ps1.py` is absent from `sync-manifest.json`, which is outside TASK-037 Owned_Paths. Task-owned CI fixes were committed in d2bf5ee (pwsh selection and C:\\tmp fixture setup); awaiting an ORCH manifest registration before rerunning CI.
+- [2026-09-29T16:41:34Z] [CX] Registered `tests/test_worktree_ps1.py` in 865a0fb and published CI run 36599187033. Ubuntu failed 13 PowerShell-on-Linux tests: TASK-037 dispatch fixtures invoke Windows-style `scripts\\builder_registry.py`, while 11 failures are in out-of-territory `tests/test_plan_commit.py` / `scripts/plan_commit.ps1` due to `git.exe` on Linux. Windows job was still running when this block was recorded. CI cannot be made green without an ORCH ownership re-carve for the shared cross-platform PowerShell test strategy and plan-commit files.
 **Artifacts:** scripts/dispatch.ps1, scripts/dispatch.sh, scripts/plan_commit.sh, scripts/worktree.ps1, .github/workflows/tests.yml, .gitattributes, tests/test_worktree_ps1.py, tests/test_dispatch_worktree.py, dossiers/TASK-037.md
 **Test_Evidence:**
 - [2026-09-29T12:17:09Z] [CX] `python -m pytest -q tests/test_worktree_ps1.py tests/test_dispatch_worktree.py` → 41 passed in 90.01s; `python -m pytest -q tests/test_dispatch_worktree.py::TestWorktreeNamespacing::test_master_base_branch_fixture_is_supported tests/test_worktree_ps1.py` → 3 passed in 3.33s; `node hooks/run-tests.js` → 47 passed, 0 failed.
 - [2026-09-29T14:19:46Z] [CX] `bash -n scripts/dispatch.sh && bash -n scripts/plan_commit.sh` → passed; `python -m pytest -vv tests/test_dispatch_worktree.py::TestWorktreeNamespacing::test_carriage_return_in_python_base_branch_output_is_stripped` → 1 passed in 3.56s; `python -m pytest -q` → 1 failed (the master-owned `tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered`, missing `tests/test_retire_unit.py` from the sync manifest); `node hooks/run-tests.js` → 47 passed, 0 failed.
 - [2026-09-29T16:20:00Z] [CX] `python -m pytest -q` → 1181 passed in 581.05s; `node hooks/run-tests.js` → 47 passed, 0 failed. CI [run 36596198456](https://github.com/alboogycOdR/DEVDEPARTMENT/actions/runs/36596198456) initially failed: Ubuntu test helper hard-coded `powershell`; Windows lacked `C:\\tmp`; both repaired in d2bf5ee. CI also confirms `tests/test_worktree_ps1.py` is missing from `sync-manifest.json` (outside territory), so no green matrix can be truthfully recorded until ORCH registers it.
 **Review_Findings:** ORCH 2026-09-29T16:36:34Z: unblocked (2nd OWNERSHIP_CONFLICT, re-carved). sync-manifest.json added to Owned_Paths: register tests/test_worktree_ps1.py (and anything else this branch adds under framework_owned) ON YOUR BRANCH — ORCH cannot register it on master first because test_every_framework_owned_path_exists_in_the_pack then fails until the file lands. Then merge master, push task/TASK-037-cx (task branch only, never force), wait for the Actions run, link it in Test_Evidence, re-run both suites, submit needs_review.
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-29T16:36:34Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: CI matrix requires cross-platform PowerShell test gating/fixes in tests/test_plan_commit.py and scripts/plan_commit.ps1, outside TASK-037 Owned_Paths.
+**Updated_By:** CX
+**Updated_At:** 2026-09-29T16:42:11Z
 
 ### TASK-038
 **Title:** Wave E E-H2 — CLI launch smoke test in harness-audit
