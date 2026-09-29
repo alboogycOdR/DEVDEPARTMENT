@@ -17,3 +17,4 @@
 Write the failing test first (it must fail against current master — spec §1 H7), then implement, then run BOTH full suites. Ported code cites its origin SHA and lists anything not ported, with the reason, in the Work Log.
 
 ## Work Log
+- 2026-09-29: Addressed review rework: path lint now detects backtick-quoted paths; roster substitutions treat registry data literally; roster updates are validated before any documents are written; unit retirement renders the proposed registry before persisting it. Added regression coverage for Windows-style backslashes and an invalid multi-section document.
