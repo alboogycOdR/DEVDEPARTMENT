@@ -1397,9 +1397,9 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: need `autopilot.json` and `scripts/sync_from_pack.py` in scope (or an ORCH-approved template/config separation) to set the new-project default without changing this existing project's policy.
+**Blocked_Reason:** OWNERSHIP_CONFLICT
 **Updated_By:** CX
-**Updated_At:** 2026-09-29T13:31:56Z
+**Updated_At:** 2026-09-29T13:32:09Z
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
