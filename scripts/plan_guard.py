@@ -126,6 +126,20 @@ def _changed_line_count(repo: Path) -> int:
     return int(added) + int(removed)
 
 
+def is_duplicate_claim(repo: Path, message: str) -> bool:
+    """Whether this claim message targets a task already held by its unit in HEAD."""
+    if not re.search(r"\bclaim\b", message, re.IGNORECASE):
+        return False
+    task_ids = sorted(set(TASK_RE.findall(message)))
+    units = sorted(set(UNIT_RE.findall(message.upper())))
+    if len(task_ids) != 1 or len(units) != 1:
+        return False
+    block = _block_text(_head_plan(repo), task_ids[0])
+    status = _field_value(block, "Status")
+    assigned = _field_value(block, "Assigned_To")
+    return status in {"claimed", "in_progress"} and assigned == units[0]
+
+
 def _replace_block(text: str, task_id: str, replacement: str) -> str:
     match = re.search(rf"^### {re.escape(task_id)}\s*$.*?(?=^### TASK-\d+\s*$|\Z)", text, re.M | re.S)
     if not match:
@@ -154,9 +168,22 @@ def main() -> int:
     ap.add_argument("--repo", default=".", help="repo root containing PLAN.md")
     ap.add_argument("--cas-base", help="saved PLAN.md read before this coordination update")
     ap.add_argument("--cas-desired", help="builder's desired PLAN.md snapshot")
+    ap.add_argument("--duplicate-claim", action="store_true",
+                    help="exit 0 if this message re-claims a task already held by the same unit; exit 3 otherwise")
     args = ap.parse_args()
 
     repo = Path(args.repo).resolve()
+    if args.duplicate_claim:
+        try:
+            if is_duplicate_claim(repo, args.message):
+                task_id = sorted(set(TASK_RE.findall(args.message)))[0]
+                unit = sorted(set(UNIT_RE.findall(args.message.upper())))[0]
+                print(f"[plan_commit] duplicate claim for {task_id} by {unit} — no-op, no commit.")
+                return 0
+            return 3
+        except Exception as exc:  # noqa: BLE001 - callers treat this as a hard error
+            print(f"[plan_commit] duplicate-claim check failed: {exc}", file=sys.stderr)
+            return 2
     if bool(args.cas_base) != bool(args.cas_desired):
         ap.error("--cas-base and --cas-desired must be supplied together")
     if args.cas_base:

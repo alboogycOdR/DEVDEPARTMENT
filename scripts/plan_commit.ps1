@@ -62,8 +62,29 @@ if (-not (Test-Path $Plan)) {
 $BaseBlob = (git -C $RepoRoot rev-parse HEAD:PLAN.md)
 $CasBase = [System.IO.Path]::GetTempFileName()
 $CasDesired = [System.IO.Path]::GetTempFileName()
+function Write-PlanBlob([string]$Destination) {
+    # PowerShell 5.1 decodes native stdout through the console code page and
+    # Set-Content re-encodes it (including a BOM/CRLF). Copy the process stream
+    # directly so the UTF-8 blob bytes, including em dashes, remain untouched.
+    $GitExe = (Get-Command git.exe -ErrorAction Stop).Source
+    $StartInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $StartInfo.FileName = $GitExe
+    $StartInfo.Arguments = '-C "' + $RepoRoot + '" show HEAD:PLAN.md'
+    $StartInfo.UseShellExecute = $false
+    $StartInfo.RedirectStandardOutput = $true
+    $StartInfo.RedirectStandardError = $true
+    $GitProcess = New-Object System.Diagnostics.Process
+    $GitProcess.StartInfo = $StartInfo
+    if (-not $GitProcess.Start()) { throw "could not start git.exe to read HEAD:PLAN.md" }
+    $OutputFile = [System.IO.File]::Open($Destination, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+    try { $GitProcess.StandardOutput.BaseStream.CopyTo($OutputFile) }
+    finally { $OutputFile.Dispose() }
+    $GitProcess.WaitForExit()
+    $ErrorText = $GitProcess.StandardError.ReadToEnd()
+    if ($GitProcess.ExitCode -ne 0) { throw "git show HEAD:PLAN.md failed: $ErrorText" }
+}
 try {
-    git -C $RepoRoot show HEAD:PLAN.md | Set-Content -LiteralPath $CasBase -Encoding utf8
+    Write-PlanBlob $CasBase
 
 # Integration branch from autopilot.json (pack default: main). Fail-safe --
 # never an invented branch. Mirrors dispatch.ps1's resolution exactly.
@@ -105,6 +126,16 @@ if (-not $PyBin) {
     Write-Error "[plan_commit] Python is required to stamp Updated_At values."
     exit 1
 }
+$DuplicateGuard = Join-Path $RepoRoot "scripts\plan_guard.py"
+if (Test-Path $DuplicateGuard) {
+    & $PyBin $DuplicateGuard --message $Message --repo $RepoRoot --duplicate-claim
+    $DuplicateExit = $LASTEXITCODE
+    if ($DuplicateExit -eq 0) { exit 0 }
+    if ($DuplicateExit -ne 3) {
+        Write-Error "[plan_commit] duplicate-claim check failed (exit $DuplicateExit)."
+        exit $DuplicateExit
+    }
+}
 $StampScript = Join-Path $RepoRoot "scripts\plan_stamp.py"
 if (Test-Path $StampScript) {
     $env:PLAN_COMMIT_DIFF = (git -C $RepoRoot diff --unified=0 -- PLAN.md | Out-String)
@@ -118,7 +149,8 @@ if (Test-Path $StampScript) {
 }
 
 # Retry around index.lock: two builders committing coordination state seconds
-# apart is legitimate, and the collision is transient rather than an error.
+# apart is legitimate. CAS replays have their own three-retry budget; lock
+# retries remain separate and do not consume it.
 # Stray-block guard: PLAN.md is committed whole, so an edit outside your own
 # task block silently overwrites another unit's state. plan_guard.py refuses
 # that; it fails OPEN on anything it cannot parse, so it can never strand a
@@ -137,16 +169,22 @@ if (Test-Path $GuardPath) {
 
 Copy-Item -LiteralPath $Plan -Destination $CasDesired -Force
 
+$CasReplays = 0
 for ($attempt = 1; $attempt -le 5; $attempt++) {
     $CurrentBlob = (git -C $RepoRoot rev-parse HEAD:PLAN.md)
     if ($CurrentBlob -ne $BaseBlob) {
+        if ($CasReplays -ge 3) {
+            Write-Error "[plan_commit] CAS exceeded 3 retries; refusing to overwrite a newer PLAN.md update."
+            exit 1
+        }
         & $PyBin $GuardPath --message $Message --repo $RepoRoot --cas-base $CasBase --cas-desired $CasDesired
         if ($LASTEXITCODE -ne 0) {
             Write-Error "[plan_commit] refusing to overwrite a newer PLAN.md update."
             exit 1
         }
+        $CasReplays++
         $BaseBlob = $CurrentBlob
-        git -C $RepoRoot show HEAD:PLAN.md | Set-Content -LiteralPath $CasBase -Encoding utf8
+        Write-PlanBlob $CasBase
         Copy-Item -LiteralPath $Plan -Destination $CasDesired -Force
     }
     git -C $RepoRoot commit -q -m $Message -- PLAN.md 2>$null
@@ -173,7 +211,7 @@ for ($attempt = 1; $attempt -le 5; $attempt++) {
     if ($attempt -lt 5) { Start-Sleep -Seconds 2 }
 }
 
-Write-Error "[plan_commit] failed after 5 attempts (index.lock contention, or nothing to commit). Re-run once; if it persists, report it rather than committing by hand."
+Write-Error "[plan_commit] failed after 5 commit attempts (index.lock contention, or nothing to commit). Re-run once; if it persists, report it rather than committing by hand."
 exit 1
 } finally {
     Remove-Item -LiteralPath $CasBase, $CasDesired -Force -ErrorAction SilentlyContinue
