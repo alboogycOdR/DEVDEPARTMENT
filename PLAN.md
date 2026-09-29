@@ -1,8 +1,8 @@
 ---
-plan_version: 6.11
-last_updated: 2026-09-29T13:58:37Z
+plan_version: 6.12
+last_updated: 2026-09-29T14:11:59Z
 overall_status: in_progress
-orchestrator_notes: "REVIEW 2026-09-29T13:58:37Z (claude-opus-5-5): TASK-040 APPROVED, merged, branch deleted. UNLOCKS TASK-042 (CX; deps 040+039 done) — ready to dispatch alongside TASK-037 (disjoint). TASK-041 still waits on 036; TASK-044 on 036. RE-CARVE 2026-09-29T13:53:19Z (claude-opus-5-5): TASK-037 unblocked — Owned_Paths/Protected_Grants += scripts/dispatch.sh, scripts/plan_commit.sh; status in_progress, CX resumes on task/TASK-037-cx. TASK-036 split: new-project batch default moved to new TASK-044 (sync_from_pack.py; deps 036+040); 036 now pending, Depends_On += TASK-037 (plan_commit.sh sequencing). TASK-038 still blocked on owner decisions (GB/S5 live launches vs CX-only directive; Codex write-access fixture scope). REVIEW 2026-09-29T13:23:07Z (claude-opus-5-5): TASK-034 APPROVED on re-review, merged --no-ff, branch deleted (CX worktree detached). All 4 rework findings fixed with discriminating tests; ORCH full re-run 1170 Python / 47 Node green. UNLOCKS TASK-036 (CX, push_policy; deps 034+031 both done) — dispatch next; apply its protected-path grants first. DIRECTIVE 2026-09-29T10:15:00Z (Alister): all build work routes to CX. S5/GB receive no work; do not dispatch either. All pending tasks (034, 036-043) already Assigned_To: CX. ORCH's own role stays plan/dispatch/review only from here — the direct-build detour this session (ORCH implementing 031/033/035/039 itself) was a one-off exception, not the standing procedure. ENV CAVEAT: shell-driven suites (test_plan_commit/test_dispatch_worktree/test_notify_needs_review) can show spurious MSYS worktree-path failures in some session environments (git-in-worktree path resolution); TASK-037 owns the harness fix — verify with your own from-scratch full-suite run before trusting a reviewer's reported failure count. GB idle (Grok Build balance exhausted, HTTP 402). Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md."
+orchestrator_notes: "OWNER DECISION 2026-09-29T14:11:59Z (Alister, yes to 038): TASK-038 re-scoped — GB/S5 live runs deferred (CX only), write-access fixture moved to new TASK-045 (deps 037+038). 038 stays blocked OTHER:QUEUED_BEHIND_TASK-037 until CX frees; CX queue: 037 → 042 → 038 → 036 → 044/041/045 → 043. REVIEW 2026-09-29T13:58:37Z (claude-opus-5-5): TASK-040 APPROVED, merged, branch deleted. UNLOCKS TASK-042 (CX; deps 040+039 done) — ready to dispatch alongside TASK-037 (disjoint). TASK-041 still waits on 036; TASK-044 on 036. RE-CARVE 2026-09-29T13:53:19Z (claude-opus-5-5): TASK-037 unblocked — Owned_Paths/Protected_Grants += scripts/dispatch.sh, scripts/plan_commit.sh; status in_progress, CX resumes on task/TASK-037-cx. TASK-036 split: new-project batch default moved to new TASK-044 (sync_from_pack.py; deps 036+040); 036 now pending, Depends_On += TASK-037 (plan_commit.sh sequencing). TASK-038 still blocked on owner decisions (GB/S5 live launches vs CX-only directive; Codex write-access fixture scope). REVIEW 2026-09-29T13:23:07Z (claude-opus-5-5): TASK-034 APPROVED on re-review, merged --no-ff, branch deleted (CX worktree detached). All 4 rework findings fixed with discriminating tests; ORCH full re-run 1170 Python / 47 Node green. UNLOCKS TASK-036 (CX, push_policy; deps 034+031 both done) — dispatch next; apply its protected-path grants first. DIRECTIVE 2026-09-29T10:15:00Z (Alister): all build work routes to CX. S5/GB receive no work; do not dispatch either. All pending tasks (034, 036-043) already Assigned_To: CX. ORCH's own role stays plan/dispatch/review only from here — the direct-build detour this session (ORCH implementing 031/033/035/039 itself) was a one-off exception, not the standing procedure. ENV CAVEAT: shell-driven suites (test_plan_commit/test_dispatch_worktree/test_notify_needs_review) can show spurious MSYS worktree-path failures in some session environments (git-in-worktree path resolution); TASK-037 owns the harness fix — verify with your own from-scratch full-suite run before trusting a reviewer's reported failure count. GB idle (Grok Build balance exhausted, HTTP 402). Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md."
 ---
 
 # Project Plan
@@ -1452,9 +1452,8 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-035
 **Description:** harness-audit.sh/.ps1 launch every ACTIVE unit's CLI through the real dispatch argv, in a scratch worktree, with a no-op prompt that must write one file under its territory and exit; check exit 0, file written, no TTY prompt, CLI version recorded. Runs on builder_registry changes and before an onboarding's first dispatch. Fails on a CR in any *.sh in the checkout. From LIVE_CHECKS: assert `--max-turns` is still accepted (hidden flag), and that Windows Git Bash launch paths set MSYS_NO_PATHCONV=1 or never pass a leading-slash prompt. Fixture tests use stub CLIs; one real run per active unit recorded in Test_Evidence. **Protected-path grants (ORCH applies before dispatch):** scripts/harness-audit.sh, scripts/harness-audit.ps1.
 **Acceptance_Criteria:**
-- [ ] Smoke test fails on a fixture registry whose codex argv lacks write access to the worktree (spec §10 Acceptance)
 - [ ] Smoke test fails on a CRLF dispatch.sh (§10 Acceptance)
-- [ ] Real smoke run for GB, CX, S5 recorded (exit, file, version) (E-H.4)
+- [ ] Real smoke run for CX recorded (exit, file, version) (E-H.4); GB and S5 live runs DEFERRED per owner directive 2026-09-29 (CX-only) — record them as `deferred: owner directive`, not as passes. Fix the Git Bash empty-`$1` version-probe bug in the owned smoke helper first
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-038-cx
 **Started_At:** 2026-09-29T12:17:50Z
@@ -1474,10 +1473,10 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-29T12:35:31Z] [CX] Attempted the authorized CX-only live smoke in a disposable fixture; it stopped at the pre-dispatch version probe because Git Bash received an empty `$1` for `bash -c 'exec "$1" --version'` (exit 1, `exec: : not found`). The dispatcher was not launched, so no CLI work occurred. Fix the Windows argument-passing path inside the owned smoke helper before retrying; GB/S5 remain prohibited by owner directive.
 **Artifacts:** `scripts/harness-audit.sh`, `scripts/harness-audit.ps1`, `tests/test_harness_smoke.py`; code commit `dec547d` on `task/TASK-038-cx`.
 **Test_Evidence:** `python -m pytest -q tests/test_harness_smoke.py` — 5 passed; `node hooks/run-tests.js` — 47 passed; `python -m pytest -q` — 1165 passed in 412.01s. Fixture detects CRLF shell bytes and fails when the stub exits 0 without writing the Owned_Paths file. CX live attempt failed in the pre-dispatch version probe due Windows Git Bash argument passing; GB/S5 not run per owner directive.
-**Review_Findings:** —
-**Blocked_Reason:** OTHER:WINDOWS_LIVE_PROBE_FAILURE_AND_OWNER_DECISIONS_ON_GB_S5_LAUNCHES_AND_CODEX_WRITE_ACCESS_FIXTURE_SCOPE
-**Updated_By:** CX
-**Updated_At:** 2026-09-29T12:35:47Z
+**Review_Findings:** ORCH RE-SCOPE 2026-09-29T14:11:59Z (owner approved): (a) GB/S5 live launches deferred — CX live run only; (b) the codex-lacks-write-access fixture criterion is DROPPED from this task and moved to TASK-045 (needs dispatch/registry ownership). Resume on task/TASK-038-cx from dec547d (worktree wt-codex-DEVDEPARTMENT-T038).
+**Blocked_Reason:** OTHER:QUEUED_BEHIND_TASK-037 (owner decisions resolved; ORCH flips to in_progress when CX frees up)
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-29T14:11:59Z
 
 ### TASK-039
 **Title:** Wave E E-I — learning loop earns its sessions or stays off
@@ -1669,3 +1668,27 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-29T13:53:19Z
+
+### TASK-045
+**Title:** Wave E E-H2b — smoke test detects a codex argv without worktree write access (split from TASK-038)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** medium
+**Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.4) Acceptance
+**Owned_Paths:** scripts/dispatch.sh, scripts/dispatch.ps1, scripts/builder_registry.py, tests/test_builder_registry.py, tests/test_harness_smoke.py, tests/fixtures/smoke/**, dossiers/TASK-045.md
+**Protected_Grants:** scripts/dispatch.sh, scripts/dispatch.ps1, scripts/builder_registry.py
+**Depends_On:** TASK-037, TASK-038
+**Description:** Split from TASK-038 (owner-approved 2026-09-29). dispatch hard-codes Codex `-s danger-full-access`, so no fixture registry can express a codex unit that lacks write access. Make the codex sandbox/write-access flag come from the builder registry entry (default unchanged: danger-full-access, so live dispatch argv is byte-identical), then add the harness smoke fixture whose codex argv lacks worktree write access and assert the smoke test FAILS on it.
+**Acceptance_Criteria:**
+- [ ] Smoke test fails on a fixture registry whose codex argv lacks write access to the worktree (spec §10 Acceptance)
+- [ ] Default registry produces a byte-identical codex dispatch argv to before (dry-run comparison in a test)
+- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-29T14:11:59Z
