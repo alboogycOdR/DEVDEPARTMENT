@@ -1385,7 +1385,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.1–3, E-H.5)
@@ -1400,13 +1400,26 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-037-cx
 **Started_At:** 2026-09-29T12:03:44Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-29T12:05:21Z] [CX] Pre-flight path inspection completed before implementation:
+  ```text
+  [preflight] TASK-037 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-codex-DEVDEPARTMENT-T037
+  [preflight] 7 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    FILE   scripts/dispatch.ps1  -> exists, 808 line(s), 48811 bytes
+    FILE   scripts/worktree.ps1  -> exists, 61 line(s), 2736 bytes
+    GLOB   .github/workflows/**  -> matches nothing yet (new territory)
+    FILE   .gitattributes  -> exists, 63 line(s), 2957 bytes
+    FILE   tests/test_dispatch_worktree.py  -> exists, 868 line(s), 41938 bytes
+    NEW    tests/test_worktree_ps1.py  -> does not exist; parent tests/ exists
+    FILE   dossiers/TASK-037.md  -> exists, 19 line(s), 1473 bytes
+  [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
+  ```
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-29T12:03:57Z
+**Updated_At:** 2026-09-29T12:05:34Z
 
 ### TASK-038
 **Title:** Wave E E-H2 — CLI launch smoke test in harness-audit
