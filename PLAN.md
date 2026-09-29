@@ -1403,7 +1403,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.1–3, E-H.5)
@@ -1433,13 +1433,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
   ```
 - [2026-09-29T12:17:09Z] [CX] Implemented permitted E-H.1/E-H.2/E-H.5 work in `90b389a`; focused Windows/worktree checks and Node tests pass. E-H.3 cannot be completed within current ownership: `scripts/dispatch.sh` and `scripts/plan_commit.sh` both parse Python output and are not in TASK-037 Owned_Paths. No edits made to either. Requesting ORCH to extend/reassign ownership before resuming.
-**Artifacts:** scripts/dispatch.ps1, scripts/worktree.ps1, .github/workflows/tests.yml, .gitattributes, tests/test_worktree_ps1.py, tests/test_dispatch_worktree.py, dossiers/TASK-037.md
+- [2026-09-29T14:19:46Z] [CX] Resumed after ORCH's re-carve and committed `32ae268`: CR is now stripped at every Python-command-substitution boundary in dispatch.sh and for the Python-derived base branch in plan_commit.sh. The new master-base CRLF fixture passes. Full Python verification is blocked by master-owned sync registration: test_sync_from_pack reports `tests/test_retire_unit.py` is present on master but absent from the manifest; this task cannot modify the manifest.
+**Artifacts:** scripts/dispatch.ps1, scripts/dispatch.sh, scripts/plan_commit.sh, scripts/worktree.ps1, .github/workflows/tests.yml, .gitattributes, tests/test_worktree_ps1.py, tests/test_dispatch_worktree.py, dossiers/TASK-037.md
 **Test_Evidence:**
 - [2026-09-29T12:17:09Z] [CX] `python -m pytest -q tests/test_worktree_ps1.py tests/test_dispatch_worktree.py` → 41 passed in 90.01s; `python -m pytest -q tests/test_dispatch_worktree.py::TestWorktreeNamespacing::test_master_base_branch_fixture_is_supported tests/test_worktree_ps1.py` → 3 passed in 3.33s; `node hooks/run-tests.js` → 47 passed, 0 failed.
+- [2026-09-29T14:19:46Z] [CX] `bash -n scripts/dispatch.sh && bash -n scripts/plan_commit.sh` → passed; `python -m pytest -vv tests/test_dispatch_worktree.py::TestWorktreeNamespacing::test_carriage_return_in_python_base_branch_output_is_stripped` → 1 passed in 3.56s; `python -m pytest -q` → 1 failed (the master-owned `tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered`, missing `tests/test_retire_unit.py` from the sync manifest); `node hooks/run-tests.js` → 47 passed, 0 failed.
 **Review_Findings:** ORCH RE-CARVE 2026-09-29T13:53:19Z: OWNERSHIP_CONFLICT resolved — scripts/dispatch.sh and scripts/plan_commit.sh added to Owned_Paths and Protected_Grants for item (3) CR stripping (TASK-034 done; TASK-036 now sequenced after this task). Resume on task/TASK-037-cx from 90b389a.
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-29T13:53:19Z
+**Blocked_Reason:** OTHER: full suite is blocked by master-owned sync-manifest registration for tests/test_retire_unit.py; CI also awaits a task-branch push.
+**Updated_By:** CX
+**Updated_At:** 2026-09-29T14:20:05Z
 
 ### TASK-038
 **Title:** Wave E E-H2 — CLI launch smoke test in harness-audit
