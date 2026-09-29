@@ -1,0 +1,41 @@
+name: DEVDEPARTMENT checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  harness:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install test dependency
+        run: python -m pip install pytest
+      - name: Parse Windows PowerShell scripts
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($path in @('scripts/dispatch.ps1', 'scripts/worktree.ps1')) {
+            $source = Get-Content -LiteralPath $path -Raw
+            [void][scriptblock]::Create($source)
+            Write-Host "PowerShell 5.1 parsed $path"
+          }
+      - name: Run Python and Node suites through harness-audit
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/harness-audit.ps1 -NoShield
+      - name: Run Python and Node suites through harness-audit
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash scripts/harness-audit.sh --no-shield

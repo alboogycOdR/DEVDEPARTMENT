@@ -17,3 +17,4 @@
 Write the failing test first (it must fail against current master — spec §1 H7), then implement, then run BOTH full suites. Ported code cites its origin SHA and lists anything not ported, with the reason, in the Work Log.
 
 ## Work Log
+- 2026-09-29: Implemented detached runner PID recording, guarded runner termination before worktree removal, the robocopy/long-path retry, PS 5.1 parsing coverage, a master-branch fixture, and the Windows/Linux CI matrix. E-H.3 remains blocked: completing the all-shell CR-stripping requirement needs `scripts/dispatch.sh` and `scripts/plan_commit.sh`, both outside this task's Owned_Paths; left them unchanged for ORCH to allocate.

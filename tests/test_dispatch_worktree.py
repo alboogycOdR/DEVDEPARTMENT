@@ -114,6 +114,30 @@ class TestWorktreeNamespacing:
         result = run_dispatch(proj, builder="codex")
         assert "wt-codex-projectA" in result.stdout, result.stdout + result.stderr
 
+    def test_master_base_branch_fixture_is_supported(self, tmp_path):
+        proj = make_project(tmp_path, "projectMaster", REPO_ROOT)
+        subprocess.run(["git", "branch", "-m", "master"], cwd=proj, check=True)
+        (proj / "autopilot.json").write_text(
+            '{"control": {"mode": "legacy"}, "git": {"base_branch": "master"}}',
+            encoding="utf-8", newline="\n")
+        subprocess.run(["git", "add", "autopilot.json"], cwd=proj, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "set master base"], cwd=proj, check=True)
+
+        result = run_dispatch(proj)
+
+        assert result.returncode == 0, _combined(result)
+        worktree = proj.parent / "wt-grok-projectMaster"
+        assert worktree.is_dir()
+        base = subprocess.check_output(["git", "rev-parse", "master"], cwd=proj, text=True).strip()
+        head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=worktree, text=True).strip()
+        assert head == base
+
+def test_gitattributes_pins_windows_and_plan_line_endings():
+    attributes = (REPO_ROOT / ".gitattributes").read_text(encoding="utf-8")
+    assert "*.sh text eol=lf" in attributes.splitlines()
+    assert "*.ps1 text eol=crlf" in attributes.splitlines()
+    assert "PLAN.md text eol=lf" in attributes.splitlines()
+
 
 class TestForeignDirectorySafetyNet:
     def test_foreign_directory_at_expected_path_is_rejected(self, tmp_path):
