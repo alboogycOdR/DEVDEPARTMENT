@@ -19,3 +19,4 @@ Write the failing test first (it must fail against current master — spec §1 H
 ## Work Log
 
 - 2026-09-29: Added block-granular CAS replay/rejection to both `plan_commit` mirrors, plus legacy guard checks for LF line endings, configurable diff limits, task ownership, and immutable builder fields. Fixture-repo tests cover independent-block replay, same-block rejection, duplicate no-op, and guard violations.
+- 2026-09-29: Added a barrier-coordinated real-process test that overlaps two `plan_commit.sh` invocations changing separate tasks; both commits and both task-block changes survive.

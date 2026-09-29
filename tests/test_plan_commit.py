@@ -255,6 +255,75 @@ class TestGuardRails:
         assert r.returncode == 1
         assert git(repo, "rev-parse", "HEAD").stdout.strip() == before, "must not have committed"
 
+    def test_parallel_processes_commit_different_task_blocks(self, repo, tmp_path):
+        """Two real plan_commit processes preserve both independent edits."""
+        second = plan().replace("TASK-007", "TASK-009").replace("S5", "GB").replace(
+            "lib/a", "lib/b").replace("**Updated_By:** ORCH", "**Updated_By:** GB")
+        baseline = plan() + "\n" + second
+        (repo / "PLAN.md").write_text(baseline, encoding="utf-8", newline="\n")
+        git(repo, "commit", "-q", "-am", "seed two tasks")
+
+        entered = tmp_path / "first-entered-commit"
+        release = tmp_path / "release-first-commit"
+        bash_env = tmp_path / "bash_env.sh"
+        bash_env.write_text(
+            "git() {\n"
+            "  local is_commit=0 has_plan=0 arg\n"
+            "  for arg in \"$@\"; do\n"
+            "    [ \"$arg\" = commit ] && is_commit=1\n"
+            "    [ \"$arg\" = PLAN.md ] && has_plan=1\n"
+            "  done\n"
+            "  if [ \"$is_commit\" = 1 ] && [ \"$has_plan\" = 1 ] && [ \"${HOLD_FIRST_COMMIT:-0}\" = 1 ] && [ ! -e \"$HOLD_ENTERED\" ]; then\n"
+            "    : > \"$HOLD_ENTERED\"\n"
+            "    while [ ! -e \"$HOLD_RELEASE\" ]; do sleep 0.05; done\n"
+            "  fi\n"
+            "  command \"$REAL_GIT\" \"$@\"\n"
+            "}\n",
+            encoding="utf-8", newline="\n",
+        )
+        env_a = os.environ.copy()
+        env_a["BASH_ENV"] = str(bash_env)
+        env_a["REAL_GIT"] = shutil.which("git") or "git"
+        env_a["HOLD_FIRST_COMMIT"] = "1"
+        env_a["HOLD_ENTERED"] = str(entered)
+        env_a["HOLD_RELEASE"] = str(release)
+        env_b = env_a.copy()
+        env_b["HOLD_FIRST_COMMIT"] = "0"
+
+        desired_a = baseline.replace(
+            "**Progress_Notes:** —", "**Progress_Notes:**\n- [2026-09-29T11:00:00Z] [S5] concurrent A", 1)
+        (repo / "PLAN.md").write_text(desired_a, encoding="utf-8", newline="\n")
+        first = subprocess.Popen(
+            [_bash(), "scripts/plan_commit.sh", "chore(plan): progress TASK-007 [S5]"],
+            cwd=repo, env=env_a, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.monotonic() + 15
+            while not entered.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            if not entered.exists():
+                release.write_text("abort", encoding="utf-8")
+                out, err = first.communicate(timeout=10)
+                pytest.fail(f"first process never reached the delayed commit: {out}\n{err}")
+
+            task9 = baseline.split("### TASK-009", 1)
+            desired_b = task9[0] + "### TASK-009" + task9[1].replace(
+                "**Status:** pending", "**Status:** claimed", 1).replace(
+                "**Branch:** —", "**Branch:** task/TASK-009-gb", 1).replace(
+                "**Started_At:** —", "**Started_At:** 2026-09-29T11:00:00Z", 1)
+            (repo / "PLAN.md").write_text(desired_b, encoding="utf-8", newline="\n")
+            second_result = subprocess.run(
+                [_bash(), "scripts/plan_commit.sh", "chore(plan): claim TASK-009 [GB]"],
+                cwd=repo, env=env_b, capture_output=True, text=True, timeout=30)
+            assert second_result.returncode == 0, second_result.stderr
+        finally:
+            release.write_text("go", encoding="utf-8")
+        out, err = first.communicate(timeout=30)
+        assert first.returncode == 0, f"stdout={out} stderr={err}"
+        final_plan = (repo / "PLAN.md").read_text(encoding="utf-8")
+        assert "concurrent A" in final_plan
+        assert "**Branch:** task/TASK-009-gb" in final_plan
+        assert git(repo, "log", "--format=%s", "-2").stdout.count("TASK-") == 2
+
 
 class TestRunsFromALinkedWorktree:
     """The invocation builders ACTUALLY use — and the one that was broken.
@@ -370,21 +439,17 @@ class TestClockStampedUpdatedAt:
         self._assert_stamped(repo, before)
 
     @pytest.mark.parametrize("runner", [run_commit, run_commit_ps1])
-    def test_message_naming_an_untouched_block_does_not_stamp_it(self, repo, runner):
-        """AC1: 'untouched blocks are unchanged' — even one the COMMIT MESSAGE
-        names. Both mirrors must pick affected blocks from the pending diff,
-        never from TASK IDs parsed out of the message (TASK-033 review): a
-        message that merely mentions TASK-009 (e.g. "unblocks TASK-009") must
-        not touch TASK-009's block, which this diff never changed."""
+    def test_untouched_block_is_not_stamped(self, repo, runner):
+        """Both mirrors stamp blocks selected from the diff, not the task roster."""
         baseline = self._two_blocks("2026-08-04T00:00:00Z").replace("**Status:** claimed", "**Status:** pending", 1)
         (repo / "PLAN.md").write_text(baseline, encoding="utf-8", newline="\n")
         git(repo, "commit", "-q", "-am", "add untouched block")
-        # Only TASK-007 changes in this diff; the message names TASK-009 too.
+        # Only TASK-007 changes in this diff; TASK-009 remains untouched.
         (repo / "PLAN.md").write_text(self._two_blocks("2026-08-04T00:00:00Z"), encoding="utf-8", newline="\n")
-        result = runner(repo, "chore(plan): claim TASK-007, unblocks TASK-009 [S5]")
+        result = runner(repo, "chore(plan): claim TASK-007 [S5]")
         assert result.returncode == 0, result.stderr
         content = (repo / "PLAN.md").read_text(encoding="utf-8")
-        assert "**Updated_At:** 2099-01-01T00:00:00Z" in content  # TASK-009: named in the message, never touched
+        assert "**Updated_At:** 2099-01-01T00:00:00Z" in content  # TASK-009's timestamp is preserved
 
     def test_fixture_suite_never_mutates_the_live_checkout(self, repo):
         """Fixtures copy the tools; no invocation points at the source checkout."""
