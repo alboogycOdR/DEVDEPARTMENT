@@ -1,8 +1,9 @@
 """Wave C tests — scripts/distiller.py"""
 import hashlib
 import json
+import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -232,9 +233,17 @@ class TestConstitutionalGate:
         repo = repo_with(tmp_path, FINDINGS)
         dm.write_amendment(repo, MODEL_AMENDMENT)
         proposal = repo / ".devteam" / "pending_amendments" / "AMEND-001.md"
-        proposal.write_text(proposal.read_text(encoding="utf-8").replace(
-            "2026-09-28T", "2026-08-01T"), encoding="utf-8")
-        expired = dm.expire_amendments(repo, 14, datetime(2026, 9, 28, tzinfo=timezone.utc))
+        text = proposal.read_text(encoding="utf-8")
+        # write_amendment stamps **Proposed:** from the real clock, not a
+        # fixed date -- a hardcoded literal here breaks the moment the real
+        # calendar catches up to it (the exact defect being fixed). Read the
+        # actual stamp back and age it relative to a fixed `now` instead.
+        match = re.search(r"\*\*Proposed:\*\*\s*(\S+)", text)
+        assert match, "AMEND-001.md has no Proposed field"
+        now = datetime(2026, 9, 28, tzinfo=timezone.utc)
+        old_stamp = (now - timedelta(days=20)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        proposal.write_text(text.replace(match.group(1), old_stamp), encoding="utf-8")
+        expired = dm.expire_amendments(repo, 14, now)
         assert expired == ["AMEND-001"]
         assert "**Status:** expired" in proposal.read_text(encoding="utf-8")
         assert "amendment expired: AMEND-001" in (repo / "AUTOPILOT_LOG.md").read_text(encoding="utf-8")
