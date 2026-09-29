@@ -1285,7 +1285,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-034
 **Title:** Wave E E-F1 — plan_commit compare-and-swap, idempotent claim, legacy-mode blackboard guard
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H4, §8 (E-F.1, E-F.2, E-F.6)
@@ -1300,15 +1300,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] A duplicate claim creates no commit (§8 Acceptance)
 - [ ] Concurrency tests use real parallel processes against a tmp fixture repo
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-034-cx
+**Started_At:** 2026-09-29T10:20:00Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-27T19:07:45Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-29T11:08:33Z
 
 ### TASK-035
 **Title:** Wave E E-F2 — verified claim, pinned base, dirty-PLAN refusal, strict Owned_Paths grammar, strict-by-default onboarding
