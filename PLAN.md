@@ -1425,7 +1425,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-038
 **Title:** Wave E E-H2 — CLI launch smoke test in harness-audit
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.4, E-H.5), docs/reviews/LIVE_CHECKS_2026-09.md
@@ -1452,12 +1452,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
     FILE   dossiers/TASK-038.md  -> exists, 19 line(s), 1480 bytes
   [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
   ```
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-29T12:33:59Z] [CX] Added opt-in `--smoke`/`-Smoke` live audit entrypoints and stub-dispatch fixtures (dec547d). Focused smoke tests: 5 passed; Node suite: 47 passed; full Python suite: 1165 passed in 412.01s. Two acceptance items remain blocked: current dispatch hard-codes Codex `-s danger-full-access`, so a fixture registry cannot express missing write access without changing unowned dispatch/registry files; and required live GB/S5 launches conflict with the standing PLAN directive routing build work to CX. No live CLIs launched.
+**Artifacts:** `scripts/harness-audit.sh`, `scripts/harness-audit.ps1`, `tests/test_harness_smoke.py`; code commit `dec547d` on `task/TASK-038-cx`.
+**Test_Evidence:** `python -m pytest -q tests/test_harness_smoke.py` — 5 passed; `node hooks/run-tests.js` — 47 passed; `python -m pytest -q` — 1165 passed in 412.01s. Fixture detects CRLF shell bytes and fails when the stub exits 0 without writing the Owned_Paths file. Real GB/CX/S5 runs not performed; CX live run also not performed because owner directive prohibits dispatching beyond assigned build seat.
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OTHER:NEEDS_OWNER_DECISION_ON_LIVE_SEAT_LAUNCHES_AND_CODEX_WRITE_ACCESS_FIXTURE_SCOPE
 **Updated_By:** CX
-**Updated_At:** 2026-09-29T12:19:46Z
+**Updated_At:** 2026-09-29T12:34:11Z
 
 ### TASK-039
 **Title:** Wave E E-I — learning loop earns its sessions or stays off
