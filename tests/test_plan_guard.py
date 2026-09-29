@@ -126,14 +126,34 @@ class TestAllows:
             render(t11_status="done", t14_status="claimed"), encoding="utf-8", newline="\n")
         assert run_guard(repo, "chore(plan): reconcile wave [ORCH]").returncode == 0
 
-    def test_message_naming_two_tasks_may_touch_both(self, repo):
+    def test_builder_message_naming_two_tasks_is_refused(self, repo):
         (repo / "PLAN.md").write_text(
             render(t11_status="done", t14_status="in_progress"), encoding="utf-8", newline="\n")
         r = run_guard(repo, "chore(plan): TASK-011 done, TASK-014 in_progress [GB]")
-        assert r.returncode == 0, r.stderr
+        assert r.returncode == 1
+        assert "exactly one task" in r.stderr
 
 
 class TestRefuses:
+    def test_line_ending_rewrite_is_refused(self, repo):
+        (repo / "PLAN.md").write_bytes(render(t11_status="claimed", t11_by="GB").replace("\n", "\r\n").encode())
+        r = run_guard(repo, "chore(plan): claim TASK-011 [GB]")
+        assert r.returncode == 1
+        assert "line endings" in r.stderr
+
+    def test_builder_cannot_change_its_immutable_territory(self, repo):
+        text = render(t11_status="claimed", t11_by="GB").replace("lib/a/**", "lib/all/**")
+        (repo / "PLAN.md").write_text(text, encoding="utf-8", newline="\n")
+        r = run_guard(repo, "chore(plan): claim TASK-011 [GB]")
+        assert r.returncode == 1
+        assert "Owned_Paths" in r.stderr
+
+    def test_large_builder_diff_is_refused(self, repo):
+        text = render(t11_notes="\n".join(f"- note {i}" for i in range(41)), t11_by="GB")
+        (repo / "PLAN.md").write_text(text, encoding="utf-8", newline="\n")
+        r = run_guard(repo, "chore(plan): progress TASK-011 [GB]")
+        assert r.returncode == 1
+        assert "more than 40" in r.stderr
     def test_stray_block_edit_is_refused(self, repo):
         """The CX-on-2026-08-02 signature: claim written into another task's
         block. Message names TASK-025-ish intent but the diff hits TASK-014."""
@@ -176,6 +196,39 @@ class TestRefuses:
         assert r.returncode == 1
         assert "checkout -- PLAN.md" in r.stderr   # tells the builder how to recover
         assert "STALE" in r.stderr
+
+
+class TestCompareAndSwap:
+    def _cas(self, repo: Path, task: str, base: Path, desired: Path):
+        return subprocess.run(
+            [sys.executable, str(GUARD), "--message", f"chore(plan): progress {task} [GB]",
+             "--repo", str(repo), "--cas-base", str(base), "--cas-desired", str(desired)],
+            capture_output=True, text=True, timeout=30)
+
+    def test_replays_one_block_onto_a_concurrent_other_block_commit(self, repo, tmp_path):
+        base = tmp_path / "base.md"
+        desired = tmp_path / "desired.md"
+        base.write_text(render(), encoding="utf-8", newline="\n")
+        desired.write_text(render(t11_status="claimed", t11_by="GB"), encoding="utf-8", newline="\n")
+        (repo / "PLAN.md").write_text(render(t14_status="claimed", t14_by="CX"), encoding="utf-8", newline="\n")
+        subprocess.run(["git", "commit", "-q", "-am", "concurrent TASK-014"], cwd=repo, check=True)
+        result = self._cas(repo, "TASK-011", base, desired)
+        assert result.returncode == 0, result.stderr
+        merged = (repo / "PLAN.md").read_text(encoding="utf-8")
+        assert "**Status:** claimed" in merged
+        assert "**Updated_By:** CX" in merged
+
+    def test_refuses_when_the_same_block_changed_concurrently(self, repo, tmp_path):
+        base = tmp_path / "base.md"
+        desired = tmp_path / "desired.md"
+        base.write_text(render(), encoding="utf-8", newline="\n")
+        desired.write_text(render(t11_status="claimed", t11_by="GB"), encoding="utf-8", newline="\n")
+        (repo / "PLAN.md").write_text(render(t11_status="in_progress", t11_by="GB"), encoding="utf-8", newline="\n")
+        subprocess.run(["git", "commit", "-q", "-am", "concurrent TASK-011"], cwd=repo, check=True)
+        before = (repo / "PLAN.md").read_text(encoding="utf-8")
+        result = self._cas(repo, "TASK-011", base, desired)
+        assert result.returncode == 1
+        assert (repo / "PLAN.md").read_text(encoding="utf-8") == before
 
 
 class TestFailsOpen:

@@ -77,6 +77,15 @@ if [ ! -f "$PLAN" ]; then
   exit 1
 fi
 
+# Snapshot the read state before stamping/guarding.  The commit loop below
+# compares the HEAD blob against this exact read and replays only the named
+# task block if another writer lands first.
+BASE_BLOB="$(git -C "$REPO_ROOT" rev-parse HEAD:PLAN.md)"
+CAS_BASE="$(mktemp)"
+CAS_DESIRED="$(mktemp)"
+trap 'rm -f "$CAS_BASE" "$CAS_DESIRED"' EXIT
+git -C "$REPO_ROOT" show HEAD:PLAN.md > "$CAS_BASE"
+
 # Integration branch from autopilot.json (pack default: main). Fail-safe, never
 # an invented branch — mirrors dispatch.sh/.ps1's resolution exactly.
 # Read via stdin, not a path argument: under Git Bash on Windows this script
@@ -116,6 +125,22 @@ if [ -z "$PY_BIN" ]; then
   exit 1
 fi
 
+# Idempotent claim: if HEAD already records this task as claimed/in_progress
+# by the same unit, ignore a stale re-flip/re-stamp instead of making another
+# coordination commit. Exit 3 from plan_guard means this is not a duplicate.
+if [ -f "$REPO_ROOT/scripts/plan_guard.py" ]; then
+  DUPLICATE_OUTPUT=""
+  DUPLICATE_RC=0
+  DUPLICATE_OUTPUT="$("$PY_BIN" "$REPO_ROOT/scripts/plan_guard.py" --message "$MSG" --repo "$REPO_ROOT" --duplicate-claim 2>&1)" || DUPLICATE_RC=$?
+  if [ "$DUPLICATE_RC" -eq 0 ]; then
+    [ -z "$DUPLICATE_OUTPUT" ] || echo "$DUPLICATE_OUTPUT"
+    exit 0
+  elif [ "$DUPLICATE_RC" -ne 3 ]; then
+    [ -z "$DUPLICATE_OUTPUT" ] || echo "$DUPLICATE_OUTPUT" >&2
+    exit "$DUPLICATE_RC"
+  fi
+fi
+
 # Coordination timestamps are evidence, not model-supplied prose (H5).  Stamp
 # only task blocks which actually changed in this pending PLAN.md diff.  A
 # block's supplied value is retained when it is a sane UTC timestamp that is
@@ -149,9 +174,28 @@ if [ -n "$PY_BIN" ] && [ -f "$REPO_ROOT/scripts/plan_guard.py" ]; then
   fi
 fi
 
+cp "$PLAN" "$CAS_DESIRED"
+
 # Retry around index.lock: two builders can legitimately commit coordination
-# state seconds apart, and that collision is transient, not an error.
+# state seconds apart. CAS replays have their own three-retry budget; lock
+# retries remain separate and do not consume it.
+CAS_REPLAYS=0
 for attempt in 1 2 3 4 5; do
+  CURRENT_BLOB="$(git -C "$REPO_ROOT" rev-parse HEAD:PLAN.md)"
+  if [ "$CURRENT_BLOB" != "$BASE_BLOB" ]; then
+    if [ "$CAS_REPLAYS" -ge 3 ]; then
+      echo "[plan_commit] CAS exceeded 3 retries; refusing to overwrite a newer PLAN.md update." >&2
+      exit 1
+    fi
+    if ! "$PY_BIN" "$REPO_ROOT/scripts/plan_guard.py" --message "$MSG" --repo "$REPO_ROOT" --cas-base "$CAS_BASE" --cas-desired "$CAS_DESIRED"; then
+      echo "[plan_commit] refusing to overwrite a newer PLAN.md update." >&2
+      exit 1
+    fi
+    CAS_REPLAYS=$((CAS_REPLAYS + 1))
+    BASE_BLOB="$CURRENT_BLOB"
+    git -C "$REPO_ROOT" show HEAD:PLAN.md > "$CAS_BASE"
+    cp "$PLAN" "$CAS_DESIRED"
+  fi
   if git -C "$REPO_ROOT" commit -q -m "$MSG" -- PLAN.md 2>/dev/null; then
     echo "[plan_commit] recorded on $BASE_BRANCH: $(git -C "$REPO_ROOT" rev-parse --short HEAD)  $MSG"
 
@@ -170,6 +214,6 @@ for attempt in 1 2 3 4 5; do
   fi
 done
 
-echo "[plan_commit] failed after 5 attempts (index.lock contention, or nothing to commit)." >&2
+echo "[plan_commit] failed after 5 commit attempts (index.lock contention, or nothing to commit)." >&2
 echo "[plan_commit] Re-run once; if it persists, report it rather than committing by hand." >&2
 exit 1

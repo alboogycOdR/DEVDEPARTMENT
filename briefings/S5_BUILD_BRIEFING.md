@@ -1,5 +1,14 @@
 # Builder Briefing — Sonnet 5 (unit ID: S5)
 
+<!-- devteam:roster -->
+## Active DEVDEPARTMENT roster
+
+- `GB` — `grok`; briefing: `briefings/GROK_BUILD_BRIEFING.md`
+- `CX` — `codex`; briefing: `briefings/CODEX_BRIEFING.md`
+- `S5` — `claude`; briefing: `briefings/S5_BUILD_BRIEFING.md`
+
+<!-- /devteam:roster -->
+
 Use this as S5's system/initial prompt. The dispatch script passes a condensed version headlessly via `claude -p`.
 
 ---

@@ -1,5 +1,14 @@
 # Builder Briefing — Grok Build (unit ID: GB)
 
+<!-- devteam:roster -->
+## Active DEVDEPARTMENT roster
+
+- `GB` — `grok`; briefing: `briefings/GROK_BUILD_BRIEFING.md`
+- `CX` — `codex`; briefing: `briefings/CODEX_BRIEFING.md`
+- `S5` — `claude`; briefing: `briefings/S5_BUILD_BRIEFING.md`
+
+<!-- /devteam:roster -->
+
 Use this as Grok Build's system/initial prompt (or point its AGENTS.md-style convention loading at the repo — `AGENTS.md` already encodes these rules). The dispatch script passes a condensed version headlessly.
 
 ---
