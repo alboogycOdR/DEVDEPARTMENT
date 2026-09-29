@@ -1285,7 +1285,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-034
 **Title:** Wave E E-F1 — plan_commit compare-and-swap, idempotent claim, legacy-mode blackboard guard
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H4, §8 (E-F.1, E-F.2, E-F.6)
@@ -1294,12 +1294,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-033, TASK-027
 **Description:** (1) CAS: record PLAN.md blob SHA at read; at commit, if HEAD's PLAN.md differs, re-read, re-apply only this unit's task-block change (3-way at block granularity), retry ≤3, else fail loudly — never commit a lost update. (2) Claim for a task already claimed/in_progress by the same unit = no-op exit 0, no commit. (6) Legacy-mode guard (until strict): plan_commit and the dispatch post-run validation (plan_guard.py) reject a builder PLAN.md change touching any block other than the unit's claimed task, changing more than `plan.max_builder_diff_lines`=40 lines, or changing line endings; the error tells the builder to use plan_commit for its own block only. Carried from TASK-027 review: the firewall now refuses builder Edit/Write/MultiEdit changes to `Owned_Paths`/`Protected_Grants`, but a shell command can still rewrite PLAN.md — the legacy guard must also reject a builder PLAN.md change that alters Owned_Paths, Protected_Grants or Assigned_To in the unit's own block (test it). **Protected-path grants (ORCH applies before dispatch):** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/plan_guard.py.
 **Acceptance_Criteria:**
-- [ ] A builder PLAN.md diff touching another task's block, or rewriting line endings, is rejected by the legacy guard (spec §8 Acceptance)
-- [ ] Two concurrent plan_commit calls editing different task blocks both land (§8 Acceptance)
-- [ ] Two editing the same block: the second fails loudly and changes nothing (§8 Acceptance)
-- [ ] A duplicate claim creates no commit (§8 Acceptance)
-- [ ] Concurrency tests use real parallel processes against a tmp fixture repo
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+- [x] A builder PLAN.md diff touching another task's block, or rewriting line endings, is rejected by the legacy guard (spec §8 Acceptance)
+- [x] Two concurrent plan_commit calls editing different task blocks both land (§8 Acceptance)
+- [x] Two editing the same block: the second fails loudly and changes nothing (§8 Acceptance)
+- [x] A duplicate claim creates no commit (§8 Acceptance)
+- [x] Concurrency tests use real parallel processes against a tmp fixture repo
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-034-cx
 **Started_At:** 2026-09-29T10:20:00Z
 **Progress_Notes:**
@@ -1316,13 +1316,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
   ```
 - [2026-09-29T11:17:30Z] [CX] Implemented and committed CAS replay/rejection plus legacy guard enforcement in `148383b`. Added fixture-repo tests for block replay, same-block conflict rejection, duplicate claim no-op, LF-only writes, immutable fields, and diff limits. Node suite is green. Next: add real parallel `plan_commit` process coverage, then obtain and record a complete foreground Python-suite result before handoff.
+- [2026-09-29T12:03:06Z] [CX] Added real overlapping process coverage in `c4df45d`; simultaneous changes to TASK-007 and TASK-009 both landed without loss. Full verification complete; submitting for review.
 **Artifacts:** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/plan_guard.py, tests/test_plan_commit.py, tests/test_plan_guard.py, dossiers/TASK-034.md
 **Test_Evidence:**
 - [2026-09-29T11:17:30Z] [CX] `node hooks/run-tests.js` → 47 passed, 0 failed. Focused `tests/test_plan_guard.py tests/test_plan_commit.py` collection → 43 tests; final complete foreground result still pending.
+- [2026-09-29T12:03:06Z] [CX] `python -m pytest -q tests/test_plan_commit.py tests/test_plan_guard.py` → 44 passed in 51.84s; `node hooks/run-tests.js` → 47 passed, 0 failed; `python -m pytest -q` → 1167 passed in 418.30s.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-29T11:18:25Z
+**Updated_At:** 2026-09-29T12:03:30Z
 
 ### TASK-035
 **Title:** Wave E E-F2 — verified claim, pinned base, dirty-PLAN refusal, strict Owned_Paths grammar, strict-by-default onboarding
