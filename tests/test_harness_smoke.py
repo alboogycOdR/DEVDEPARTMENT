@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,6 +47,22 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
 def _write_stub(path: Path, body: str) -> None:
     path.write_text(body, encoding="utf-8", newline="\n")
     path.chmod(0o755)
+
+
+def version_command(cli: str, fakebin: Path | None) -> list[str]:
+    """Return a Windows-safe command that asks a builder CLI for its version.
+
+    Do not wrap a real Windows CLI in ``bash -c``: WSL's bash.exe loses the
+    positional argument used by the old probe, leaving ``$1`` empty.  Fixture
+    CLIs are deliberately shell scripts, so invoke those explicitly with bash.
+    """
+    if fakebin is not None:
+        return ["bash", str(fakebin / cli), "--version"]
+    if os.name == "nt":
+        windows_command = shutil.which(f"{cli}.cmd")
+        if windows_command:
+            return [windows_command, "--version"]
+    return [cli, "--version"]
 
 
 def create_fixture_project(parent: Path, unit: str = "CX", cli: str = "codex",
@@ -123,11 +140,12 @@ echo "stub-""" + cli + """ 1.0"
 
 
 def run_dispatch_smoke(root: Path, unit: str, cli: str, fakebin: Path | None,
-                       output_file: Path, *, deny_write: bool = False) -> SmokeResult:
+                       output_file: Path, *, deny_write: bool = False,
+                       artifact_timeout: float = 90) -> SmokeResult:
     env = dict(os.environ)
     if fakebin:
         env["PATH"] = f"{fakebin}{os.pathsep}{env.get('PATH', '')}"
-    version = subprocess.run(["bash", "-c", 'exec "$1" --version', "smoke", cli], env=env,
+    version = subprocess.run(version_command(cli, fakebin), env=env,
                              stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
     if version.returncode != 0 or not version.stdout.strip():
         raise SmokeFailure(f"{unit}: CLI version probe failed: {version.stderr.strip()}")
@@ -143,6 +161,12 @@ def run_dispatch_smoke(root: Path, unit: str, cli: str, fakebin: Path | None,
                             stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=45)
     if result.returncode != 0:
         raise SmokeFailure(f"{unit}: dispatch exited {result.returncode}: {result.stdout}\n{result.stderr}")
+    deadline = time.monotonic() + artifact_timeout
+    while not output_file.is_file() and time.monotonic() < deadline:
+        # Legacy dispatch deliberately backgrounds the builder.  Wait for its
+        # required artifact instead of mistaking a successful launcher exit
+        # for a completed CLI session.
+        time.sleep(0.25)
     if not output_file.is_file():
         raise SmokeFailure(f"{unit}: CLI exited 0 but did not write its Owned_Paths smoke file")
     return SmokeResult(unit, version.stdout.strip(), output_file, result.stdout + result.stderr)
@@ -155,10 +179,13 @@ def run_fixture_smoke(parent: Path, unit: str = "CX", cli: str = "codex",
 
 
 def run_live_smoke(repo: Path) -> list[SmokeResult]:
-    """Use each active unit's real CLI through dispatch.sh in disposable repos."""
+    """Run the owner-authorized CX live probe; record other active units as deferred."""
     registry = load_registry(repo)
     results: list[SmokeResult] = []
     for unit in registry["active"]:
+        if unit != "CX":
+            print(f"{unit}: deferred: owner directive (CX-only live smoke)")
+            continue
         entry = registry["defined"][unit]
         cli = entry["cli"]
         with __import__("tempfile").TemporaryDirectory(prefix=f"devteam-smoke-{unit}-") as temp:
@@ -178,13 +205,20 @@ def test_fixture_dispatch_smoke_records_version_and_writes_owned_file(tmp_path):
 def test_codex_stub_exiting_without_worktree_write_fails_smoke(tmp_path):
     root, fakebin, output_file = create_fixture_project(tmp_path)
     with pytest.raises(SmokeFailure, match="did not write its Owned_Paths smoke file"):
-        run_dispatch_smoke(root, "CX", "codex", fakebin, output_file, deny_write=True)
+        run_dispatch_smoke(root, "CX", "codex", fakebin, output_file,
+                           deny_write=True, artifact_timeout=1)
 
 
 def test_claude_fixture_accepts_hidden_max_turns_flag(tmp_path):
     result = run_fixture_smoke(tmp_path, unit="S5", cli="claude")
     assert result.version == "stub-claude 1.0"
     assert result.output_file.is_file()
+
+
+def test_fixture_version_probe_executes_stub_without_bash_positional_arguments(tmp_path):
+    root, fakebin, output_file = create_fixture_project(tmp_path)
+    result = run_dispatch_smoke(root, "CX", "codex", fakebin, output_file)
+    assert result.version == "stub-codex 1.0"
 
 
 def test_crlf_dispatch_shell_is_rejected(tmp_path):
