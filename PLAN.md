@@ -1459,7 +1459,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-040
 **Title:** Wave E E-J1 — rendered roster, retire_unit, briefing lint, per-unit briefing check
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §12 (E-J.1, E-J.3)
@@ -1474,13 +1474,30 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-040-cx
 **Started_At:** 2026-09-29T08:22:56Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-29T08:23:30Z] [CX] Pre-flight path inspection completed before implementation:
+  ```text
+  [preflight] TASK-040 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-codex-DEVDEPARTMENT
+  [preflight] 8 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    FILE   scripts/sync_from_pack.py  -> exists, 832 line(s), 36927 bytes
+    NEW    scripts/retire_unit.py  -> does not exist; parent scripts/ exists
+    NEW    tests/test_retire_unit.py  -> does not exist; parent tests/ exists
+    FILE   scripts/validate_plan.py  -> exists, 623 line(s), 26898 bytes
+    FILE   tests/test_validate_plan.py  -> exists, 344 line(s), 13444 bytes
+    FILE   tests/test_sync_from_pack.py  -> exists, 946 line(s), 52437 bytes
+    GLOB   briefings/**  -> 3 file(s):
+             briefings/CODEX_BRIEFING.md
+             briefings/GROK_BUILD_BRIEFING.md
+             briefings/S5_BUILD_BRIEFING.md
+    FILE   dossiers/TASK-040.md  -> exists, 19 line(s), 1646 bytes
+  [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
+  ```
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-29T08:23:07Z
+**Updated_At:** 2026-09-29T08:23:41Z
 
 ### TASK-041
 **Title:** Wave E E-J2 — superseded, owner_hold, external tasks, ORCH-SOLO lane, Blocked_Reason vocabulary
