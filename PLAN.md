@@ -1459,7 +1459,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-040
 **Title:** Wave E E-J1 — rendered roster, retire_unit, briefing lint, per-unit briefing check
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §12 (E-J.1, E-J.3)
@@ -1472,15 +1472,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] The lint catches both fixture drifts (parked-ID reference; nonexistent path) (§12 Acceptance)
 - [ ] A registry unit whose briefing file is missing fails `validate_plan.py --config` (E-J.1)
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-040-cx
+**Started_At:** 2026-09-29T08:22:56Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-27T15:50:01Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-29T08:23:07Z
 
 ### TASK-041
 **Title:** Wave E E-J2 — superseded, owner_hold, external tasks, ORCH-SOLO lane, Blocked_Reason vocabulary
