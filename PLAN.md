@@ -1403,7 +1403,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.1–3, E-H.5)
@@ -1434,14 +1434,16 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   ```
 - [2026-09-29T12:17:09Z] [CX] Implemented permitted E-H.1/E-H.2/E-H.5 work in `90b389a`; focused Windows/worktree checks and Node tests pass. E-H.3 cannot be completed within current ownership: `scripts/dispatch.sh` and `scripts/plan_commit.sh` both parse Python output and are not in TASK-037 Owned_Paths. No edits made to either. Requesting ORCH to extend/reassign ownership before resuming.
 - [2026-09-29T14:19:46Z] [CX] Resumed after ORCH's re-carve and committed `32ae268`: CR is now stripped at every Python-command-substitution boundary in dispatch.sh and for the Python-derived base branch in plan_commit.sh. The new master-base CRLF fixture passes. Full Python verification is blocked by master-owned sync registration: test_sync_from_pack reports `tests/test_retire_unit.py` is present on master but absent from the manifest; this task cannot modify the manifest.
+- [2026-09-29T16:20:00Z] [CX] Merged the manifest fix, then verified locally: `python -m pytest -q` → 1181 passed in 581.05s; `node hooks/run-tests.js` → 47 passed. Published CI run 36596198456 exposed one remaining framework registration gap: owned new `tests/test_worktree_ps1.py` is absent from `sync-manifest.json`, which is outside TASK-037 Owned_Paths. Task-owned CI fixes were committed in d2bf5ee (pwsh selection and C:\\tmp fixture setup); awaiting an ORCH manifest registration before rerunning CI.
 **Artifacts:** scripts/dispatch.ps1, scripts/dispatch.sh, scripts/plan_commit.sh, scripts/worktree.ps1, .github/workflows/tests.yml, .gitattributes, tests/test_worktree_ps1.py, tests/test_dispatch_worktree.py, dossiers/TASK-037.md
 **Test_Evidence:**
 - [2026-09-29T12:17:09Z] [CX] `python -m pytest -q tests/test_worktree_ps1.py tests/test_dispatch_worktree.py` → 41 passed in 90.01s; `python -m pytest -q tests/test_dispatch_worktree.py::TestWorktreeNamespacing::test_master_base_branch_fixture_is_supported tests/test_worktree_ps1.py` → 3 passed in 3.33s; `node hooks/run-tests.js` → 47 passed, 0 failed.
 - [2026-09-29T14:19:46Z] [CX] `bash -n scripts/dispatch.sh && bash -n scripts/plan_commit.sh` → passed; `python -m pytest -vv tests/test_dispatch_worktree.py::TestWorktreeNamespacing::test_carriage_return_in_python_base_branch_output_is_stripped` → 1 passed in 3.56s; `python -m pytest -q` → 1 failed (the master-owned `tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered`, missing `tests/test_retire_unit.py` from the sync manifest); `node hooks/run-tests.js` → 47 passed, 0 failed.
+- [2026-09-29T16:20:00Z] [CX] `python -m pytest -q` → 1181 passed in 581.05s; `node hooks/run-tests.js` → 47 passed, 0 failed. CI [run 36596198456](https://github.com/alboogycOdR/DEVDEPARTMENT/actions/runs/36596198456) initially failed: Ubuntu test helper hard-coded `powershell`; Windows lacked `C:\\tmp`; both repaired in d2bf5ee. CI also confirms `tests/test_worktree_ps1.py` is missing from `sync-manifest.json` (outside territory), so no green matrix can be truthfully recorded until ORCH registers it.
 **Review_Findings:** ORCH 2026-09-29T16:02:08Z: unblocked. (a) Master manifest gap was ORCH's (TASK-040 merge) — scripts/retire_unit.py + tests/test_retire_unit.py now registered in sync-manifest.json on master; rebase/merge master into task/TASK-037-cx and re-run the full suite. (b) CI criterion: you are authorised to `git push origin task/TASK-037-cx` (your task branch ONLY — never master/main, never --force) and link the GitHub Actions run (windows-latest + ubuntu-latest) in Test_Evidence; `gh run list --branch task/TASK-037-cx` / `gh run watch` to wait for it. If Actions cannot run (no runner/permission), record the exact error and submit needs_review anyway — ORCH will judge. Prior re-carve: dispatch.sh + plan_commit.sh are in your Owned_Paths.
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-29T16:02:08Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: `sync-manifest.json` must register owned new `tests/test_worktree_ps1.py`; that framework-owned file is outside TASK-037 Owned_Paths.
+**Updated_By:** CX
+**Updated_At:** 2026-09-29T16:20:28Z
 
 ### TASK-038
 **Title:** Wave E E-H2 — CLI launch smoke test in harness-audit
