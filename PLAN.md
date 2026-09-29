@@ -1,5 +1,5 @@
 ---
-plan_version: 6.15
+plan_version: 6.16
 last_updated: 2026-09-29T17:02:24Z
 overall_status: in_progress
 orchestrator_notes: "OWNER DECISION 2026-09-29T14:11:59Z (Alister, yes to 038): TASK-038 re-scoped — GB/S5 live runs deferred (CX only), write-access fixture moved to new TASK-045 (deps 037+038). 038 stays blocked OTHER:QUEUED_BEHIND_TASK-037 until CX frees; CX queue: 037 → 042 → 038 → 036 → 044/041/045 → 043. REVIEW 2026-09-29T13:58:37Z (claude-opus-5-5): TASK-040 APPROVED, merged, branch deleted. UNLOCKS TASK-042 (CX; deps 040+039 done) — ready to dispatch alongside TASK-037 (disjoint). TASK-041 still waits on 036; TASK-044 on 036. RE-CARVE 2026-09-29T13:53:19Z (claude-opus-5-5): TASK-037 unblocked — Owned_Paths/Protected_Grants += scripts/dispatch.sh, scripts/plan_commit.sh; status in_progress, CX resumes on task/TASK-037-cx. TASK-036 split: new-project batch default moved to new TASK-044 (sync_from_pack.py; deps 036+040); 036 now pending, Depends_On += TASK-037 (plan_commit.sh sequencing). TASK-038 still blocked on owner decisions (GB/S5 live launches vs CX-only directive; Codex write-access fixture scope). REVIEW 2026-09-29T13:23:07Z (claude-opus-5-5): TASK-034 APPROVED on re-review, merged --no-ff, branch deleted (CX worktree detached). All 4 rework findings fixed with discriminating tests; ORCH full re-run 1170 Python / 47 Node green. UNLOCKS TASK-036 (CX, push_policy; deps 034+031 both done) — dispatch next; apply its protected-path grants first. DIRECTIVE 2026-09-29T10:15:00Z (Alister): all build work routes to CX. S5/GB receive no work; do not dispatch either. All pending tasks (034, 036-043) already Assigned_To: CX. ORCH's own role stays plan/dispatch/review only from here — the direct-build detour this session (ORCH implementing 031/033/035/039 itself) was a one-off exception, not the standing procedure. ENV CAVEAT: shell-driven suites (test_plan_commit/test_dispatch_worktree/test_notify_needs_review) can show spurious MSYS worktree-path failures in some session environments (git-in-worktree path resolution); TASK-037 owns the harness fix — verify with your own from-scratch full-suite run before trusting a reviewer's reported failure count. GB idle (Grok Build balance exhausted, HTTP 402). Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md."
@@ -1403,7 +1403,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
-**Status:** needs_review
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.1–3, E-H.5)
@@ -1444,10 +1444,10 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-29T14:19:46Z] [CX] `bash -n scripts/dispatch.sh && bash -n scripts/plan_commit.sh` → passed; `python -m pytest -vv tests/test_dispatch_worktree.py::TestWorktreeNamespacing::test_carriage_return_in_python_base_branch_output_is_stripped` → 1 passed in 3.56s; `python -m pytest -q` → 1 failed (the master-owned `tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered`, missing `tests/test_retire_unit.py` from the sync manifest); `node hooks/run-tests.js` → 47 passed, 0 failed.
 - [2026-09-29T16:20:00Z] [CX] `python -m pytest -q` → 1181 passed in 581.05s; `node hooks/run-tests.js` → 47 passed, 0 failed. CI [run 36596198456](https://github.com/alboogycOdR/DEVDEPARTMENT/actions/runs/36596198456) initially failed: Ubuntu test helper hard-coded `powershell`; Windows lacked `C:\\tmp`; both repaired in d2bf5ee. CI also confirms `tests/test_worktree_ps1.py` is missing from `sync-manifest.json` (outside territory), so no green matrix can be truthfully recorded until ORCH registers it.
 - [2026-09-29T17:46:13Z] [CX] `python -m pytest -q` → 1181 passed in 370.76s; `node hooks/run-tests.js` → 47 passed, 0 failed. Focused cross-platform claim-verification fixture → 1 passed. CI [run 36606515624](https://github.com/alboogycOdR/DEVDEPARTMENT/actions/runs/36606515624) ran both Windows and Ubuntu; out-of-territory failures are listed in the final Progress_Note.
-**Review_Findings:** ORCH 2026-09-29T17:02:24Z: 3rd OWNERSHIP_CONFLICT — SPLIT instead of widening again. The CI-green criterion now lives in TASK-046 (cross-platform fixes in plan_commit.ps1/test_plan_commit.py etc., sequenced after TASK-036). For 037: keep the workflow, record the latest run link, list each remaining failing test id with the out-of-territory file responsible, make sure nothing IN your Owned_Paths fails on either OS, re-run both local suites, and submit needs_review. Do not edit files outside Owned_Paths.
+**Review_Findings:** REWORK (ORCH, claude-opus-5-5, 2026-09-29T17:55:03Z). Territory clean 10/10; CI run 36606515624 failures verified as exactly the out-of-territory set (Ubuntu 6x test_plan_commit PowerShell tests — plan_commit.ps1:69 `Get-Command git.exe` has no Linux equivalent; Windows 1x test_supervisor::test_triage_unblock_uses_judgment_model /tmp path) -> TASK-046. PID record/verification, robocopy+\?\ retry, -NoExit drop, CR stripping, .gitattributes, manifest all good. BLOCKING: (1) scripts/dispatch.sh: `ATLAS_SECTION="${{ATLAS_SECTION//$''/}}"` was inserted BETWEEN the `atlas.py pack` substitution and `ATLAS_RC=$?`, so ATLAS_RC is now always 0 (the assignment's status) and a failed pack is no longer detected. Capture rc first (`ATLAS_RC=$?` immediately after the pack line), then strip CR; add a test with a failing stub pack that asserts the fail-open warning path. (2) Carried item not addressed: DEVTEAM_PACK_SELF_TESTS (TASK-024 review (c)) — set it in .github/workflows/tests.yml and show in the CI log that test_sync_from_pack's self-tests actually RAN (not skipped) under it, or record in the dossier with evidence why it is unnecessary. (3) Carried item not addressed: root cause of TestEmptyHuskReclaim::test_dotfile_only_directory_is_refused_by_dispatch_ps1 failing only inside the Codex sandbox — it passes in your latest runs; write the root cause (or the change that fixed it) in the dossier Work Log. NON-BLOCKING: worktree.ps1 Stop-RecordedRunner `return`s after removing a stale PID record, skipping any other record for the same worktree — use `continue`. Do NOT chase the TASK-046 failures.
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-09-29T17:46:31Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-29T17:55:03Z
 
 ### TASK-038
 **Title:** Wave E E-H2 — CLI launch smoke test in harness-audit
@@ -1707,10 +1707,10 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H) Acceptance
-**Owned_Paths:** scripts/plan_commit.ps1, tests/test_plan_commit.py, .github/workflows/**, dossiers/TASK-046.md
+**Owned_Paths:** scripts/plan_commit.ps1, tests/test_plan_commit.py, tests/test_supervisor.py, .github/workflows/**, dossiers/TASK-046.md
 **Protected_Grants:** scripts/plan_commit.ps1
-**Depends_On:** TASK-037, TASK-036
-**Description:** Split from TASK-037 (3rd ownership block while chasing CI green). Make the whole Python + Node suite pass on windows-latest AND ubuntu-latest in the TASK-037 workflow: gate or port PowerShell-dependent tests (use `pwsh` when `powershell` is absent; skip with a clear reason when neither exists) and fix any cross-platform defects in plan_commit.ps1. If a failure lands in a file outside these Owned_Paths, block with the exact test id and file so ORCH can grant it — list them all at once, not one per session.
+**Depends_On:** TASK-037, TASK-036, TASK-041
+**Description:** Split from TASK-037 (3rd ownership block while chasing CI green). Make the whole Python + Node suite pass on windows-latest AND ubuntu-latest in the TASK-037 workflow: gate or port PowerShell-dependent tests (use `pwsh` when `powershell` is absent; skip with a clear reason when neither exists) and fix any cross-platform defects in plan_commit.ps1 (known: line 69 `Get-Command git.exe` fails on Linux — 6 Ubuntu failures) and tests/test_supervisor.py::test_triage_unblock_uses_judgment_model (hard-coded /tmp; remove the C:\tmp workaround from the workflow once fixed). If a failure lands in a file outside these Owned_Paths, block with the exact test id and file so ORCH can grant it — list them all at once, not one per session.
 **Acceptance_Criteria:**
 - [ ] CI matrix (windows-latest + ubuntu-latest) green on the task branch push — link the run in Test_Evidence (spec §10 Acceptance)
 - [ ] No test is skipped on windows-latest that runs locally on Windows; every Ubuntu skip names its reason
