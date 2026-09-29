@@ -55,7 +55,8 @@ $ProjectName = Split-Path $RepoRoot -Leaf
 # legacy cli name (grok/codex/claude -> first ACTIVE unit on that cli).
 # FAIL-CLOSED on anything unresolvable: no safe default exists for a wrong
 # worktree/CLI guess.
-$RegOut = & $Py "scripts\builder_registry.py" resolve $Builder --repo $RepoRoot 2>&1
+$RegistryScript = Join-Path $RepoRoot "scripts/builder_registry.py"
+$RegOut = & $Py $RegistryScript resolve $Builder --repo $RepoRoot 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Error "[dispatch] Cannot resolve builder '$Builder' from the registry - refusing to dispatch. ($RegOut)"
     exit 1
