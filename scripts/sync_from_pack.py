@@ -768,6 +768,51 @@ def render_report(report: Report, apply: bool) -> str:
     return "\n".join(lines)
 
 
+ROSTER_START = "<!-- devteam:roster -->"
+ROSTER_END = "<!-- /devteam:roster -->"
+
+
+def rendered_roster(project: Path) -> str:
+    """Return the registry-derived roster fragment shared by briefings."""
+    try:
+        from builder_registry import load_registry
+        registry = load_registry(project)
+    except Exception as exc:
+        raise ValueError(f"cannot load builders registry: {exc}") from exc
+    rows = [ROSTER_START, "## Active DEVDEPARTMENT roster", ""]
+    for unit in registry["active"]:
+        entry = registry["defined"][unit]
+        rows.append(f"- `{unit}` — `{entry['cli']}`; briefing: `{entry['briefing']}`")
+    rows.extend(["", ROSTER_END])
+    return "\n".join(rows)
+
+
+def render_rosters(project: Path) -> list[Path]:
+    """Replace every marked roster section in project docs from autopilot.json."""
+    roster = rendered_roster(project)
+    targets = [project / "CLAUDE.md", project / "AGENTS.md"]
+    try:
+        from builder_registry import load_registry
+        targets.extend(project / e["briefing"] for e in load_registry(project)["defined"].values())
+    except Exception as exc:
+        raise ValueError(f"cannot load builders registry: {exc}") from exc
+    changed: list[Path] = []
+    pattern = re.compile(re.escape(ROSTER_START) + r".*?" + re.escape(ROSTER_END), re.S)
+    for target in dict.fromkeys(targets):
+        if not target.exists():
+            continue
+        text = target.read_text(encoding="utf-8")
+        if ROSTER_START not in text or ROSTER_END not in text:
+            continue
+        updated, count = pattern.subn(roster, text)
+        if count != 1:
+            raise ValueError(f"{target}: expected exactly one roster section, found {count}")
+        if updated != text:
+            target.write_text(updated, encoding="utf-8", newline="")
+            changed.append(target)
+    return changed
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Sync an onboarded project with the DEVDEPARTMENT pack")
     ap.add_argument("--pack", help="path to the DEVDEPARTMENT pack folder")
@@ -786,9 +831,19 @@ def main(argv: list[str]) -> int:
                     help="explicitly prevent writes (the default unless --apply is supplied)")
     ap.add_argument("--behind-pack", action="store_true",
                     help="print the configured pack-behind warning, if any")
+    ap.add_argument("--render", action="store_true",
+                    help="regenerate marked roster sections from autopilot.json")
     args = ap.parse_args(argv)
 
     project = Path(args.project).resolve()
+    if args.render:
+        try:
+            changed = render_rosters(project)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print("Rendered roster sections: " + (", ".join(str(p.relative_to(project)) for p in changed) or "none"))
+        return 0
     if args.behind_pack:
         warning = behind_pack(project)
         if warning:

@@ -1,5 +1,14 @@
 # Builder Briefing — Codex AI (unit ID: CX)
 
+<!-- devteam:roster -->
+## Active DEVDEPARTMENT roster
+
+- `GB` — `grok`; briefing: `briefings/GROK_BUILD_BRIEFING.md`
+- `CX` — `codex`; briefing: `briefings/CODEX_BRIEFING.md`
+- `S5` — `claude`; briefing: `briefings/S5_BUILD_BRIEFING.md`
+
+<!-- /devteam:roster -->
+
 Use this as Codex's system/initial prompt (its AGENTS.md convention loading will also pick up the repo's `AGENTS.md`, which encodes the same rules). The dispatch script passes a condensed version headlessly.
 
 ---
