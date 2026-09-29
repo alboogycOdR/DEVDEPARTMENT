@@ -29,6 +29,7 @@ from pathlib import Path
 import pytest
 
 DISPATCH_SH = Path(__file__).resolve().parents[1] / "scripts" / "dispatch.sh"
+POWERSHELL = shutil.which("powershell") or shutil.which("pwsh") or "powershell"
 
 
 def make_project(parent: Path, name: str, repo_root: Path) -> Path:
@@ -76,7 +77,7 @@ def run_dispatch(proj: Path, builder: str = "grok", dry_run: bool = True,
 
 def run_dispatch_ps1(proj: Path, builder: str = "grok", dry_run: bool = True):
     args = [
-        "powershell",
+        POWERSHELL,
         "-NoProfile",
         "-ExecutionPolicy", "Bypass",
         "-File", str(proj / "scripts" / "dispatch.ps1"),
@@ -343,7 +344,7 @@ class TestEmptyHuskReclaim:
             pytest.skip("bash parse OK; powershell unavailable here — ps1 parse runs on Windows")
         ps = subprocess.run(
             [
-                "powershell", "-NoProfile", "-Command",
+                POWERSHELL, "-NoProfile", "-Command",
                 "$errs = $null; "
                 "[void][System.Management.Automation.PSParser]::Tokenize("
                 "(Get-Content -Raw -LiteralPath '"
@@ -920,7 +921,7 @@ class TestPs1LegacyModePinnedBaseAndClaimVerification:
         env = dict(os.environ)
         env["PATH"] = f"{bindir}{os.pathsep}{env.get('PATH', '')}"
         result = subprocess.run(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+            [POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass",
              "-File", str(proj / "scripts" / "dispatch.ps1"), "-Builder", "grok", "-InProcess"],
             cwd=proj, capture_output=True, text=True, timeout=30, env=env)
         assert result.returncode == 0, _combined(result)
