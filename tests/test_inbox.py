@@ -1,6 +1,8 @@
 """Unit tests for Tower's two-phase, fail-open inbox consumer."""
 import json
 import sys
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -22,6 +24,22 @@ def write(repo, name, value):
 
 def test_empty_or_missing_inbox_is_a_clean_noop(tmp_path):
     assert inbox.drain_inbox(tmp_path, {}) == []
+
+
+def test_missing_inbox_is_observable_once_per_process_and_again_next_day(tmp_path, capsys):
+    inbox._MISSING_SOURCES.clear()
+    assert inbox.drain_inbox(tmp_path, {}) == []
+    assert "SOURCE_MISSING inbox" in capsys.readouterr().err
+    assert inbox.drain_inbox(tmp_path, {}) == []
+    assert "SOURCE_MISSING" not in capsys.readouterr().err
+    # The first two calls above used no `now=` override, so they compared
+    # against whatever the real UTC date is when this test runs (a hardcoded
+    # "next day" broke the moment the real calendar caught up to it — the
+    # exact defect being fixed here). Derive tomorrow from that same real
+    # clock instead of a literal date.
+    tomorrow = datetime.now(timezone.utc) + timedelta(days=1)
+    assert inbox.report_source_missing(tmp_path, "inbox", tmp_path / ".devteam" / "inbox",
+                                       now=time.strptime(tomorrow.strftime("%Y-%m-%d"), "%Y-%m-%d"))
 
 
 def test_valid_command_is_normalized_by_the_shared_validator_and_survives_drain(tmp_path):

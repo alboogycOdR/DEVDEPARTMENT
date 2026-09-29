@@ -55,11 +55,13 @@ threads instead of processes.
 from __future__ import annotations
 
 import logging
-import queue
 import threading
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable
 
 log = logging.getLogger("slack_listener")
+import inbox
 
 # --------------------------------------------------------------- optional dep
 # slack_sdk is imported here and ONLY here in the pack. Absent -> the
@@ -88,7 +90,8 @@ class SlackListener(threading.Thread):
         self,
         app_token: str,
         bot_token: str,
-        out_queue: "queue.Queue",
+        out_queue: object | None,
+        repo: Path | str | None = None,
         client_factory: Callable[[str, str], Any] | None = None,
         log_fn: Callable[[str], None] | None = None,
     ) -> None:
@@ -96,6 +99,7 @@ class SlackListener(threading.Thread):
         self.app_token = app_token
         self.bot_token = bot_token
         self.out_queue = out_queue
+        self.repo = Path(repo) if repo is not None else None
         self._client_factory = client_factory or self._default_client_factory
         self._log = log_fn or (lambda msg: log.info(msg))
         self._stop_event = threading.Event()
@@ -150,13 +154,20 @@ class SlackListener(threading.Thread):
         chat_id = str(payload.get("channel_id", "") or "")
         raw = f"{cmd} {args}".strip()
 
-        self.out_queue.put({
-            "cmd": cmd,
-            "args": args,
-            "chat_id": chat_id,
-            "update_id": None,  # Socket Mode has no Telegram-style replay offset to carry
-            "raw": raw,
-        })
+        if self.repo is None:
+            self._log("[slack_listener] REJECTED command: no durable inbox repository configured")
+            return
+        command_id = str(payload.get("trigger_id") or getattr(request, "envelope_id", "") or "")
+        if not command_id:
+            self._log("[slack_listener] REJECTED command: no stable delivery id")
+            return
+        persisted = inbox.enqueue(
+            self.repo, command_id=f"slack-{command_id}", source="slack", actor=chat_id,
+            command=cmd, args=args,
+            issued_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
+        if persisted is None:
+            self._log(f"[slack_listener] command {command_id} not persisted")
 
     # --------------------------------------------------------------- thread
     def stop(self) -> None:

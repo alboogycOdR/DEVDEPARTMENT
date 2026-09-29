@@ -3,6 +3,7 @@ import json
 import queue
 import sys
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -10,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from supervisor import decide, RuntimeState, DEFAULT_CONFIG  # noqa: E402
 import supervisor as sup  # noqa: E402
+import inbox  # noqa: E402
 from team_stats import compute  # noqa: E402
 
 NOW = datetime(2026, 7, 12, 20, 0, 0, tzinfo=timezone.utc)
@@ -753,10 +755,11 @@ class TestTowerTick:
 class _FakeSlackListener:
     instances = []
 
-    def __init__(self, app_token, bot_token, out_queue, client_factory=None, log_fn=None):
+    def __init__(self, app_token, bot_token, out_queue, repo=None, client_factory=None, log_fn=None):
         self.app_token = app_token
         self.bot_token = bot_token
         self.out_queue = out_queue
+        self.repo = repo
         self.available = True
         self.started = False
         self.stopped = False
@@ -773,29 +776,29 @@ class TestSlackListenerStartup:
     def setup_method(self):
         _FakeSlackListener.instances.clear()
 
-    def test_started_when_configured_and_env_present(self, monkeypatch):
+    def test_started_when_configured_and_env_present(self, monkeypatch, tmp_path):
         monkeypatch.setattr(sup, "SlackListener", _FakeSlackListener)
         monkeypatch.setenv("DEVTEAM_SLACK_APP_TOKEN", "xapp-1")
         monkeypatch.setenv("DEVTEAM_SLACK_TOKEN", "xoxb-1")
         cfg = {**DEFAULT_CONFIG, "notify_channels": ["console", "file", "slack"]}
-        listener, q = sup._start_slack_listener(cfg)
+        listener, q = sup._start_slack_listener(tmp_path, cfg)
         assert listener is not None and listener.started
         assert isinstance(q, queue.Queue)
 
-    def test_not_started_when_slack_not_in_notify_channels(self, monkeypatch):
+    def test_not_started_when_slack_not_in_notify_channels(self, monkeypatch, tmp_path):
         monkeypatch.setattr(sup, "SlackListener", _FakeSlackListener)
         monkeypatch.setenv("DEVTEAM_SLACK_APP_TOKEN", "xapp-1")
         monkeypatch.setenv("DEVTEAM_SLACK_TOKEN", "xoxb-1")
-        listener, q = sup._start_slack_listener(DEFAULT_CONFIG)  # default notify_channels has no "slack"
+        listener, q = sup._start_slack_listener(tmp_path, DEFAULT_CONFIG)  # default notify_channels has no "slack"
         assert listener is None
         assert _FakeSlackListener.instances == []
 
-    def test_not_started_missing_env(self, monkeypatch, capsys):
+    def test_not_started_missing_env(self, monkeypatch, capsys, tmp_path):
         monkeypatch.setattr(sup, "SlackListener", _FakeSlackListener)
         monkeypatch.delenv("DEVTEAM_SLACK_APP_TOKEN", raising=False)
         monkeypatch.delenv("DEVTEAM_SLACK_TOKEN", raising=False)
         cfg = {**DEFAULT_CONFIG, "notify_channels": ["console", "file", "slack"]}
-        listener, q = sup._start_slack_listener(cfg)
+        listener, q = sup._start_slack_listener(tmp_path, cfg)
         assert listener is None
         assert _FakeSlackListener.instances == []
         assert "DEVTEAM_SLACK_APP_TOKEN" in capsys.readouterr().err
@@ -827,3 +830,62 @@ def test_tick_identical_when_tower_slack_inbox_all_disabled(tmp_path, capsys):
     for marker in ("[tower]", "Slack listener", "TOWER_COMMAND"):
         assert marker not in combined
     assert not (repo / ".devteam" / "inbox").exists()
+
+
+# --------------------------------------------------------- E-K.3 SOURCE_MISSING
+class TestSourceMissingObservability:
+    """Absent optional sources are observability (SOURCE_MISSING, H6), never
+    a silent 'empty' result -- and each is logged once per process, and again
+    after a UTC day boundary, never every call."""
+
+    def test_dossier_heartbeats_reports_missing_dir_once_per_process(self, tmp_path, capsys):
+        inbox._MISSING_SOURCES.clear()
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        assert sup._dossier_heartbeats(repo) == {}
+        assert "SOURCE_MISSING dossiers" in capsys.readouterr().err
+        assert sup._dossier_heartbeats(repo) == {}
+        assert "SOURCE_MISSING" not in capsys.readouterr().err
+
+    def test_gateguard_denials_reports_missing_file_once_per_process(self, tmp_path, capsys):
+        inbox._MISSING_SOURCES.clear()
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        assert sup._gateguard_denials(repo, "CX") == 0
+        assert "SOURCE_MISSING gateguard" in capsys.readouterr().err
+        assert sup._gateguard_denials(repo, "CX") == 0
+        assert "SOURCE_MISSING" not in capsys.readouterr().err
+
+    def test_source_missing_recurs_after_a_utc_day_boundary(self, tmp_path, capsys):
+        inbox._MISSING_SOURCES.clear()
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        day1 = time.strptime("2026-09-28", "%Y-%m-%d")
+        day2 = time.strptime("2026-09-29", "%Y-%m-%d")
+        assert inbox.report_source_missing(repo, "dossiers", repo / "dossiers", now=day1)
+        assert not inbox.report_source_missing(repo, "dossiers", repo / "dossiers", now=day1)
+        assert inbox.report_source_missing(repo, "dossiers", repo / "dossiers", now=day2)
+
+
+class TestOnceWithoutInboxWarns:
+    """E-K.5: --once against a repo with no .devteam/inbox/ yet warns loudly
+    (a legacy install predating the durable inbox would otherwise silently
+    lose two-way commands sent between ticks)."""
+
+    def test_once_without_inbox_dir_warns(self, tmp_path, capsys):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+        (repo / "autopilot.json").write_text(json.dumps({"builders": ["GB"]}), encoding="utf-8")
+        assert sup.main(["--once", "--repo", str(repo)]) == 0
+        err = capsys.readouterr().err
+        assert "WARNING" in err and "legacy install" in err
+
+    def test_once_with_inbox_dir_present_does_not_warn(self, tmp_path, capsys):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "PLAN.md").write_text(FM + task(), encoding="utf-8")
+        (repo / "autopilot.json").write_text(json.dumps({"builders": ["GB"]}), encoding="utf-8")
+        (repo / ".devteam" / "inbox").mkdir(parents=True)
+        assert sup.main(["--once", "--repo", str(repo)]) == 0
+        assert "no .devteam/inbox" not in capsys.readouterr().err
