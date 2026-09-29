@@ -200,6 +200,39 @@ def parse_owned_paths(raw: str) -> list[str]:
     return [p for p in parts if p and p.lower() not in EMPTY_VALUES]
 
 
+# E-F.5: Owned_Paths is a comma-separated list of path globs only. The single
+# permitted annotation is a trailing " (new)"; anything else — prose,
+# parenthetical asides, whitespace inside a token, TBD — is rejected so a
+# territory-isolation check can never silently skip a malformed entry
+# (oikonomos SB-10: prose in this field broke the parser and rejected a
+# task's own paths). Notes belong in Description, not here.
+_OWNED_PATH_TOKEN = re.compile(r"^[A-Za-z0-9_./*\[\]{},!-]+$")
+
+
+def check_owned_paths_grammar(raw: str) -> list[str]:
+    """Return a list of grammar violations for one raw Owned_Paths value
+    (empty list = legal). Each entry, after stripping one trailing
+    ' (new)', must be a bare path/glob token: no spaces, no parentheses,
+    and not the literal 'TBD'."""
+    problems: list[str] = []
+    if not raw or raw.strip().lower() in EMPTY_VALUES:
+        return problems
+    for entry in re.split(r"[,\n]", raw):
+        token = entry.strip()
+        if not token:
+            continue
+        stripped = re.sub(r"\s+\(new\)$", "", token, flags=re.I)
+        if stripped.upper() == "TBD":
+            problems.append(f"'{token}' is TBD, not a path")
+            continue
+        if "(" in stripped or ")" in stripped:
+            problems.append(f"'{token}' has a parenthetical other than the ' (new)' suffix")
+            continue
+        if not _OWNED_PATH_TOKEN.match(stripped):
+            problems.append(f"'{token}' is not a bare path/glob (prose or illegal character)")
+    return problems
+
+
 def _glob_prefix(glob: str) -> str:
     for i, ch in enumerate(glob):
         if ch in "*?[":
@@ -272,6 +305,23 @@ def predict_dispatch_task(repo: str = ".", unit: str = "") -> str:
         return ""
 
 
+def has_resumable_task(repo: str = ".", unit: str = "") -> bool:
+    """True when this unit has exactly one claimed/in_progress task to
+    resume (LOOP_HYGIENE E-F.4 legacy-mode pinned base): dispatch must NOT
+    reset the worktree to the base tip in that case, only when the coming
+    session is (or may be) a fresh claim. Fail-closed to True on any
+    read/parse error -- an unreadable PLAN.md must never cause a worktree
+    reset that could discard resumable in-flight work."""
+    try:
+        text = (Path(repo) / "PLAN.md").read_text(encoding="utf-8")
+        tasks = parse_tasks(text, Report())
+        mine = [t for t in tasks if t.get("Assigned_To") == unit]
+        resuming = [t for t in mine if t.get("Status") in ("in_progress", "claimed")]
+        return len(resuming) > 0
+    except Exception:
+        return True
+
+
 def validate(text: str, control_mode: str = "legacy",
              registry_views: tuple | None = None,
              notes_max_chars: int = NOTES_MAX_CHARS_DEFAULT) -> Report:
@@ -312,6 +362,10 @@ def validate(text: str, control_mode: str = "legacy",
                     rep.error(f"{ctx}: required field '{fld}' missing or empty")
         if status and status not in VALID_STATUSES:
             rep.error(f"{ctx}: illegal Status '{status}' (allowed: {sorted(VALID_STATUSES)})")
+
+        if not t.is_empty("Owned_Paths"):
+            for problem in check_owned_paths_grammar(t.get("Owned_Paths")):
+                rep.error(f"{ctx}: Owned_Paths {problem}")
 
         assignee = t.get("Assigned_To")
         if assignee and assignee not in valid_assignees:

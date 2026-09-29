@@ -82,6 +82,33 @@ if ($LASTEXITCODE -eq 0) {
     exit 0
 }
 
+# H5: coordination timestamps are evidence from the clock, not text invented
+# by a builder.  scripts/plan_stamp.py is the single implementation of which
+# blocks get rewritten (those the pending PLAN.md diff actually touched) and
+# what counts as unsafe; this script and plan_commit.sh both call it so the
+# two platform mirrors cannot drift on behaviour (TASK-033 review finding --
+# this file previously picked blocks from TASK IDs in the commit MESSAGE,
+# which could rewrite an untouched block's Updated_At or miss a changed one).
+$PyBin = $null
+foreach ($c in @("python", "python3", "py")) {
+    if (Get-Command $c -ErrorAction SilentlyContinue) { $PyBin = $c; break }
+}
+if (-not $PyBin) {
+    Write-Error "[plan_commit] Python is required to stamp Updated_At values."
+    exit 1
+}
+$StampScript = Join-Path $RepoRoot "scripts\plan_stamp.py"
+if (Test-Path $StampScript) {
+    $env:PLAN_COMMIT_DIFF = (git -C $RepoRoot diff --unified=0 -- PLAN.md | Out-String)
+    $env:PLAN_COMMIT_PREVIOUS = (git -C $RepoRoot log -1 --format=%cI HEAD -- PLAN.md | Select-Object -First 1)
+    & $PyBin $StampScript $Plan
+    Remove-Item Env:\PLAN_COMMIT_DIFF, Env:\PLAN_COMMIT_PREVIOUS -ErrorAction SilentlyContinue
+} else {
+    # A copied-tool fixture that predates plan_stamp.py's split-out (or omits
+    # it deliberately) still gets a commit -- just without clock-stamping.
+    Write-Warning "[plan_commit] scripts\plan_stamp.py not found -- Updated_At not clock-checked this commit."
+}
+
 # Retry around index.lock: two builders committing coordination state seconds
 # apart is legitimate, and the collision is transient rather than an error.
 # Stray-block guard: PLAN.md is committed whole, so an edit outside your own
