@@ -915,9 +915,16 @@ class TestPs1LegacyModePinnedBaseAndClaimVerification:
             encoding="utf-8", newline="\n")
         bindir = tmp_path / "fakebin"
         bindir.mkdir(exist_ok=True)
-        script = bindir / "grok.cmd"
-        script.write_text("@echo off\r\nping -n 4 127.0.0.1 >nul\r\necho fake session output\r\n",
-                          encoding="utf-8")
+        if os.name == "nt":
+            script = bindir / "grok.cmd"
+            script.write_text(
+                "@echo off\r\nping -n 4 127.0.0.1 >nul\r\necho fake session output\r\n",
+                encoding="utf-8",
+            )
+        else:
+            script = bindir / "grok"
+            script.write_text("#!/bin/sh\nsleep 3\necho fake session output\n", encoding="utf-8")
+            script.chmod(0o755)
         env = dict(os.environ)
         env["PATH"] = f"{bindir}{os.pathsep}{env.get('PATH', '')}"
         result = subprocess.run(
