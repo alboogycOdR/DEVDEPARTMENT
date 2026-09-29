@@ -1,5 +1,5 @@
 ---
-plan_version: 6.12
+plan_version: 6.13
 last_updated: 2026-09-29T14:11:59Z
 overall_status: in_progress
 orchestrator_notes: "OWNER DECISION 2026-09-29T14:11:59Z (Alister, yes to 038): TASK-038 re-scoped — GB/S5 live runs deferred (CX only), write-access fixture moved to new TASK-045 (deps 037+038). 038 stays blocked OTHER:QUEUED_BEHIND_TASK-037 until CX frees; CX queue: 037 → 042 → 038 → 036 → 044/041/045 → 043. REVIEW 2026-09-29T13:58:37Z (claude-opus-5-5): TASK-040 APPROVED, merged, branch deleted. UNLOCKS TASK-042 (CX; deps 040+039 done) — ready to dispatch alongside TASK-037 (disjoint). TASK-041 still waits on 036; TASK-044 on 036. RE-CARVE 2026-09-29T13:53:19Z (claude-opus-5-5): TASK-037 unblocked — Owned_Paths/Protected_Grants += scripts/dispatch.sh, scripts/plan_commit.sh; status in_progress, CX resumes on task/TASK-037-cx. TASK-036 split: new-project batch default moved to new TASK-044 (sync_from_pack.py; deps 036+040); 036 now pending, Depends_On += TASK-037 (plan_commit.sh sequencing). TASK-038 still blocked on owner decisions (GB/S5 live launches vs CX-only directive; Codex write-access fixture scope). REVIEW 2026-09-29T13:23:07Z (claude-opus-5-5): TASK-034 APPROVED on re-review, merged --no-ff, branch deleted (CX worktree detached). All 4 rework findings fixed with discriminating tests; ORCH full re-run 1170 Python / 47 Node green. UNLOCKS TASK-036 (CX, push_policy; deps 034+031 both done) — dispatch next; apply its protected-path grants first. DIRECTIVE 2026-09-29T10:15:00Z (Alister): all build work routes to CX. S5/GB receive no work; do not dispatch either. All pending tasks (034, 036-043) already Assigned_To: CX. ORCH's own role stays plan/dispatch/review only from here — the direct-build detour this session (ORCH implementing 031/033/035/039 itself) was a one-off exception, not the standing procedure. ENV CAVEAT: shell-driven suites (test_plan_commit/test_dispatch_worktree/test_notify_needs_review) can show spurious MSYS worktree-path failures in some session environments (git-in-worktree path resolution); TASK-037 owns the harness fix — verify with your own from-scratch full-suite run before trusting a reviewer's reported failure count. GB idle (Grok Build balance exhausted, HTTP 402). Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md."
@@ -1403,7 +1403,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.1–3, E-H.5)
@@ -1438,10 +1438,10 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Test_Evidence:**
 - [2026-09-29T12:17:09Z] [CX] `python -m pytest -q tests/test_worktree_ps1.py tests/test_dispatch_worktree.py` → 41 passed in 90.01s; `python -m pytest -q tests/test_dispatch_worktree.py::TestWorktreeNamespacing::test_master_base_branch_fixture_is_supported tests/test_worktree_ps1.py` → 3 passed in 3.33s; `node hooks/run-tests.js` → 47 passed, 0 failed.
 - [2026-09-29T14:19:46Z] [CX] `bash -n scripts/dispatch.sh && bash -n scripts/plan_commit.sh` → passed; `python -m pytest -vv tests/test_dispatch_worktree.py::TestWorktreeNamespacing::test_carriage_return_in_python_base_branch_output_is_stripped` → 1 passed in 3.56s; `python -m pytest -q` → 1 failed (the master-owned `tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered`, missing `tests/test_retire_unit.py` from the sync manifest); `node hooks/run-tests.js` → 47 passed, 0 failed.
-**Review_Findings:** ORCH RE-CARVE 2026-09-29T13:53:19Z: OWNERSHIP_CONFLICT resolved — scripts/dispatch.sh and scripts/plan_commit.sh added to Owned_Paths and Protected_Grants for item (3) CR stripping (TASK-034 done; TASK-036 now sequenced after this task). Resume on task/TASK-037-cx from 90b389a.
-**Blocked_Reason:** OTHER: full suite is blocked by master-owned sync-manifest registration for tests/test_retire_unit.py; CI also awaits a task-branch push.
-**Updated_By:** CX
-**Updated_At:** 2026-09-29T14:20:05Z
+**Review_Findings:** ORCH 2026-09-29T16:02:08Z: unblocked. (a) Master manifest gap was ORCH's (TASK-040 merge) — scripts/retire_unit.py + tests/test_retire_unit.py now registered in sync-manifest.json on master; rebase/merge master into task/TASK-037-cx and re-run the full suite. (b) CI criterion: you are authorised to `git push origin task/TASK-037-cx` (your task branch ONLY — never master/main, never --force) and link the GitHub Actions run (windows-latest + ubuntu-latest) in Test_Evidence; `gh run list --branch task/TASK-037-cx` / `gh run watch` to wait for it. If Actions cannot run (no runner/permission), record the exact error and submit needs_review anyway — ORCH will judge. Prior re-carve: dispatch.sh + plan_commit.sh are in your Owned_Paths.
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-29T16:02:08Z
 
 ### TASK-038
 **Title:** Wave E E-H2 — CLI launch smoke test in harness-audit
