@@ -49,6 +49,8 @@ from pathlib import Path
 
 TASK_RE = re.compile(r"TASK-\d+")
 BLOCK_RE = re.compile(r"^### (TASK-\d+)\s*$", re.M)
+UNIT_RE = re.compile(r"\[([A-Z0-9-]+)\]")
+IMMUTABLE_FIELDS = ("Assigned_To", "Owned_Paths", "Protected_Grants")
 
 
 def _run(args: list[str], cwd: Path) -> tuple[int, str]:
@@ -88,13 +90,85 @@ def changed_line_numbers(repo: Path) -> set[int]:
     return touched
 
 
+def _head_plan(repo: Path) -> str:
+    code, text = _run(["git", "show", "HEAD:PLAN.md"], repo)
+    if code:
+        raise RuntimeError("could not read HEAD:PLAN.md")
+    return text
+
+
+def _block_text(text: str, task_id: str) -> str:
+    for tid, start, end in block_ranges(text):
+        if tid == task_id:
+            return "\n".join(text.splitlines()[start - 1:end - 1])
+    return ""
+
+
+def _field_value(block: str, field: str) -> str | None:
+    match = re.search(rf"^\*\*{re.escape(field)}:\*\*\s*(.*)$", block, re.M)
+    return match.group(1) if match else None
+
+
+def _max_changed_lines(repo: Path) -> int:
+    config = repo / "autopilot.json"
+    try:
+        import json
+        return int(json.loads(config.read_text(encoding="utf-8")).get("plan", {}).get("max_builder_diff_lines", 40))
+    except Exception:  # missing or malformed configuration uses the safe default
+        return 40
+
+
+def _changed_line_count(repo: Path) -> int:
+    code, output = _run(["git", "diff", "--numstat", "--", "PLAN.md"], repo)
+    if code or not output.strip():
+        return 0
+    added, removed, *_ = output.splitlines()[0].split("\t")
+    return int(added) + int(removed)
+
+
+def _replace_block(text: str, task_id: str, replacement: str) -> str:
+    match = re.search(rf"^### {re.escape(task_id)}\s*$.*?(?=^### TASK-\d+\s*$|\Z)", text, re.M | re.S)
+    if not match:
+        raise RuntimeError(f"{task_id} block not found")
+    return text[:match.start()] + replacement.rstrip("\n") + "\n\n" + text[match.end():].lstrip("\n")
+
+
+def cas_reapply(repo: Path, task_id: str, base_path: Path, desired_path: Path) -> int:
+    """Apply one changed task block to the current HEAD, or reject a true conflict."""
+    base = base_path.read_text(encoding="utf-8")
+    desired = desired_path.read_text(encoding="utf-8")
+    latest = _head_plan(repo)
+    before, wanted, current = (_block_text(x, task_id) for x in (base, desired, latest))
+    if not before or not wanted or not current:
+        raise RuntimeError(f"cannot locate {task_id} block for compare-and-swap")
+    if current != before and current != wanted:
+        print(f"[plan_commit] CAS conflict: {task_id} changed since it was read; no update committed.", file=sys.stderr)
+        return 1
+    (repo / "PLAN.md").write_text(_replace_block(latest, task_id, wanted), encoding="utf-8", newline="\n")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--message", required=True, help="the intended commit message")
     ap.add_argument("--repo", default=".", help="repo root containing PLAN.md")
+    ap.add_argument("--cas-base", help="saved PLAN.md read before this coordination update")
+    ap.add_argument("--cas-desired", help="builder's desired PLAN.md snapshot")
     args = ap.parse_args()
 
     repo = Path(args.repo).resolve()
+    if bool(args.cas_base) != bool(args.cas_desired):
+        ap.error("--cas-base and --cas-desired must be supplied together")
+    if args.cas_base:
+        named = sorted(set(TASK_RE.findall(args.message)))
+        if len(named) != 1:
+            print("[plan_commit] CAS requires a message naming exactly one task.", file=sys.stderr)
+            return 1
+        try:
+            return cas_reapply(repo, named[0], Path(args.cas_base), Path(args.cas_desired))
+        except Exception as exc:  # noqa: BLE001 - refuse lost updates, never guess
+            print(f"[plan_commit] CAS failed: {exc}", file=sys.stderr)
+            return 1
     plan = repo / "PLAN.md"
     if not plan.is_file():
         print(f"[plan_guard] no PLAN.md at {repo} - skipping check", file=sys.stderr)
@@ -104,7 +178,9 @@ def main() -> int:
     is_orch = "[ORCH]" in args.message.upper()
 
     try:
-        text = plan.read_text(encoding="utf-8")
+        raw = plan.read_bytes()
+        text = raw.decode("utf-8")
+        previous = _head_plan(repo)
         touched = changed_line_numbers(repo)
         ranges = block_ranges(text)
     except Exception as exc:  # noqa: BLE001 - fail open, see module docstring
@@ -112,6 +188,9 @@ def main() -> int:
         return 0
 
     if not touched:
+        return 0
+    if not ranges:
+        print("[plan_guard] no task blocks found - allowing commit", file=sys.stderr)
         return 0
 
     first_block_start = ranges[0][1] if ranges else None
@@ -133,6 +212,16 @@ def main() -> int:
             "- that is ORCH-owned by protocol"
         )
 
+    if not is_orch and (b"\r\n" in raw or b"\r" in raw):
+        problems.append("line endings (PLAN.md must remain LF; use plan_commit for your own block only)")
+
+    if not is_orch and _changed_line_count(repo) > _max_changed_lines(repo):
+        problems.append(f"more than {_max_changed_lines(repo)} changed PLAN.md lines")
+
+    units = UNIT_RE.findall(args.message.upper())
+    if not is_orch and len(set(named)) != 1:
+        problems.append("a builder message must name exactly one task block")
+
     if named:
         strays = sorted(b for b in blocks_touched if b not in named)
         if strays:
@@ -143,6 +232,18 @@ def main() -> int:
         problems.append(
             f"{len(blocks_touched)} task blocks ({', '.join(sorted(blocks_touched))}) and the message names none"
         )
+
+    if not is_orch and len(set(named)) == 1:
+        task_id = named[0]
+        current_block = _block_text(text, task_id)
+        old_block = _block_text(previous, task_id)
+        if units:
+            assigned = _field_value(current_block, "Assigned_To")
+            if assigned != units[-1]:
+                problems.append(f"{task_id} is assigned to {assigned!r}, not message unit {units[-1]!r}")
+        for field in IMMUTABLE_FIELDS:
+            if _field_value(old_block, field) != _field_value(current_block, field):
+                problems.append(f"immutable builder field {field} changed in {task_id}")
 
     if not problems:
         return 0

@@ -57,6 +57,14 @@ if (-not (Test-Path $Plan)) {
     exit 1
 }
 
+# Keep the exact PLAN.md read that this invocation is about to commit.  If a
+# concurrent writer wins, the loop replays only this task block onto its HEAD.
+$BaseBlob = (git -C $RepoRoot rev-parse HEAD:PLAN.md)
+$CasBase = [System.IO.Path]::GetTempFileName()
+$CasDesired = [System.IO.Path]::GetTempFileName()
+try {
+    git -C $RepoRoot show HEAD:PLAN.md | Set-Content -LiteralPath $CasBase -Encoding utf8
+
 # Integration branch from autopilot.json (pack default: main). Fail-safe --
 # never an invented branch. Mirrors dispatch.ps1's resolution exactly.
 $BaseBranch = "main"
@@ -127,7 +135,20 @@ if (Test-Path $GuardPath) {
     }
 }
 
+Copy-Item -LiteralPath $Plan -Destination $CasDesired -Force
+
 for ($attempt = 1; $attempt -le 5; $attempt++) {
+    $CurrentBlob = (git -C $RepoRoot rev-parse HEAD:PLAN.md)
+    if ($CurrentBlob -ne $BaseBlob) {
+        & $PyBin $GuardPath --message $Message --repo $RepoRoot --cas-base $CasBase --cas-desired $CasDesired
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "[plan_commit] refusing to overwrite a newer PLAN.md update."
+            exit 1
+        }
+        $BaseBlob = $CurrentBlob
+        git -C $RepoRoot show HEAD:PLAN.md | Set-Content -LiteralPath $CasBase -Encoding utf8
+        Copy-Item -LiteralPath $Plan -Destination $CasDesired -Force
+    }
     git -C $RepoRoot commit -q -m $Message -- PLAN.md 2>$null
     if ($LASTEXITCODE -eq 0) {
         $sha = (git -C $RepoRoot rev-parse --short HEAD)
@@ -154,3 +175,6 @@ for ($attempt = 1; $attempt -le 5; $attempt++) {
 
 Write-Error "[plan_commit] failed after 5 attempts (index.lock contention, or nothing to commit). Re-run once; if it persists, report it rather than committing by hand."
 exit 1
+} finally {
+    Remove-Item -LiteralPath $CasBase, $CasDesired -Force -ErrorAction SilentlyContinue
+}

@@ -17,3 +17,5 @@
 Write the failing test first (it must fail against current master — spec §1 H7), then implement, then run BOTH full suites. Ported code cites its origin SHA and lists anything not ported, with the reason, in the Work Log.
 
 ## Work Log
+
+- 2026-09-29: Added block-granular CAS replay/rejection to both `plan_commit` mirrors, plus legacy guard checks for LF line endings, configurable diff limits, task ownership, and immutable builder fields. Fixture-repo tests cover independent-block replay, same-block rejection, duplicate no-op, and guard violations.

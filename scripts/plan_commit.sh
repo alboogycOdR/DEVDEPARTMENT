@@ -77,6 +77,15 @@ if [ ! -f "$PLAN" ]; then
   exit 1
 fi
 
+# Snapshot the read state before stamping/guarding.  The commit loop below
+# compares the HEAD blob against this exact read and replays only the named
+# task block if another writer lands first.
+BASE_BLOB="$(git -C "$REPO_ROOT" rev-parse HEAD:PLAN.md)"
+CAS_BASE="$(mktemp)"
+CAS_DESIRED="$(mktemp)"
+trap 'rm -f "$CAS_BASE" "$CAS_DESIRED"' EXIT
+git -C "$REPO_ROOT" show HEAD:PLAN.md > "$CAS_BASE"
+
 # Integration branch from autopilot.json (pack default: main). Fail-safe, never
 # an invented branch — mirrors dispatch.sh/.ps1's resolution exactly.
 # Read via stdin, not a path argument: under Git Bash on Windows this script
@@ -149,9 +158,21 @@ if [ -n "$PY_BIN" ] && [ -f "$REPO_ROOT/scripts/plan_guard.py" ]; then
   fi
 fi
 
+cp "$PLAN" "$CAS_DESIRED"
+
 # Retry around index.lock: two builders can legitimately commit coordination
 # state seconds apart, and that collision is transient, not an error.
 for attempt in 1 2 3 4 5; do
+  CURRENT_BLOB="$(git -C "$REPO_ROOT" rev-parse HEAD:PLAN.md)"
+  if [ "$CURRENT_BLOB" != "$BASE_BLOB" ]; then
+    if ! "$PY_BIN" "$REPO_ROOT/scripts/plan_guard.py" --message "$MSG" --repo "$REPO_ROOT" --cas-base "$CAS_BASE" --cas-desired "$CAS_DESIRED"; then
+      echo "[plan_commit] refusing to overwrite a newer PLAN.md update." >&2
+      exit 1
+    fi
+    BASE_BLOB="$CURRENT_BLOB"
+    git -C "$REPO_ROOT" show HEAD:PLAN.md > "$CAS_BASE"
+    cp "$PLAN" "$CAS_DESIRED"
+  fi
   if git -C "$REPO_ROOT" commit -q -m "$MSG" -- PLAN.md 2>/dev/null; then
     echo "[plan_commit] recorded on $BASE_BRANCH: $(git -C "$REPO_ROOT" rev-parse --short HEAD)  $MSG"
 

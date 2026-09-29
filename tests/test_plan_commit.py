@@ -180,6 +180,14 @@ class TestGuardRails:
         assert "nothing to record" in r.stdout
         assert git(repo, "rev-parse", "HEAD").stdout.strip() == before
 
+    def test_duplicate_claim_is_a_noop_without_a_commit(self, repo):
+        (repo / "PLAN.md").write_text(plan(status="claimed", by="S5"), encoding="utf-8", newline="\n")
+        assert run_commit(repo, "chore(plan): claim TASK-007 [S5]").returncode == 0
+        before = git(repo, "rev-parse", "HEAD").stdout.strip()
+        result = run_commit(repo, "chore(plan): claim TASK-007 [S5]")
+        assert result.returncode == 0
+        assert git(repo, "rev-parse", "HEAD").stdout.strip() == before
+
     def test_refuses_when_checkout_is_on_the_wrong_branch(self, repo):
         git(repo, "checkout", "-q", "-b", "some-feature")
         (repo / "PLAN.md").write_text(plan(status="claimed", by="S5"),
@@ -276,12 +284,12 @@ class TestRunsFromALinkedWorktree:
         wt = self._worktree(repo)
         (repo / "PLAN.md").write_text(plan(status="claimed", by="GB"),
                                       encoding="utf-8", newline="\n")
-        r = subprocess.run([_bash(), "scripts/plan_commit.sh", "chore(plan): claim [GB]"],
+        r = subprocess.run([_bash(), "scripts/plan_commit.sh", "chore(plan): claim TASK-007 [S5]"],
                            cwd=wt, capture_output=True, text=True, timeout=60)
         assert r.returncode == 0, f"stdout={r.stdout} stderr={r.stderr}"
         # The commit must exist on the MAIN checkout's integration branch...
         log = git(repo, "log", "--oneline", "-1").stdout
-        assert "claim [GB]" in log
+        assert "claim TASK-007 [S5]" in log
         assert files_in_head(repo) == {"PLAN.md"}
         # ...and the worktree must still be detached, untouched.
         head = git(wt, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
