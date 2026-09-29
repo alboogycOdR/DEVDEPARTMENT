@@ -1425,7 +1425,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-038
 **Title:** Wave E E-H2 — CLI launch smoke test in harness-audit
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.4, E-H.5), docs/reviews/LIVE_CHECKS_2026-09.md
@@ -1440,13 +1440,24 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-038-cx
 **Started_At:** 2026-09-29T12:17:50Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-29T12:19:30Z] [CX] Pre-flight path inspection completed before implementation:
+  ```text
+  [preflight] TASK-038 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-codex-DEVDEPARTMENT-T038
+  [preflight] 5 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    FILE   scripts/harness-audit.sh  -> exists, 64 line(s), 2481 bytes
+    FILE   scripts/harness-audit.ps1  -> exists, 84 line(s), 3374 bytes
+    NEW    tests/test_harness_smoke.py  -> does not exist; parent tests/ exists
+    GLOB   tests/fixtures/smoke/**  -> matches nothing yet (new territory)
+    FILE   dossiers/TASK-038.md  -> exists, 19 line(s), 1480 bytes
+  [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
+  ```
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-29T12:18:00Z
+**Updated_At:** 2026-09-29T12:19:46Z
 
 ### TASK-039
 **Title:** Wave E E-I — learning loop earns its sessions or stays off
