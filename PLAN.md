@@ -1403,7 +1403,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.1–3, E-H.5)
@@ -1413,9 +1413,9 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Description:** (1) dispatch.ps1 records the runner window PID in `.devteam/launch/<unit>.pid`; headless runs drop -NoExit; `worktree.ps1 remove` kills recorded PIDs first, retries `Access is denied` with robocopy /MIR from an empty folder and \\?\ long paths. (2) GitHub Actions matrix windows-latest + ubuntu-latest, fixture repo with base branch `master`, both suites + harness-audit; PS 5.1 parser check on Windows. (3) Every shell parse of Python output strips CR (extends d3f5fc08 port). (5) .gitattributes: `*.sh text eol=lf`, `*.ps1 text eol=crlf`, `PLAN.md text eol=lf` (framework-owned). Carried from TASK-024 review: tests/conftest.py's env scrub removes all DEVTEAM_* including DEVTEAM_PACK_SELF_TESTS (the CI override) — exempt it in the CI setup or the scrub pattern. Carried from TASK-026/028: root-cause why tests/test_dispatch_worktree.py::TestEmptyHuskReclaim::test_dotfile_only_directory_is_refused_by_dispatch_ps1 fails ONLY inside the Codex session sandbox (PowerShell WriteError); it passes in ORCH's environment, including with DEVTEAM_UNIT/TASK/DELEGATED set — likely how dispatch.ps1 reacts to a husk directory under the Codex sandbox — and make the test and script behave the same in both environments. **Protected-path grants (ORCH applies before dispatch):** scripts/dispatch.ps1, scripts/worktree.ps1.
 **Acceptance_Criteria:**
 - [x] A Windows test launches a dummy runner, removes the worktree, and nothing is left locked (spec §10 Acceptance)
-- [ ] CI matrix workflow (windows-latest + ubuntu-latest) exists and RUNS on the task branch push — link the run in Test_Evidence; every failing job must be attributed to a file outside Owned_Paths (listed by test id). Matrix GREEN moved to TASK-046 (ORCH split 2026-09-29T17:02:24Z)
+- [x] CI matrix workflow (windows-latest + ubuntu-latest) exists and RUNS on the task branch push — link the run in Test_Evidence; every failing job must be attributed to a file outside Owned_Paths (listed by test id). Matrix GREEN moved to TASK-046 (ORCH split 2026-09-29T17:02:24Z)
 - [x] .gitattributes ships the three eol rules (E-H.5)
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-037-cx
 **Started_At:** 2026-09-29T12:03:44Z
 **Progress_Notes:**
@@ -1437,15 +1437,17 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-29T16:20:00Z] [CX] Merged the manifest fix, then verified locally: `python -m pytest -q` → 1181 passed in 581.05s; `node hooks/run-tests.js` → 47 passed. Published CI run 36596198456 exposed one remaining framework registration gap: owned new `tests/test_worktree_ps1.py` is absent from `sync-manifest.json`, which is outside TASK-037 Owned_Paths. Task-owned CI fixes were committed in d2bf5ee (pwsh selection and C:\\tmp fixture setup); awaiting an ORCH manifest registration before rerunning CI.
 - [2026-09-29T16:41:34Z] [CX] Registered `tests/test_worktree_ps1.py` in 865a0fb and published CI run 36599187033. Ubuntu failed 13 PowerShell-on-Linux tests: TASK-037 dispatch fixtures invoke Windows-style `scripts\\builder_registry.py`, while 11 failures are in out-of-territory `tests/test_plan_commit.py` / `scripts/plan_commit.ps1` due to `git.exe` on Linux. Windows job was still running when this block was recorded. CI cannot be made green without an ORCH ownership re-carve for the shared cross-platform PowerShell test strategy and plan-commit files.
 - [2026-09-29T17:15:26Z] [CX] Review handoff deferred after CI log inspection found seven TASK-037-owned Ubuntu dispatch-test failures caused by the Windows-only literal `scripts\\builder_registry.py`. Fixed with `Join-Path` and committed `1807731`; pushed replacement matrix run 36603606796. Final local Python regression is also running; retain TASK-037 in progress until both results are recorded.
+- [2026-09-29T17:46:13Z] [CX] Final handoff: commits `4c62338` and `a1f0bc9` remove the remaining TASK-037 Ubuntu dispatch incompatibilities. CI [run 36606515624](https://github.com/alboogycOdR/DEVDEPARTMENT/actions/runs/36606515624) has no failures in TASK-037-owned files. Remaining failures are assigned to TASK-046: Ubuntu `tests/test_plan_commit.py` (six failures in `scripts/plan_commit.ps1`) and Windows `tests/test_supervisor.py::test_triage_unblock_uses_judgment_model` (`scripts/supervisor.py`).
 **Artifacts:** scripts/dispatch.ps1, scripts/dispatch.sh, scripts/plan_commit.sh, scripts/worktree.ps1, .github/workflows/tests.yml, .gitattributes, tests/test_worktree_ps1.py, tests/test_dispatch_worktree.py, dossiers/TASK-037.md
 **Test_Evidence:**
 - [2026-09-29T12:17:09Z] [CX] `python -m pytest -q tests/test_worktree_ps1.py tests/test_dispatch_worktree.py` → 41 passed in 90.01s; `python -m pytest -q tests/test_dispatch_worktree.py::TestWorktreeNamespacing::test_master_base_branch_fixture_is_supported tests/test_worktree_ps1.py` → 3 passed in 3.33s; `node hooks/run-tests.js` → 47 passed, 0 failed.
 - [2026-09-29T14:19:46Z] [CX] `bash -n scripts/dispatch.sh && bash -n scripts/plan_commit.sh` → passed; `python -m pytest -vv tests/test_dispatch_worktree.py::TestWorktreeNamespacing::test_carriage_return_in_python_base_branch_output_is_stripped` → 1 passed in 3.56s; `python -m pytest -q` → 1 failed (the master-owned `tests/test_sync_from_pack.py::TestManifestPathsAreLiteral::test_every_shipped_test_file_is_registered`, missing `tests/test_retire_unit.py` from the sync manifest); `node hooks/run-tests.js` → 47 passed, 0 failed.
 - [2026-09-29T16:20:00Z] [CX] `python -m pytest -q` → 1181 passed in 581.05s; `node hooks/run-tests.js` → 47 passed, 0 failed. CI [run 36596198456](https://github.com/alboogycOdR/DEVDEPARTMENT/actions/runs/36596198456) initially failed: Ubuntu test helper hard-coded `powershell`; Windows lacked `C:\\tmp`; both repaired in d2bf5ee. CI also confirms `tests/test_worktree_ps1.py` is missing from `sync-manifest.json` (outside territory), so no green matrix can be truthfully recorded until ORCH registers it.
+- [2026-09-29T17:46:13Z] [CX] `python -m pytest -q` → 1181 passed in 370.76s; `node hooks/run-tests.js` → 47 passed, 0 failed. Focused cross-platform claim-verification fixture → 1 passed. CI [run 36606515624](https://github.com/alboogycOdR/DEVDEPARTMENT/actions/runs/36606515624) ran both Windows and Ubuntu; out-of-territory failures are listed in the final Progress_Note.
 **Review_Findings:** ORCH 2026-09-29T17:02:24Z: 3rd OWNERSHIP_CONFLICT — SPLIT instead of widening again. The CI-green criterion now lives in TASK-046 (cross-platform fixes in plan_commit.ps1/test_plan_commit.py etc., sequenced after TASK-036). For 037: keep the workflow, record the latest run link, list each remaining failing test id with the out-of-territory file responsible, make sure nothing IN your Owned_Paths fails on either OS, re-run both local suites, and submit needs_review. Do not edit files outside Owned_Paths.
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-29T17:15:42Z
+**Updated_At:** 2026-09-29T17:46:31Z
 
 ### TASK-038
 **Title:** Wave E E-H2 — CLI launch smoke test in harness-audit
