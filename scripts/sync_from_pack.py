@@ -772,11 +772,11 @@ ROSTER_START = "<!-- devteam:roster -->"
 ROSTER_END = "<!-- /devteam:roster -->"
 
 
-def rendered_roster(project: Path) -> str:
+def rendered_roster(project: Path, registry: dict | None = None) -> str:
     """Return the registry-derived roster fragment shared by briefings."""
     try:
         from builder_registry import load_registry
-        registry = load_registry(project)
+        registry = registry or load_registry(project)
     except Exception as exc:
         raise ValueError(f"cannot load builders registry: {exc}") from exc
     rows = [ROSTER_START, "## Active DEVDEPARTMENT roster", ""]
@@ -787,16 +787,18 @@ def rendered_roster(project: Path) -> str:
     return "\n".join(rows)
 
 
-def render_rosters(project: Path) -> list[Path]:
+def render_rosters(project: Path, registry: dict | None = None) -> list[Path]:
     """Replace every marked roster section in project docs from autopilot.json."""
-    roster = rendered_roster(project)
+    roster = rendered_roster(project, registry)
     targets = [project / "CLAUDE.md", project / "AGENTS.md"]
     try:
         from builder_registry import load_registry
-        targets.extend(project / e["briefing"] for e in load_registry(project)["defined"].values())
+        registry = registry or load_registry(project)
+        targets.extend(project / e["briefing"] for e in registry["defined"].values())
     except Exception as exc:
         raise ValueError(f"cannot load builders registry: {exc}") from exc
     changed: list[Path] = []
+    pending_writes: list[tuple[Path, str, str]] = []
     pattern = re.compile(re.escape(ROSTER_START) + r".*?" + re.escape(ROSTER_END), re.S)
     for target in dict.fromkeys(targets):
         if not target.exists():
@@ -804,12 +806,17 @@ def render_rosters(project: Path) -> list[Path]:
         text = target.read_text(encoding="utf-8")
         if ROSTER_START not in text or ROSTER_END not in text:
             continue
-        updated, count = pattern.subn(roster, text)
+        # Roster values come from user configuration and may contain regex
+        # replacement escapes (notably Windows paths). A callable keeps them
+        # literal while retaining the single-section validation below.
+        updated, count = pattern.subn(lambda _match: roster, text)
         if count != 1:
             raise ValueError(f"{target}: expected exactly one roster section, found {count}")
         if updated != text:
-            target.write_text(updated, encoding="utf-8", newline="")
-            changed.append(target)
+            pending_writes.append((target, text, updated))
+    for target, _original, updated in pending_writes:
+        target.write_text(updated, encoding="utf-8", newline="")
+        changed.append(target)
     return changed
 
 

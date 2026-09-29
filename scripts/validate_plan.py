@@ -584,7 +584,7 @@ def lint_briefings(repo: str | Path = ".") -> Report:
             rep.error(f"CONFIG: {unit} briefing does not exist: {entry['briefing']}")
             continue
         text = briefing.read_text(encoding="utf-8")
-        for candidate in re.findall(r"(?<![`\w])(?:scripts|tests|briefings|hooks)/[A-Za-z0-9_./-]+", text):
+        for candidate in re.findall(r"(?<!\w)(?:scripts|tests|briefings|hooks)/[A-Za-z0-9_./-]+", text):
             if not (root / candidate).exists():
                 rep.warn(f"BRIEFING: {entry['briefing']} names nonexistent path {candidate}")
     claude = root / "CLAUDE.md"
