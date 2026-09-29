@@ -9,11 +9,14 @@
 - Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md
 
 ## Territory
-- Owned_Paths: scripts/dispatch.ps1, scripts/worktree.ps1, .github/workflows/** (new), .gitattributes, tests/test_dispatch_worktree.py, tests/test_worktree_ps1.py (new)
-- Protected-path grants: scripts/dispatch.ps1, scripts/worktree.ps1
+- Owned_Paths: scripts/dispatch.ps1, scripts/dispatch.sh, scripts/plan_commit.sh, scripts/worktree.ps1, .github/workflows/** (new), .gitattributes, tests/test_dispatch_worktree.py, tests/test_worktree_ps1.py (new)
+- Protected-path grants: scripts/dispatch.ps1, scripts/dispatch.sh, scripts/plan_commit.sh, scripts/worktree.ps1
 - Depends_On: TASK-035
 
 ## Intended approach
 Write the failing test first (it must fail against current master — spec §1 H7), then implement, then run BOTH full suites. Ported code cites its origin SHA and lists anything not ported, with the reason, in the Work Log.
 
 ## Work Log
+- 2026-09-29: Implemented detached runner PID recording, guarded runner termination before worktree removal, the robocopy/long-path retry, PS 5.1 parsing coverage, a master-branch fixture, and the Windows/Linux CI matrix. E-H.3 initially required `scripts/dispatch.sh` and `scripts/plan_commit.sh`, so those files were left untouched pending an ownership extension.
+- 2026-09-29: ORCH re-carved the territory to add both shell scripts. Normalized CR at every Python-command-substitution boundary in `dispatch.sh` and at `plan_commit.sh`'s Python-derived base-branch boundary. Added an end-to-end dispatch fixture that makes the base-branch Python output CRLF and confirms a `master` fixture still creates the worktree at its actual base tip.
+- 2026-09-29: Rework: captured the `atlas.py pack` exit status before CR normalization (the assignment itself returns zero), with a failing-pack regression that checks the fail-open warning preserves exit 23. `Stop-RecordedRunner` now continues scanning PID records after deleting a stale one. The previously sandbox-only `TestEmptyHuskReclaim::test_dotfile_only_directory_is_refused_by_dispatch_ps1` failure was caused by PowerShell invoking relative Python script paths containing Windows backslashes under the MSYS/Codex environment; `1807731` and `4c62338` changed those calls to absolute `Join-Path` paths. The focused test now passes here. `DEVTEAM_PACK_SELF_TESTS` does not need a CI override: this checkout's tracked `sync-manifest.json` has `role: pack`, so `_is_pack_repo()` enables the pack self-tests independently; the test output below records those tests as run rather than skipped.

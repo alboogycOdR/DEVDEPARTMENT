@@ -100,6 +100,7 @@ try:
 except Exception:
     print('main')
 " < "$REPO_ROOT/autopilot.json" 2>/dev/null || echo main)"
+  BASE_BRANCH="${BASE_BRANCH//$'\r'/}"
   [ -z "$BASE_BRANCH" ] && BASE_BRANCH="main"
 fi
 
