@@ -66,11 +66,12 @@ def make_project(parent: Path, name: str, repo_root: Path) -> Path:
     return proj
 
 
-def run_dispatch(proj: Path, builder: str = "grok", dry_run: bool = True):
+def run_dispatch(proj: Path, builder: str = "grok", dry_run: bool = True,
+                 env: dict[str, str] | None = None):
     args = ["bash", "scripts/dispatch.sh", builder]
     if dry_run:
         args.append("--dry-run")
-    return subprocess.run(args, cwd=proj, capture_output=True, text=True, timeout=30)
+    return subprocess.run(args, cwd=proj, capture_output=True, text=True, timeout=30, env=env)
 
 
 def run_dispatch_ps1(proj: Path, builder: str = "grok", dry_run: bool = True):
@@ -128,6 +129,40 @@ class TestWorktreeNamespacing:
         assert result.returncode == 0, _combined(result)
         worktree = proj.parent / "wt-grok-projectMaster"
         assert worktree.is_dir()
+        base = subprocess.check_output(["git", "rev-parse", "master"], cwd=proj, text=True).strip()
+        head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=worktree, text=True).strip()
+        assert head == base
+
+    def test_carriage_return_in_python_base_branch_output_is_stripped(self, tmp_path):
+        """Git Bash receives CRLF from native Windows Python command output."""
+        proj = make_project(tmp_path, "projectCrBase", REPO_ROOT)
+        subprocess.run(["git", "branch", "-m", "master"], cwd=proj, check=True)
+        (proj / "autopilot.json").write_text(
+            '{"control": {"mode": "legacy"}, "git": {"base_branch": "master"}}',
+            encoding="utf-8", newline="\n")
+        subprocess.run(["git", "add", "autopilot.json"], cwd=proj, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "set master base"], cwd=proj, check=True)
+
+        shim_dir = tmp_path / "python-shim"
+        shim_dir.mkdir()
+        shim = shim_dir / "python3"
+        shim.write_text(
+            "#!/usr/bin/env bash\n"
+            "if [[ \"$1\" == \"-c\" && \"$2\" == *\"get('git',{})\"* ]]; then\n"
+            "  printf 'master\\r\\n'\n"
+            "  exit 0\n"
+            "fi\n"
+            "exec \"$REAL_PYTHON\" \"$@\"\n",
+            encoding="utf-8", newline="\n")
+        shim.chmod(0o755)
+        env = dict(os.environ)
+        env["REAL_PYTHON"] = sys.executable
+        env["PATH"] = f"{shim_dir}{os.pathsep}{env.get('PATH', '')}"
+
+        result = run_dispatch(proj, env=env)
+
+        assert result.returncode == 0, _combined(result)
+        worktree = proj.parent / "wt-grok-projectCrBase"
         base = subprocess.check_output(["git", "rev-parse", "master"], cwd=proj, text=True).strip()
         head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=worktree, text=True).strip()
         assert head == base

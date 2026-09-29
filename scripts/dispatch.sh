@@ -43,6 +43,7 @@ try:
 except Exception:
     print('main')
 " 2>/dev/null || echo main)"
+BASE_BRANCH="${BASE_BRANCH//$'\r'/}"
 
 # v4.7: builder identity comes from the registry (autopilot.json's builders
 # key, dual-shape — see scripts/builder_registry.py). argv may be a unit ID
@@ -170,6 +171,7 @@ try:
 except Exception:
     print('legacy')
 " 2>/dev/null || echo legacy)"
+CONTROL_MODE="${CONTROL_MODE//$'\r'/}"
 
 TASK_ID=""
 RESUME_OR_CLAIM=""
@@ -179,6 +181,7 @@ if [[ "$CONTROL_MODE" == "strict" ]]; then
     CLAIM_ARGS+=(--dry-run)
   fi
   CLAIM_OUT="$(python3 scripts/control.py "${CLAIM_ARGS[@]}")"
+  CLAIM_OUT="${CLAIM_OUT//$'\r'/}"
   case "$CLAIM_OUT" in
     RESUME:*)  TASK_ID="${CLAIM_OUT#RESUME:}";  RESUME_OR_CLAIM="resuming" ;;
     CLAIMED:*) TASK_ID="${CLAIM_OUT#CLAIMED:}"; RESUME_OR_CLAIM="claimed" ;;
@@ -248,6 +251,7 @@ try:
 except Exception:
     print('the other builders')
 " 2>/dev/null || echo "the other builders")"
+PEERS="${PEERS//$'\r'/}"
 # Identity mechanism (see docs/BUILDER_REGISTRY.md "Builder identity").
 #
 # identity=agent  -- the unit launches with `--agent <name>`, so its role
@@ -293,6 +297,7 @@ fi
 # resolves its Owned_Paths itself.
 INSTINCTS_SECTION="$(python3 scripts/instincts.py inject \
   --unit "$ID" --repo "$REPO_ROOT" --limit 5 2>/dev/null || true)"
+INSTINCTS_SECTION="${INSTINCTS_SECTION//$'\r'/}"
 if [[ -n "$INSTINCTS_SECTION" ]]; then
   PROMPT="${PROMPT}
 
@@ -329,6 +334,7 @@ try:
 except Exception:
     print('False')
 " 2>/dev/null || echo False)"
+  ATLAS_ENABLED="${ATLAS_ENABLED//$'\r'/}"
   if [[ "$ATLAS_ENABLED" == "True" ]]; then
     ATLAS_TASK_ID="$TASK_ID"
     if [[ -z "$ATLAS_TASK_ID" ]]; then
@@ -354,6 +360,7 @@ try:
 except Exception:
     print('')
 " 2>/dev/null || echo "")"
+      ATLAS_TASK_ID="${ATLAS_TASK_ID//$'\r'/}"
     fi
     if [[ -n "$ATLAS_TASK_ID" ]]; then
       ATLAS_BUDGET="$(python3 -c "
@@ -363,6 +370,7 @@ try:
 except Exception:
     print(3000)
 " 2>/dev/null || echo 3000)"
+      ATLAS_BUDGET="${ATLAS_BUDGET//$'\r'/}"
       # Refresh the index BEFORE composing the pack (oikonomos defect,
       # 2026-08-15): the nightly audit is the only other scan caller, so
       # without this every post-merge dispatch ships a stale map — and
@@ -383,6 +391,7 @@ except Exception:
       [[ $ATLAS_SCAN_OK -eq 1 ]] \
         || echo "[dispatch] WARNING: atlas scan failed twice (concurrent dispatch can contend on .devteam/atlas.db) — packing against the existing, possibly stale index." >&2
       ATLAS_SECTION="$(python3 scripts/atlas.py pack --task "$ATLAS_TASK_ID" --budget "$ATLAS_BUDGET" 2>/dev/null)"
+      ATLAS_SECTION="${ATLAS_SECTION//$'\r'/}"
       ATLAS_RC=$?
       set -e
       if [[ $ATLAS_RC -eq 0 && -n "$ATLAS_SECTION" ]]; then
@@ -459,6 +468,7 @@ if [[ "$CONTROL_MODE" == "strict" ]]; then
   echo "[dispatch] Session ended. Extracting devteam-control block..."
   EXTRACT_OUT="$(python3 scripts/control.py extract \
     --log "$LOG_PATH" --task "$TASK_ID" --unit "$ID" --repo "$REPO_ROOT")"
+  EXTRACT_OUT="${EXTRACT_OUT//$'\r'/}"
   echo "[dispatch] $EXTRACT_OUT"
   case "$EXTRACT_OUT" in
     UNREPORTED:*)
@@ -485,6 +495,7 @@ try:
 except Exception:
     print(120)
 " 2>/dev/null || echo 120)"
+  CLAIM_VERIFY_SECONDS="${CLAIM_VERIFY_SECONDS//$'\r'/}"
   CLAIM_SEEN=0
   ELAPSED=0
   while [[ "$ELAPSED" -lt "$CLAIM_VERIFY_SECONDS" ]]; do
