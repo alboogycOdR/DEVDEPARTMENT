@@ -1360,7 +1360,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-036
 **Title:** Wave E E-G — bookkeeping push policy (every | batch | merge_only)
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §9 (E-G)
@@ -1377,13 +1377,28 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-036-cx
 **Started_At:** 2026-09-29T13:27:35Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-29T13:28:12Z] [CX] TASK-036 owned-path preflight completed before implementation; output follows verbatim:
+  ```text
+  [preflight] TASK-036 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-codex-DEVDEPARTMENT
+  [preflight] 9 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    FILE   scripts/plan_commit.sh  -> exists, 219 line(s), 9807 bytes
+    FILE   scripts/plan_commit.ps1  -> exists, 218 line(s), 10489 bytes
+    FILE   scripts/control.py  -> exists, 607 line(s), 27986 bytes
+    FILE   tests/test_control.py  -> exists, 590 line(s), 30026 bytes
+    FILE   tests/test_plan_commit.py  -> exists, 667 line(s), 33898 bytes
+    NEW    scripts/push_policy.py  -> does not exist; parent scripts/ exists
+    NEW    tests/test_push_policy.py  -> does not exist; parent tests/ exists
+    FILE   scripts/supervisor.py  -> exists, 1930 line(s), 99965 bytes
+    FILE   dossiers/TASK-036.md  -> exists, 19 line(s), 1496 bytes
+  [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
+  ```
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-29T13:27:46Z
+**Updated_At:** 2026-09-29T13:28:26Z
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
