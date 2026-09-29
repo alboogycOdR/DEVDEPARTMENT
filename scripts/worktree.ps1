@@ -49,7 +49,7 @@ function Stop-RecordedRunner([string]$WorktreePath) {
         if (-not $Process) {
             Remove-Item -LiteralPath $PidPath -Force
             Write-Host "[worktree] Removed stale runner PID record $PidPath."
-            return
+            continue
         }
         $Info = Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = $RunnerPid" -ErrorAction SilentlyContinue
         $ExpectedTicks = [long]$Record.started_utc_ticks

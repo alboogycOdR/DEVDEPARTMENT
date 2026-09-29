@@ -391,8 +391,8 @@ except Exception:
       [[ $ATLAS_SCAN_OK -eq 1 ]] \
         || echo "[dispatch] WARNING: atlas scan failed twice (concurrent dispatch can contend on .devteam/atlas.db) — packing against the existing, possibly stale index." >&2
       ATLAS_SECTION="$(python3 scripts/atlas.py pack --task "$ATLAS_TASK_ID" --budget "$ATLAS_BUDGET" 2>/dev/null)"
-      ATLAS_SECTION="${ATLAS_SECTION//$'\r'/}"
       ATLAS_RC=$?
+      ATLAS_SECTION="${ATLAS_SECTION//$'\r'/}"
       set -e
       if [[ $ATLAS_RC -eq 0 && -n "$ATLAS_SECTION" ]]; then
         PROMPT="${PROMPT}

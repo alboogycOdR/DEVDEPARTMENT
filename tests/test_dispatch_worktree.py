@@ -168,6 +168,64 @@ class TestWorktreeNamespacing:
         head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=worktree, text=True).strip()
         assert head == base
 
+
+class TestAtlasFailOpen:
+    def test_failing_atlas_pack_reports_its_real_exit_code(self, tmp_path):
+        """A failed pack is observably fail-open, not masked by CR cleanup."""
+        proj = make_project(tmp_path, "projectAtlasFailure", REPO_ROOT)
+        (proj / ".devteam").mkdir()
+        (proj / ".devteam" / "atlas.db").touch()
+        (proj / "autopilot.json").write_text(
+            '{"control": {"mode": "legacy"}, "atlas": {"enabled": true}}',
+            encoding="utf-8", newline="\n")
+        (proj / "PLAN.md").write_text(
+            (proj / "PLAN.md").read_text(encoding="utf-8") + """
+### TASK-001
+**Title:** Atlas target
+**Status:** in_progress
+**Assigned_To:** GB
+**Priority:** high
+**Spec_References:** specs/x.md
+**Owned_Paths:** src/a.py
+**Depends_On:** —
+**Description:** d
+**Acceptance_Criteria:**
+- [ ] c
+**Branch:** task/TASK-001-gb
+**Started_At:** 2026-09-29T00:00:00Z
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** GB
+**Updated_At:** 2026-09-29T00:00:00Z
+""",
+            encoding="utf-8", newline="\n")
+        subprocess.run(["git", "add", "PLAN.md", "autopilot.json"], cwd=proj, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "enable atlas fixture"], cwd=proj, check=True)
+
+        shim_dir = tmp_path / "python-shim"
+        shim_dir.mkdir()
+        shim = shim_dir / "python3"
+        shim.write_text(
+            "#!/usr/bin/env bash\n"
+            "if [[ \"$1\" == \"scripts/atlas.py\" && \"$2\" == \"pack\" ]]; then\n"
+            "  exit 23\n"
+            "fi\n"
+            "exec \"$REAL_PYTHON\" \"$@\"\n",
+            encoding="utf-8", newline="\n")
+        shim.chmod(0o755)
+        env = dict(os.environ)
+        env["REAL_PYTHON"] = sys.executable
+        env["PATH"] = f"{shim_dir}{os.pathsep}{env.get('PATH', '')}"
+
+        result = run_dispatch(proj, env=env)
+
+        assert result.returncode == 0, _combined(result)
+        assert "atlas pack failed" in result.stderr
+        assert "exit 23" in result.stderr
+
 def test_gitattributes_pins_windows_and_plan_line_endings():
     attributes = (REPO_ROOT / ".gitattributes").read_text(encoding="utf-8")
     assert "*.sh text eol=lf" in attributes.splitlines()
