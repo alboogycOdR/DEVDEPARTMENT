@@ -1385,7 +1385,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.1–3, E-H.5)
@@ -1394,9 +1394,9 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-035
 **Description:** (1) dispatch.ps1 records the runner window PID in `.devteam/launch/<unit>.pid`; headless runs drop -NoExit; `worktree.ps1 remove` kills recorded PIDs first, retries `Access is denied` with robocopy /MIR from an empty folder and \\?\ long paths. (2) GitHub Actions matrix windows-latest + ubuntu-latest, fixture repo with base branch `master`, both suites + harness-audit; PS 5.1 parser check on Windows. (3) Every shell parse of Python output strips CR (extends d3f5fc08 port). (5) .gitattributes: `*.sh text eol=lf`, `*.ps1 text eol=crlf`, `PLAN.md text eol=lf` (framework-owned). Carried from TASK-024 review: tests/conftest.py's env scrub removes all DEVTEAM_* including DEVTEAM_PACK_SELF_TESTS (the CI override) — exempt it in the CI setup or the scrub pattern. Carried from TASK-026/028: root-cause why tests/test_dispatch_worktree.py::TestEmptyHuskReclaim::test_dotfile_only_directory_is_refused_by_dispatch_ps1 fails ONLY inside the Codex session sandbox (PowerShell WriteError); it passes in ORCH's environment, including with DEVTEAM_UNIT/TASK/DELEGATED set — likely how dispatch.ps1 reacts to a husk directory under the Codex sandbox — and make the test and script behave the same in both environments. **Protected-path grants (ORCH applies before dispatch):** scripts/dispatch.ps1, scripts/worktree.ps1.
 **Acceptance_Criteria:**
-- [ ] A Windows test launches a dummy runner, removes the worktree, and nothing is left locked (spec §10 Acceptance)
+- [x] A Windows test launches a dummy runner, removes the worktree, and nothing is left locked (spec §10 Acceptance)
 - [ ] CI matrix (windows-latest + ubuntu-latest) green on the task branch push — link to the run in Test_Evidence (§10 Acceptance)
-- [ ] .gitattributes ships the three eol rules (E-H.5)
+- [x] .gitattributes ships the three eol rules (E-H.5)
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-037-cx
 **Started_At:** 2026-09-29T12:03:44Z
@@ -1414,12 +1414,14 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
     FILE   dossiers/TASK-037.md  -> exists, 19 line(s), 1473 bytes
   [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
   ```
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-29T12:17:09Z] [CX] Implemented permitted E-H.1/E-H.2/E-H.5 work in `90b389a`; focused Windows/worktree checks and Node tests pass. E-H.3 cannot be completed within current ownership: `scripts/dispatch.sh` and `scripts/plan_commit.sh` both parse Python output and are not in TASK-037 Owned_Paths. No edits made to either. Requesting ORCH to extend/reassign ownership before resuming.
+**Artifacts:** scripts/dispatch.ps1, scripts/worktree.ps1, .github/workflows/tests.yml, .gitattributes, tests/test_worktree_ps1.py, tests/test_dispatch_worktree.py, dossiers/TASK-037.md
+**Test_Evidence:**
+- [2026-09-29T12:17:09Z] [CX] `python -m pytest -q tests/test_worktree_ps1.py tests/test_dispatch_worktree.py` → 41 passed in 90.01s; `python -m pytest -q tests/test_dispatch_worktree.py::TestWorktreeNamespacing::test_master_base_branch_fixture_is_supported tests/test_worktree_ps1.py` → 3 passed in 3.33s; `node hooks/run-tests.js` → 47 passed, 0 failed.
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT
 **Updated_By:** CX
-**Updated_At:** 2026-09-29T12:05:34Z
+**Updated_At:** 2026-09-29T12:17:42Z
 
 ### TASK-038
 **Title:** Wave E E-H2 — CLI launch smoke test in harness-audit
