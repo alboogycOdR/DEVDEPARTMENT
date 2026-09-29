@@ -1453,12 +1453,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
   ```
 - [2026-09-29T12:33:59Z] [CX] Added opt-in `--smoke`/`-Smoke` live audit entrypoints and stub-dispatch fixtures (dec547d). Focused smoke tests: 5 passed; Node suite: 47 passed; full Python suite: 1165 passed in 412.01s. Two acceptance items remain blocked: current dispatch hard-codes Codex `-s danger-full-access`, so a fixture registry cannot express missing write access without changing unowned dispatch/registry files; and required live GB/S5 launches conflict with the standing PLAN directive routing build work to CX. No live CLIs launched.
+- [2026-09-29T12:35:31Z] [CX] Attempted the authorized CX-only live smoke in a disposable fixture; it stopped at the pre-dispatch version probe because Git Bash received an empty `$1` for `bash -c 'exec "$1" --version'` (exit 1, `exec: : not found`). The dispatcher was not launched, so no CLI work occurred. Fix the Windows argument-passing path inside the owned smoke helper before retrying; GB/S5 remain prohibited by owner directive.
 **Artifacts:** `scripts/harness-audit.sh`, `scripts/harness-audit.ps1`, `tests/test_harness_smoke.py`; code commit `dec547d` on `task/TASK-038-cx`.
-**Test_Evidence:** `python -m pytest -q tests/test_harness_smoke.py` — 5 passed; `node hooks/run-tests.js` — 47 passed; `python -m pytest -q` — 1165 passed in 412.01s. Fixture detects CRLF shell bytes and fails when the stub exits 0 without writing the Owned_Paths file. Real GB/CX/S5 runs not performed; CX live run also not performed because owner directive prohibits dispatching beyond assigned build seat.
+**Test_Evidence:** `python -m pytest -q tests/test_harness_smoke.py` — 5 passed; `node hooks/run-tests.js` — 47 passed; `python -m pytest -q` — 1165 passed in 412.01s. Fixture detects CRLF shell bytes and fails when the stub exits 0 without writing the Owned_Paths file. CX live attempt failed in the pre-dispatch version probe due Windows Git Bash argument passing; GB/S5 not run per owner directive.
 **Review_Findings:** —
-**Blocked_Reason:** OTHER:NEEDS_OWNER_DECISION_ON_LIVE_SEAT_LAUNCHES_AND_CODEX_WRITE_ACCESS_FIXTURE_SCOPE
+**Blocked_Reason:** OTHER:WINDOWS_LIVE_PROBE_FAILURE_AND_OWNER_DECISIONS_ON_GB_S5_LAUNCHES_AND_CODEX_WRITE_ACCESS_FIXTURE_SCOPE
 **Updated_By:** CX
-**Updated_At:** 2026-09-29T12:34:11Z
+**Updated_At:** 2026-09-29T12:35:47Z
 
 ### TASK-039
 **Title:** Wave E E-I — learning loop earns its sessions or stays off
