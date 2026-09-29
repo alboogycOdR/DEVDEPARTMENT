@@ -1285,7 +1285,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-034
 **Title:** Wave E E-F1 — plan_commit compare-and-swap, idempotent claim, legacy-mode blackboard guard
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §1 H4, §8 (E-F.1, E-F.2, E-F.6)
@@ -1317,14 +1317,16 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   ```
 - [2026-09-29T11:17:30Z] [CX] Implemented and committed CAS replay/rejection plus legacy guard enforcement in `148383b`. Added fixture-repo tests for block replay, same-block conflict rejection, duplicate claim no-op, LF-only writes, immutable fields, and diff limits. Node suite is green. Next: add real parallel `plan_commit` process coverage, then obtain and record a complete foreground Python-suite result before handoff.
 - [2026-09-29T12:03:06Z] [CX] Added real overlapping process coverage in `c4df45d`; simultaneous changes to TASK-007 and TASK-009 both landed without loss. Full verification complete; submitting for review.
-**Artifacts:** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/plan_guard.py, tests/test_plan_commit.py, tests/test_plan_guard.py, dossiers/TASK-034.md
+- [2026-09-29T13:13:08Z] [CX] Addressed all four TASK-034 rework findings in `f494d7d`: duplicate claim edits now no-op against committed ownership state; added a real barrier-controlled same-block two-process conflict test; limited CAS replays to three while keeping index-lock retries separate; and replaced PowerShell text-pipeline snapshots with direct git.exe byte-stream copies plus a live CAS/UTF-8 regression. Documented the remaining CAS check/commit TOCTOU limitation in the dossier. Rework verification is complete; resubmitting.
+**Artifacts:** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/plan_guard.py, tests/test_plan_commit.py, tests/test_plan_guard.py, dossiers/TASK-034.md; rework commit `f494d7d` on `task/TASK-034-cx`.
 **Test_Evidence:**
 - [2026-09-29T11:17:30Z] [CX] `node hooks/run-tests.js` → 47 passed, 0 failed. Focused `tests/test_plan_guard.py tests/test_plan_commit.py` collection → 43 tests; final complete foreground result still pending.
 - [2026-09-29T12:03:06Z] [CX] `python -m pytest -q tests/test_plan_commit.py tests/test_plan_guard.py` → 44 passed in 51.84s; `node hooks/run-tests.js` → 47 passed, 0 failed; `python -m pytest -q` → 1167 passed in 418.30s.
+- [2026-09-29T13:13:08Z] [CX] Rework: `python -m pytest -q tests/test_plan_commit.py tests/test_plan_guard.py` → 47 passed in 76.42s, including real parallel same-block conflict and PowerShell CAS byte-preservation tests; `node hooks/run-tests.js` → 47 passed, 0 failed; `python -m pytest -q` → 1170 passed in 530.79s; `bash -n scripts/plan_commit.sh` and Windows PowerShell 5.1 parser check → OK.
 **Review_Findings:** REWORK (ORCH, claude-opus-5-5, 2026-09-29T12:46:13Z). Territory clean 6/6; preflight present. BLOCKING: (1) E-F.2 idempotent claim NOT implemented — test_duplicate_claim_is_a_noop_without_a_commit re-runs with an unchanged PLAN.md, so it only hits the pre-existing 'nothing to record' path; a claim that re-flips/re-stamps an already claimed/in_progress block by the same unit still commits. Detect it in plan_commit (sh+ps1) and exit 0 with no commit; test with a real re-claim edit. (2) Same-block concurrency (§8 Acceptance + AC5 'real parallel processes') only tested at the plan_guard --cas-* level; add a barrier-coordinated two-process plan_commit.sh test where both edit the same block — second exits non-zero loudly, HEAD holds only the first. (3) Spec §8.1 says retry up to 3 on CAS; loop allows 5 — cap CAS replays at 3 (index.lock retries may stay separate). (4) plan_commit.ps1 writes CAS base via `git show | Set-Content` — PowerShell pipeline re-decodes with console encoding (mangles the em-dash in every block → false conflicts) and adds CRLF; write git's bytes directly (e.g. git show HEAD:PLAN.md > via cmd /c or [IO.File]::WriteAllBytes) and add a ps1 CAS test (skipped when no powershell). NON-BLOCKING: check-then-commit TOCTOU window remains between rev-parse and commit; note it in the dossier. ORCH independent full-suite re-run was still in flight at verdict time; counts to be appended to REVIEW.md.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-29T12:46:13Z
+**Updated_At:** 2026-09-29T13:13:36Z
 
 ### TASK-035
 **Title:** Wave E E-F2 — verified claim, pinned base, dirty-PLAN refusal, strict Owned_Paths grammar, strict-by-default onboarding
