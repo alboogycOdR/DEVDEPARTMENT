@@ -315,3 +315,30 @@ def test_review_lint_rejects_a_broken_row_and_accepts_a_clean_table(tmp_path, ca
     assert "machine-readable" in capsys.readouterr().out
     path.write_text(broken, encoding="utf-8")
     assert main(["--review", str(path)]) == 1
+
+
+# ------------------------------------------------------- E-F.5 Owned_Paths --
+class TestOwnedPathsGrammar:
+    """Owned_Paths is a comma-separated list of path globs only (spec §8
+    E-F.5). Prose, parentheses (other than the single ' (new)' suffix) and
+    TBD are rejected outright rather than silently mis-parsed."""
+
+    def test_prose_with_parenthetical_is_rejected(self):
+        rep = validate(FM + task_block(owned="src/a.ts (and its tests)"))
+        assert any("not a bare path/glob" in e or "parenthetical" in e for e in rep.errors)
+
+    def test_new_suffix_is_accepted(self):
+        rep = validate(FM + task_block(owned="src/a.ts (new)"))
+        assert not any("Owned_Paths" in e for e in rep.errors)
+
+    def test_tbd_is_rejected(self):
+        rep = validate(FM + task_block(owned="TBD"))
+        assert any("TBD" in e for e in rep.errors)
+
+    def test_glob_with_double_star_and_new_suffix_is_accepted(self):
+        rep = validate(FM + task_block(owned="tests/fixtures/plan_archive/** (new), scripts/plan_archive.py"))
+        assert not any("Owned_Paths" in e for e in rep.errors)
+
+    def test_bare_parenthetical_note_is_rejected(self):
+        rep = validate(FM + task_block(owned="scripts/foo.py (needs review)"))
+        assert any("parenthetical" in e for e in rep.errors)

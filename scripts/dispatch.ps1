@@ -141,6 +141,18 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
+# E-F.4: the main checkout's PLAN.md must be exactly what's committed -- a
+# dirty PLAN.md means some earlier write never landed (the oikonomos
+# SYNC_MISMATCH class), and dispatching against it risks reading state
+# nobody else can see. This refuses; it never stashes or discards.
+$PlanDirty = git -C $RepoRoot diff --quiet -- PLAN.md; $PlanDirtyWt = $LASTEXITCODE
+$PlanDirtyStaged = git -C $RepoRoot diff --quiet --cached -- PLAN.md; $PlanDirtyIdx = $LASTEXITCODE
+if ($PlanDirtyWt -ne 0 -or $PlanDirtyIdx -ne 0) {
+    Write-Error "[dispatch] PLAN.md has uncommitted changes in the main checkout ($RepoRoot)."
+    Write-Error "[dispatch] Refusing to dispatch - commit or discard them first; do not work around this."
+    exit 1
+}
+
 # Warn (not block) about an old-style unnamespaced worktree left over from
 # before this fix -- it is NOT reused, just flagged so it doesn't sit there
 # silently confusing a future look at the folder.
@@ -271,6 +283,37 @@ if ($ControlMode -eq "strict") {
     $DryNote = ""
     if ($DryRun) { $DryNote = ", DRY RUN - no write performed" }
     Write-Host "[dispatch] $ResumeOrClaim $TaskId for $Id (control.mode=strict$DryNote)." -ForegroundColor Cyan
+}
+
+# E-F.4/E-F.7 carry-over from TASK-024 review: the pinned-base pre-create
+# below only fires when dispatch itself claims (strict mode, ResumeOrClaim
+# -eq "claimed"). In LEGACY mode the builder claims its own task from
+# inside its session, so dispatch never sees a task id here -- but it CAN
+# still guarantee the worktree's HEAD is the base tip before launch, unless
+# this unit has a resumable (claimed/in_progress) task, in which case
+# leaving the worktree exactly where its own branch is is the whole point
+# of resuming. (The earlier detached+clean refresh block above already
+# covers a long-idle detached worktree; this covers the case the refresh
+# explicitly skips -- a worktree still sitting on a branch.)
+if ($ControlMode -eq "legacy" -and (Test-Path $Wt)) {
+    $HasResumable = & $Py -c "
+import sys; sys.path.insert(0, 'scripts')
+from validate_plan import has_resumable_task
+sys.exit(0 if has_resumable_task('.', '$Id') else 1)
+"
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "[dispatch] $Id has a resumable task - leaving worktree on its current branch." -ForegroundColor Yellow
+    } else {
+        $wtBranchNow = (git -C $Wt rev-parse --abbrev-ref HEAD 2>$null)
+        if ($wtBranchNow -ne "HEAD") {
+            git -C $Wt checkout --detach $BaseBranch --quiet 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "[dispatch] worktree reset to $BaseBranch tip (fresh-claim pinned base, legacy mode)." -ForegroundColor Cyan
+            } else {
+                Write-Warning "[dispatch] could not reset worktree to $BaseBranch tip; a fresh claim may branch from a stale base."
+            }
+        }
+    }
 }
 
 # Port of oikonomos bceb8eb2: a FRESH claim must start from the integration
@@ -699,7 +742,54 @@ if ($ControlMode -eq "strict") {
     $PrevConfigDir = $env:CLAUDE_CONFIG_DIR
     try {
         if ($AuthDir) { $env:CLAUDE_CONFIG_DIR = $AuthDir }
-        & $Cmd @($CmdArgs + @($PromptArg))
+        if ($ControlMode -eq "legacy") {
+            # E-F.3: strict mode verifies the claim before launch (above, via
+            # control.py claim). Legacy mode can't -- the builder claims for
+            # itself, from inside its own session -- so it verifies AFTER
+            # launch instead, polling the main checkout's PLAN.md for this
+            # unit's claim flip while the session runs in the background.
+            $ClaimVerifySeconds = 120
+            try {
+                $DispatchCfg = Get-Content (Join-Path $RepoRoot "autopilot.json") -Raw | ConvertFrom-Json
+                if ($DispatchCfg.dispatch -and $DispatchCfg.dispatch.claim_verify_seconds) {
+                    $ClaimVerifySeconds = [int]$DispatchCfg.dispatch.claim_verify_seconds
+                }
+            } catch { $ClaimVerifySeconds = 120 }
+            # Start-Process's own resolution does not run a bare "grok"/
+            # "codex" through cmd.exe the way PowerShell's `&` operator
+            # does, so an npm-installed .cmd shim on Windows fails with
+            # "the system cannot find the file specified" even once
+            # resolved to a full path. A background PowerShell job runs
+            # the exact same `&` invocation the non-legacy branch below
+            # uses, so shim resolution stays identical while this branch
+            # polls PLAN.md concurrently.
+            $BuilderJob = Start-Job -ScriptBlock {
+                param($WorkDir, $CmdName, $CmdArgList, $AuthDirValue)
+                Set-Location -LiteralPath $WorkDir
+                if ($AuthDirValue) { $env:CLAUDE_CONFIG_DIR = $AuthDirValue }
+                & $CmdName @CmdArgList
+            } -ArgumentList $Wt, $Cmd, @($CmdArgs + @($PromptArg)), $AuthDir
+            $ClaimSeen = $false
+            $Elapsed = 0
+            while ($Elapsed -lt $ClaimVerifySeconds -and $BuilderJob.State -eq "Running") {
+                & $Py -c "
+import sys; sys.path.insert(0, 'scripts')
+from validate_plan import has_resumable_task
+sys.exit(0 if has_resumable_task('.', '$Id') else 1)
+" 2>$null | Out-Null
+                if ($LASTEXITCODE -eq 0) { $ClaimSeen = $true; break }
+                Start-Sleep -Seconds 2
+                $Elapsed += 2
+            }
+            if (-not $ClaimSeen -and $BuilderJob.State -eq "Running") {
+                Write-Warning "[dispatch] CLAIM_UNVERIFIED: no PLAN.md claim/in_progress flip observed for $Id within ${ClaimVerifySeconds}s. Not fatal -- the builder's first commit will be picked up and reconciled on the next check."
+            }
+            Wait-Job $BuilderJob | Out-Null
+            Receive-Job $BuilderJob | Write-Host
+            Remove-Job $BuilderJob
+        } else {
+            & $Cmd @($CmdArgs + @($PromptArg))
+        }
     } catch {
         Write-Warning "[dispatch] Builder process error: $($_.Exception.Message)"
     } finally {

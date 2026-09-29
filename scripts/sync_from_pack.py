@@ -308,6 +308,7 @@ class Report:
     decisions: list[Decision] = field(default_factory=list)
     merge_notes: list[str] = field(default_factory=list)
     adoption: list[str] = field(default_factory=list)
+    checklist: list[str] = field(default_factory=list)
 
     def add(self, rel: str, verdict: str, detail: str = "") -> None:
         self.decisions.append(Decision(rel, verdict, detail))
@@ -549,6 +550,47 @@ def merge_marker_section(project_file: Path, pack_file: Path, markers: list[str]
         report.merge_notes.append(f"{rel}: marker section would be updated (dry-run)")
 
 
+# E-F.7: strict-by-default applies to NEW onboards only (a separate flow,
+# not this sync). An EXISTING project's sync must never flip control.mode --
+# merge_add_only_keys above already guarantees that by construction (it
+# never touches an existing key) -- but it CAN offer the upgrade once, in
+# the checklist, for a project that qualifies. "Verified CONTROL emitter"
+# is deliberately narrow: per the spec text, only cli=codex units carry
+# oikonomos's field evidence today; cli=claude is verified once F3's schema
+# output lands (not yet), and cli=grok is unmentioned. A project with any
+# other/unknown unit is conservatively NOT offered the upgrade.
+_VERIFIED_CONTROL_EMITTER_CLIS = frozenset({"codex"})
+
+
+def strict_mode_offer(project: Path) -> str | None:
+    """One-line checklist offer, or None if already strict/not eligible.
+
+    Read-only: never writes autopilot.json. ``ask, don't auto-flip`` (E-F.7).
+    """
+    cfg_path = project / "autopilot.json"
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if ((cfg.get("control") or {}).get("mode")) == "strict":
+        return None
+    builders = cfg.get("builders") or {}
+    active = builders.get("active") or []
+    defined = builders.get("defined") or {}
+    if not active:
+        return None
+    for unit in active:
+        entry = defined.get(unit) or {}
+        if entry.get("cli") not in _VERIFIED_CONTROL_EMITTER_CLIS:
+            return None
+    return (
+        "control.mode=strict is available: every active unit "
+        f"({', '.join(sorted(active))}) is a verified CONTROL emitter. "
+        "This is an OFFER, not a change -- set it yourself in autopilot.json "
+        "when ready; sync never flips it."
+    )
+
+
 def merge_add_only_keys(project_file: Path, pack_file: Path, apply: bool,
                         report: Report) -> None:
     """Recursively add keys present in the pack template but absent in the
@@ -661,6 +703,9 @@ def run_sync(pack: Path, project: Path, apply: bool = False,
         save_state(project, state)
         write_project_manifest(project, manifest)
         stamp_framework_version(project, pack)
+    offer = strict_mode_offer(project)
+    if offer:
+        report.checklist.append(offer)
     return report
 
 
@@ -708,6 +753,10 @@ def render_report(report: Report, apply: bool) -> str:
     if report.merge_notes:
         lines.append("Merge-special:")
         for note in report.merge_notes:
+            lines.append(f"  - {note}")
+    if report.checklist:
+        lines.append("Upgrade checklist (offer only — control.mode is never changed by sync):")
+        for note in report.checklist:
             lines.append(f"  - {note}")
     if report.has_conflicts:
         lines += ["", "Conflicts mean the project's copy differs from the pack AND either",
