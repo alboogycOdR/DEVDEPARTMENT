@@ -1360,7 +1360,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-036
 **Title:** Wave E E-G — bookkeeping push policy (every | batch | merge_only)
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §9 (E-G)
@@ -1393,12 +1393,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
     FILE   dossiers/TASK-036.md  -> exists, 19 line(s), 1496 bytes
   [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
   ```
+- [2026-09-29T13:32:00Z] [CX] Blocked before implementation: acceptance requires changing the new-project default while preserving existing-project `every`; `autopilot.json` is both the live project config and template, and `scripts/sync_from_pack.py` owns how config is copied. Both are outside TASK-036 Owned_Paths; editing only the allowed files cannot safely meet the acceptance criteria.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-29T13:28:26Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: need `autopilot.json` and `scripts/sync_from_pack.py` in scope (or an ORCH-approved template/config separation) to set the new-project default without changing this existing project's policy.
+**Updated_By:** CX
+**Updated_At:** 2026-09-29T13:31:56Z
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
