@@ -1310,7 +1310,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-035
 **Title:** Wave E E-F2 — verified claim, pinned base, dirty-PLAN refusal, strict Owned_Paths grammar, strict-by-default onboarding
-**Status:** pending
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §8 (E-F.3, E-F.4, E-F.5, E-F.7)
@@ -1319,20 +1319,24 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-027, TASK-032, TASK-026
 **Description:** (3) Legacy mode: after launch, dispatch polls main-checkout PLAN.md up to `dispatch.claim_verify_seconds`=120 for the unit's claim flip; none → log CLAIM_UNVERIFIED, hold the builder's first commit for next tick's reconciliation (strict mode: dispatch claims itself). (4) Extend TASK-024's base-tip port: branch created from <base> tip in the worktree on every fresh claim, both scripts; refuse if PLAN.md has uncommitted changes in the main checkout. (5) validate_plan: Owned_Paths is a comma-separated list of globs only; reject prose, parentheses (other than the single permitted ` (new)` suffix) and TBD. (7) Onboarding writes control.mode strict only for projects whose active units are all verified CONTROL emitters; existing projects are OFFERED strict in the upgrade checklist, never flipped (ask-don't-auto-flip). Carried from TASK-024 review: the ported base-tip pre-create only fires when dispatch itself claims (strict); make legacy-mode fresh claims start from the base tip too, and decide whether -DryRun/--dry-run may create branches/worktrees at all (it currently does). **Protected-path grants (ORCH applies before dispatch):** scripts/dispatch.sh, scripts/dispatch.ps1, scripts/validate_plan.py, scripts/sync_from_pack.py.
 **Acceptance_Criteria:**
-- [ ] A fresh claim's branch has the base tip as its parent even if the worktree was on another task branch (spec §8 Acceptance)
-- [ ] validate_plan rejects `Owned_Paths: src/a.ts (and its tests)` and accepts `src/a.ts (new)` (§8 Acceptance; E-F.5)
-- [ ] Dispatch refuses when main-checkout PLAN.md is dirty; CLAIM_UNVERIFIED logged when no claim appears within the window (E-F.3, E-F.4)
-- [ ] Existing-project sync never changes control.mode; it only lists the strict offer in the checklist (E-F.7)
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
+- [x] A fresh claim's branch has the base tip as its parent even if the worktree was on another task branch (spec §8 Acceptance)
+- [x] validate_plan rejects `Owned_Paths: src/a.ts (and its tests)` and accepts `src/a.ts (new)` (§8 Acceptance; E-F.5)
+- [x] Dispatch refuses when main-checkout PLAN.md is dirty; CLAIM_UNVERIFIED logged when no claim appears within the window (E-F.3, E-F.4)
+- [x] Existing-project sync never changes control.mode; it only lists the strict offer in the checklist (E-F.7)
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+**Branch:** task/TASK-035-cx
+**Started_At:** 2026-09-29T02:00:00Z
+**Progress_Notes:**
+- [2026-09-29T02:30:00Z] [CX] Implemented all four sub-items (E-F.3/4/5/7): validate_plan.py gains check_owned_paths_grammar() (wired into validate()) and has_resumable_task(); dispatch.sh/.ps1 both refuse on a dirty main-checkout PLAN.md, reset a legacy-mode fresh-claim worktree off a stale branch to the base tip (has_resumable_task keeps a resume path untouched), and verify the claim after launch (polling up to dispatch.claim_verify_seconds, logging CLAIM_UNVERIFIED — .sh backgrounds its normally-synchronous launch to poll concurrently; .ps1's default detached-window mode is untouched since it already returns immediately by design, so this applies to -InProcess only, via a background Start-Job so npm .cmd shims still resolve). sync_from_pack.py gains strict_mode_offer() (cli=codex units only, per spec text) wired into run_sync()'s report and a new "Upgrade checklist" render section; control.mode itself is never written. The -DryRun/branch-creation carry-over question was reviewed: worktree/branch creation not being gated by --dry-run is an existing, deliberate, already-tested behavior (TestDryRunMakesNoUnexpectedWrites) — left unchanged.
+- [2026-09-29T02:35:00Z] [CX] Full verification complete; submitting for review.
+**Artifacts:**
+- scripts/validate_plan.py, scripts/dispatch.sh, scripts/dispatch.ps1, scripts/sync_from_pack.py, tests/test_dispatch_worktree.py, tests/test_validate_plan.py, tests/test_sync_from_pack.py, dossiers/TASK-035.md
+**Test_Evidence:**
+- [2026-09-29T02:35:00Z] [CX] Focused: `python -m pytest -q tests/test_dispatch_worktree.py tests/test_validate_plan.py tests/test_sync_from_pack.py` → 135 passed. After merging master (already current): `python -m pytest -q` → 1123 passed in 205.10s; `node hooks/run-tests.js` → 47 passed, 0 failed.
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-27T15:50:01Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-29T02:35:00Z
 
 ### TASK-036
 **Title:** Wave E E-G — bookkeeping push policy (every | batch | merge_only)
