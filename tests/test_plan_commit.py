@@ -21,13 +21,17 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLAN_COMMIT = REPO_ROOT / "scripts" / "plan_commit.sh"
+PLAN_COMMIT_PS1 = REPO_ROOT / "scripts" / "plan_commit.ps1"
 PLAN_GUARD = REPO_ROOT / "scripts" / "plan_guard.py"
+PLAN_STAMP = REPO_ROOT / "scripts" / "plan_stamp.py"
 
 pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
 
@@ -76,14 +80,17 @@ def repo(tmp_path: Path) -> Path:
     (r / "scripts").mkdir(parents=True)
     (r / "lib").mkdir()
     shutil.copyfile(PLAN_COMMIT, r / "scripts" / "plan_commit.sh")
+    shutil.copyfile(PLAN_COMMIT_PS1, r / "scripts" / "plan_commit.ps1")
     (r / "scripts" / "plan_commit.sh").chmod(0o755)
     shutil.copyfile(PLAN_GUARD, r / "scripts" / "plan_guard.py")
+    shutil.copyfile(PLAN_STAMP, r / "scripts" / "plan_stamp.py")
     (r / "PLAN.md").write_text(plan(), encoding="utf-8", newline="\n")
     (r / "autopilot.json").write_text('{"git": {"base_branch": "main"}}',
                                       encoding="utf-8", newline="\n")
     git(r, "init", "-q", "-b", "main")
     git(r, "config", "user.email", "t@example.com")
     git(r, "config", "user.name", "T")
+    git(r, "config", "core.autocrlf", "false")
     git(r, "add", "-A")
     git(r, "commit", "-q", "-m", "seed")
     return r
@@ -110,6 +117,21 @@ def _bash() -> str:
 def run_commit(repo: Path, message: str):
     return subprocess.run(["bash", "scripts/plan_commit.sh", message], cwd=repo,
                           capture_output=True, text=True, timeout=60)
+
+
+def powershell() -> str | None:
+    return shutil.which("powershell") or shutil.which("pwsh")
+
+
+def run_commit_ps1(repo: Path, message: str):
+    shell = powershell()
+    if shell is None:
+        pytest.skip("PowerShell is not available")
+    return subprocess.run(
+        [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+         "scripts/plan_commit.ps1", message],
+        cwd=repo, capture_output=True, text=True, timeout=60,
+    )
 
 
 def files_in_head(repo: Path) -> set[str]:
@@ -273,3 +295,95 @@ class TestRunsFromALinkedWorktree:
                            cwd=wt, capture_output=True, text=True, timeout=60)
         assert "expected" not in r.stderr, f"refused from a worktree: {r.stderr}"
         assert "wt-builder" not in r.stderr
+
+
+class TestClockStampedUpdatedAt:
+    """Both platform mirrors replace only unsafe timestamps in changed blocks."""
+
+    @staticmethod
+    def _two_blocks(timestamp: str | None) -> str:
+        changed = plan(status="claimed", by="S5")
+        if timestamp is None:
+            changed = changed.replace("**Updated_At:** 2026-08-04T00:00:00Z\n", "")
+        else:
+            changed = changed.replace("**Updated_At:** 2026-08-04T00:00:00Z", f"**Updated_At:** {timestamp}")
+        return changed + """
+### TASK-009
+**Title:** Untouched task
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** low
+**Spec_References:** specs/b.md
+**Owned_Paths:** lib/b/**
+**Depends_On:** —
+**Description:** d
+**Acceptance_Criteria:**
+- [ ] c
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** GB
+**Updated_At:** 2099-01-01T00:00:00Z
+"""
+
+    @staticmethod
+    def _assert_stamped(repo: Path, before: datetime):
+        content = (repo / "PLAN.md").read_text(encoding="utf-8")
+        changed, untouched = content.split("### TASK-009", 1)
+        value = next(line for line in changed.splitlines() if line.startswith("**Updated_At:**"))
+        stamped = datetime.strptime(value.removeprefix("**Updated_At:** "), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        assert before <= stamped <= datetime.now(timezone.utc)
+        assert "**Updated_At:** 2099-01-01T00:00:00Z" in untouched
+
+    @pytest.mark.parametrize("unsafe", [None, "not-a-timestamp", "9999-01-01T00:00:00Z", "2000-01-01T00:00:00Z"])
+    def test_shell_stamps_missing_invalid_future_and_stale_values(self, repo, unsafe):
+        baseline = self._two_blocks("2026-08-04T00:00:00Z").replace("**Status:** claimed", "**Status:** pending", 1)
+        (repo / "PLAN.md").write_text(baseline, encoding="utf-8", newline="\n")
+        git(repo, "commit", "-q", "-am", "add untouched block")
+        (repo / "PLAN.md").write_text(self._two_blocks(unsafe), encoding="utf-8", newline="\n")
+        before = datetime.now(timezone.utc).replace(microsecond=0)
+        result = run_commit(repo, "chore(plan): claim TASK-007 [S5]")
+        assert result.returncode == 0, result.stderr
+        self._assert_stamped(repo, before)
+
+    @pytest.mark.parametrize("unsafe", [None, "not-a-timestamp", "9999-01-01T00:00:00Z", "2000-01-01T00:00:00Z"])
+    def test_powershell_stamps_missing_invalid_future_and_stale_values(self, repo, unsafe):
+        baseline = self._two_blocks("2026-08-04T00:00:00Z").replace("**Status:** claimed", "**Status:** pending", 1)
+        (repo / "PLAN.md").write_text(baseline, encoding="utf-8", newline="\n")
+        git(repo, "commit", "-q", "-am", "add untouched block")
+        (repo / "PLAN.md").write_text(self._two_blocks(unsafe), encoding="utf-8", newline="\n")
+        before = datetime.now(timezone.utc).replace(microsecond=0)
+        result = run_commit_ps1(repo, "chore(plan): claim TASK-007 [S5]")
+        assert result.returncode == 0, result.stderr
+        self._assert_stamped(repo, before)
+
+    @pytest.mark.parametrize("runner", [run_commit, run_commit_ps1])
+    def test_message_naming_an_untouched_block_does_not_stamp_it(self, repo, runner):
+        """AC1: 'untouched blocks are unchanged' — even one the COMMIT MESSAGE
+        names. Both mirrors must pick affected blocks from the pending diff,
+        never from TASK IDs parsed out of the message (TASK-033 review): a
+        message that merely mentions TASK-009 (e.g. "unblocks TASK-009") must
+        not touch TASK-009's block, which this diff never changed."""
+        baseline = self._two_blocks("2026-08-04T00:00:00Z").replace("**Status:** claimed", "**Status:** pending", 1)
+        (repo / "PLAN.md").write_text(baseline, encoding="utf-8", newline="\n")
+        git(repo, "commit", "-q", "-am", "add untouched block")
+        # Only TASK-007 changes in this diff; the message names TASK-009 too.
+        (repo / "PLAN.md").write_text(self._two_blocks("2026-08-04T00:00:00Z"), encoding="utf-8", newline="\n")
+        result = runner(repo, "chore(plan): claim TASK-007, unblocks TASK-009 [S5]")
+        assert result.returncode == 0, result.stderr
+        content = (repo / "PLAN.md").read_text(encoding="utf-8")
+        assert "**Updated_At:** 2099-01-01T00:00:00Z" in content  # TASK-009: named in the message, never touched
+
+    def test_fixture_suite_never_mutates_the_live_checkout(self, repo):
+        """Fixtures copy the tools; no invocation points at the source checkout."""
+        live_head = git(REPO_ROOT, "rev-parse", "HEAD").stdout.strip()
+        live_mtime = (REPO_ROOT / "PLAN.md").stat().st_mtime_ns
+        (repo / "PLAN.md").write_text(plan(status="claimed", by="S5"), encoding="utf-8", newline="\n")
+        result = run_commit(repo, "chore(plan): claim TASK-007 [S5]")
+        assert result.returncode == 0, result.stderr
+        assert git(REPO_ROOT, "rev-parse", "HEAD").stdout.strip() == live_head
+        assert (REPO_ROOT / "PLAN.md").stat().st_mtime_ns == live_mtime

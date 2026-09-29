@@ -110,11 +110,39 @@ if git -C "$REPO_ROOT" diff --quiet -- PLAN.md; then
   exit 0
 fi
 
+PY_BIN="$(command -v python3 || command -v python || true)"
+if [ -z "$PY_BIN" ]; then
+  echo "[plan_commit] Python is required to stamp Updated_At values." >&2
+  exit 1
+fi
+
+# Coordination timestamps are evidence, not model-supplied prose (H5).  Stamp
+# only task blocks which actually changed in this pending PLAN.md diff.  A
+# block's supplied value is retained when it is a sane UTC timestamp that is
+# neither ahead of the clock nor older than the previous PLAN.md commit.
+#
+# scripts/plan_stamp.py is the single implementation of this rule; both this
+# script and plan_commit.ps1 call it, so the two platform mirrors cannot
+# drift apart on which blocks they stamp (TASK-033 review finding).
+PLAN_ARG="$PLAN"
+if command -v cygpath >/dev/null 2>&1; then
+  PLAN_ARG="$(cygpath -w "$PLAN")"
+fi
+PLAN_COMMIT_DIFF="$(git -C "$REPO_ROOT" diff --unified=0 -- PLAN.md)"
+PLAN_COMMIT_PREVIOUS="$(git -C "$REPO_ROOT" log -1 --format=%cI HEAD -- PLAN.md 2>/dev/null || true)"
+export PLAN_COMMIT_DIFF PLAN_COMMIT_PREVIOUS
+if [ -f "$REPO_ROOT/scripts/plan_stamp.py" ]; then
+  "$PY_BIN" "$REPO_ROOT/scripts/plan_stamp.py" "$PLAN_ARG"
+else
+  # A copied-tool fixture that predates plan_stamp.py's split-out (or omits
+  # it deliberately) still gets a commit -- just without clock-stamping.
+  echo "[plan_commit] scripts/plan_stamp.py not found -- Updated_At not clock-checked this commit." >&2
+fi
+
 # Stray-block guard: PLAN.md is committed whole, so an edit outside your own
 # task block silently overwrites another unit's state. plan_guard.py refuses
 # that; it fails OPEN on anything it cannot parse, so it can never strand a
 # builder that has legitimate coordination state to record.
-PY_BIN="$(command -v python3 || command -v python || true)"
 if [ -n "$PY_BIN" ] && [ -f "$REPO_ROOT/scripts/plan_guard.py" ]; then
   if ! "$PY_BIN" "$REPO_ROOT/scripts/plan_guard.py" --message "$MSG" --repo "$REPO_ROOT"; then
     exit 1
