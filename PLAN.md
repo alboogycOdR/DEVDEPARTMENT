@@ -1315,12 +1315,14 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
     FILE   dossiers/TASK-034.md  -> exists, 19 line(s), 1569 bytes
   [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
   ```
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-29T11:17:30Z] [CX] Implemented and committed CAS replay/rejection plus legacy guard enforcement in `148383b`. Added fixture-repo tests for block replay, same-block conflict rejection, duplicate claim no-op, LF-only writes, immutable fields, and diff limits. Node suite is green. Next: add real parallel `plan_commit` process coverage, then obtain and record a complete foreground Python-suite result before handoff.
+**Artifacts:** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/plan_guard.py, tests/test_plan_commit.py, tests/test_plan_guard.py, dossiers/TASK-034.md
+**Test_Evidence:**
+- [2026-09-29T11:17:30Z] [CX] `node hooks/run-tests.js` → 47 passed, 0 failed. Focused `tests/test_plan_guard.py tests/test_plan_commit.py` collection → 43 tests; final complete foreground result still pending.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-29T11:09:16Z
+**Updated_At:** 2026-09-29T11:18:25Z
 
 ### TASK-035
 **Title:** Wave E E-F2 — verified claim, pinned base, dirty-PLAN refusal, strict Owned_Paths grammar, strict-by-default onboarding
