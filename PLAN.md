@@ -1,8 +1,8 @@
 ---
-plan_version: 6.8
-last_updated: 2026-09-29T11:08:08Z
+plan_version: 6.9
+last_updated: 2026-09-29T13:53:19Z
 overall_status: in_progress
-orchestrator_notes: "REVIEW 2026-09-29T13:23:07Z (claude-opus-5-5): TASK-034 APPROVED on re-review, merged --no-ff, branch deleted (CX worktree detached). All 4 rework findings fixed with discriminating tests; ORCH full re-run 1170 Python / 47 Node green. UNLOCKS TASK-036 (CX, push_policy; deps 034+031 both done) — dispatch next; apply its protected-path grants first. REVIEW 2026-09-29T11:08:08Z (claude-opus-5): TASK-040 REWORK. Tests/territory/PLAN discipline all clean and evidence matched exactly (1164/47 re-run by ORCH); AC1 and AC3 independently reproduced. Two blocking defects: (1) briefing path lint skips backtick-quoted paths via its (?<![`\w]) lookbehind, missing ~half the path mentions in the real briefings; (2) render_rosters uses an un-escaped re.subn replacement, so a backslash in a registry value raises re.error (not a ValueError, so uncaught) AND retire_unit writes autopilot.json before rendering, leaving a half-applied state. DISPATCH 2026-09-29T09:58:17Z: CX redispatched to resume TASK-040 (stalled pre-submission last session, no error, just deferred the full suite past its one-shot turn) - worktree correctly recognized as resumable (has_resumable_task), left on task/TASK-040-cx. transcript .devteam/launch/CX-20260929-095817.log. STATUS 2026-09-29T09:55:21Z: CX session for TASK-040 ended ~08:26Z after committing 4f49fbc (focused 101 + Node 47 passing) but before running the full suite or submitting -- stalled ~90min, no active process. Redispatching to resume. TASK-034 (high) still untouched. STATUS 2026-09-29T08:46:29Z: CX ignored the DEVTEAM_TASK=TASK-034 dispatch hint and self-claimed TASK-040 (medium) instead of TASK-034 (high, both deps done) — a priority-order deviation from its own claim procedure, not a territory violation (040 diff is clean, 7/7 files in Owned_Paths). Letting it finish 040 since its deps are legitimately met; TASK-034 remains pending and should be the next explicit dispatch target. DISPATCH 2026-09-29T08:21:59Z: CX launched detached for TASK-034 (E-F1: plan_commit compare-and-swap, idempotent claim, legacy-mode blackboard guard); transcript .devteam/launch/CX-20260929-082159.log. DIRECTIVE 2026-09-29T10:15:00Z (Alister): all build work routes to CX. S5/GB receive no work; do not dispatch either. All pending tasks (034, 036-043) already Assigned_To: CX. ORCH's own role stays plan/dispatch/review only from here — the direct-build detour this session (ORCH implementing 031/033/035/039 itself) was a one-off exception, not the standing procedure. REVIEW 2026-09-29T10:00:00Z (claude-opus-4-8): TASK-031/039 approved+merged (date-brittle test reworks). ORCH found+fixed one real gap post-merge: tests/test_supervisor_once_inbox.py was missing from sync-manifest.json; master now clean (1160 Python + 47 Node). PRIOR: TASK-035/033 approved+merged (E-F2/E-E). Wave E done: 031/032/033/035/039. Ready-next: TASK-034 (deps 033+027 done), TASK-040 (dep 035 done); TASK-036 needs 034+031(done); TASK-037/038/041/042/043 further downstream — see Depends_On per task. ENV CAVEAT: shell-driven suites (test_plan_commit/test_dispatch_worktree/test_notify_needs_review) can show spurious MSYS worktree-path failures in some session environments (git-in-worktree path resolution); TASK-037 owns the harness fix — verify with your own from-scratch full-suite run before trusting a reviewer's reported failure count. GB idle (Grok Build balance exhausted, HTTP 402). Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md."
+orchestrator_notes: "RE-CARVE 2026-09-29T13:53:19Z (claude-opus-5-5): TASK-037 unblocked — Owned_Paths/Protected_Grants += scripts/dispatch.sh, scripts/plan_commit.sh; status in_progress, CX resumes on task/TASK-037-cx. TASK-036 split: new-project batch default moved to new TASK-044 (sync_from_pack.py; deps 036+040); 036 now pending, Depends_On += TASK-037 (plan_commit.sh sequencing). TASK-038 still blocked on owner decisions (GB/S5 live launches vs CX-only directive; Codex write-access fixture scope). REVIEW 2026-09-29T13:23:07Z (claude-opus-5-5): TASK-034 APPROVED on re-review, merged --no-ff, branch deleted (CX worktree detached). All 4 rework findings fixed with discriminating tests; ORCH full re-run 1170 Python / 47 Node green. UNLOCKS TASK-036 (CX, push_policy; deps 034+031 both done) — dispatch next; apply its protected-path grants first. REVIEW 2026-09-29T11:08:08Z (claude-opus-5): TASK-040 REWORK. Tests/territory/PLAN discipline all clean and evidence matched exactly (1164/47 re-run by ORCH); AC1 and AC3 independently reproduced. Two blocking defects: (1) briefing path lint skips backtick-quoted paths via its (?<![`\w]) lookbehind, missing ~half the path mentions in the real briefings; (2) render_rosters uses an un-escaped re.subn replacement, so a backslash in a registry value raises re.error (not a ValueError, so uncaught) AND retire_unit writes autopilot.json before rendering, leaving a half-applied state. DISPATCH 2026-09-29T09:58:17Z: CX redispatched to resume TASK-040 (stalled pre-submission last session, no error, just deferred the full suite past its one-shot turn) - worktree correctly recognized as resumable (has_resumable_task), left on task/TASK-040-cx. transcript .devteam/launch/CX-20260929-095817.log. STATUS 2026-09-29T09:55:21Z: CX session for TASK-040 ended ~08:26Z after committing 4f49fbc (focused 101 + Node 47 passing) but before running the full suite or submitting -- stalled ~90min, no active process. Redispatching to resume. TASK-034 (high) still untouched. STATUS 2026-09-29T08:46:29Z: CX ignored the DEVTEAM_TASK=TASK-034 dispatch hint and self-claimed TASK-040 (medium) instead of TASK-034 (high, both deps done) — a priority-order deviation from its own claim procedure, not a territory violation (040 diff is clean, 7/7 files in Owned_Paths). Letting it finish 040 since its deps are legitimately met; TASK-034 remains pending and should be the next explicit dispatch target. DISPATCH 2026-09-29T08:21:59Z: CX launched detached for TASK-034 (E-F1: plan_commit compare-and-swap, idempotent claim, legacy-mode blackboard guard); transcript .devteam/launch/CX-20260929-082159.log. DIRECTIVE 2026-09-29T10:15:00Z (Alister): all build work routes to CX. S5/GB receive no work; do not dispatch either. All pending tasks (034, 036-043) already Assigned_To: CX. ORCH's own role stays plan/dispatch/review only from here — the direct-build detour this session (ORCH implementing 031/033/035/039 itself) was a one-off exception, not the standing procedure. REVIEW 2026-09-29T10:00:00Z (claude-opus-4-8): TASK-031/039 approved+merged (date-brittle test reworks). ORCH found+fixed one real gap post-merge: tests/test_supervisor_once_inbox.py was missing from sync-manifest.json; master now clean (1160 Python + 47 Node). PRIOR: TASK-035/033 approved+merged (E-F2/E-E). Wave E done: 031/032/033/035/039. Ready-next: TASK-034 (deps 033+027 done), TASK-040 (dep 035 done); TASK-036 needs 034+031(done); TASK-037/038/041/042/043 further downstream — see Depends_On per task. ENV CAVEAT: shell-driven suites (test_plan_commit/test_dispatch_worktree/test_notify_needs_review) can show spurious MSYS worktree-path failures in some session environments (git-in-worktree path resolution); TASK-037 owns the harness fix — verify with your own from-scratch full-suite run before trusting a reviewer's reported failure count. GB idle (Grok Build balance exhausted, HTTP 402). Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md."
 ---
 
 # Project Plan
@@ -1360,19 +1360,19 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-036
 **Title:** Wave E E-G — bookkeeping push policy (every | batch | merge_only)
-**Status:** blocked
+**Status:** pending
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §9 (E-G)
 **Owned_Paths:** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/control.py, tests/test_control.py, tests/test_plan_commit.py, scripts/push_policy.py (new), tests/test_push_policy.py (new), scripts/supervisor.py, dossiers/TASK-036.md
 **Protected_Grants:** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/control.py, scripts/push_policy.py, scripts/supervisor.py
-**Depends_On:** TASK-034, TASK-031
+**Depends_On:** TASK-034, TASK-031, TASK-037
 **Description:** `git.push_policy`: every | batch | merge_only. Default `batch` for NEW projects only; existing projects keep `every` unless the owner opts in (ask-don't-auto-flip). batch: plan-only commits (chore(plan), CONTROL applications, status scans) pushed at most every `git.push_batch_minutes`=30, always on merge or park. merge_only: only on merge or park. Status scans that change nothing produce no commit. Implement the policy once in push_policy.py; plan_commit, control and the supervisor's merge/park paths call it. **Protected-path grants (ORCH applies before dispatch):** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/control.py, scripts/push_policy.py, scripts/supervisor.py.
 **Acceptance_Criteria:**
 - [ ] Under batch, 20 plan-only commits in 10 minutes produce 0 pushes, then 1 at the batch boundary (spec §9 Acceptance)
 - [ ] A merge pushes immediately (§9 Acceptance)
 - [ ] A no-change status scan creates no commit (§9 Acceptance)
-- [ ] Existing configs without the key keep `every`; new-project template gets `batch`
+- [ ] Existing configs without the key keep `every` (a missing `git.push_policy` resolves to `every`); the new-project `batch` default is TASK-044's scope, not this task's
 - [ ] Every tick/process/hour-based criterion is proven by a multi-tick or multi-process test with an advanced (fake) clock, never a single tick (spec §1 H7, §16)
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-036-cx
@@ -1396,19 +1396,19 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-29T13:32:00Z] [CX] Blocked before implementation: acceptance requires changing the new-project default while preserving existing-project `every`; `autopilot.json` is both the live project config and template, and `scripts/sync_from_pack.py` owns how config is copied. Both are outside TASK-036 Owned_Paths; editing only the allowed files cannot safely meet the acceptance criteria.
 **Artifacts:** —
 **Test_Evidence:** —
-**Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT
-**Updated_By:** CX
-**Updated_At:** 2026-09-29T13:32:09Z
+**Review_Findings:** ORCH RE-CARVE 2026-09-29T13:53:19Z: OWNERSHIP_CONFLICT resolved by SPLIT — the new-project `batch` default (needs sync_from_pack.py/onboarding config) moved to TASK-044; this task implements the policy with missing key → `every`, touching no autopilot.json. Now Depends_On TASK-037 (which temporarily owns scripts/plan_commit.sh). Existing branch task/TASK-036-cx (ab32d4e, no code) may be reused after rebasing on master once 037 merges.
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-29T13:53:19Z
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.1–3, E-H.5)
-**Owned_Paths:** scripts/dispatch.ps1, scripts/worktree.ps1, .github/workflows/** (new), .gitattributes, tests/test_dispatch_worktree.py, tests/test_worktree_ps1.py (new), dossiers/TASK-037.md
-**Protected_Grants:** scripts/dispatch.ps1, scripts/worktree.ps1
+**Owned_Paths:** scripts/dispatch.ps1, scripts/dispatch.sh, scripts/plan_commit.sh, scripts/worktree.ps1, .github/workflows/** (new), .gitattributes, tests/test_dispatch_worktree.py, tests/test_worktree_ps1.py (new), dossiers/TASK-037.md
+**Protected_Grants:** scripts/dispatch.ps1, scripts/worktree.ps1, scripts/dispatch.sh, scripts/plan_commit.sh
 **Depends_On:** TASK-035
 **Description:** (1) dispatch.ps1 records the runner window PID in `.devteam/launch/<unit>.pid`; headless runs drop -NoExit; `worktree.ps1 remove` kills recorded PIDs first, retries `Access is denied` with robocopy /MIR from an empty folder and \\?\ long paths. (2) GitHub Actions matrix windows-latest + ubuntu-latest, fixture repo with base branch `master`, both suites + harness-audit; PS 5.1 parser check on Windows. (3) Every shell parse of Python output strips CR (extends d3f5fc08 port). (5) .gitattributes: `*.sh text eol=lf`, `*.ps1 text eol=crlf`, `PLAN.md text eol=lf` (framework-owned). Carried from TASK-024 review: tests/conftest.py's env scrub removes all DEVTEAM_* including DEVTEAM_PACK_SELF_TESTS (the CI override) — exempt it in the CI setup or the scrub pattern. Carried from TASK-026/028: root-cause why tests/test_dispatch_worktree.py::TestEmptyHuskReclaim::test_dotfile_only_directory_is_refused_by_dispatch_ps1 fails ONLY inside the Codex session sandbox (PowerShell WriteError); it passes in ORCH's environment, including with DEVTEAM_UNIT/TASK/DELEGATED set — likely how dispatch.ps1 reacts to a husk directory under the Codex sandbox — and make the test and script behave the same in both environments. **Protected-path grants (ORCH applies before dispatch):** scripts/dispatch.ps1, scripts/worktree.ps1.
 **Acceptance_Criteria:**
@@ -1436,10 +1436,10 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Artifacts:** scripts/dispatch.ps1, scripts/worktree.ps1, .github/workflows/tests.yml, .gitattributes, tests/test_worktree_ps1.py, tests/test_dispatch_worktree.py, dossiers/TASK-037.md
 **Test_Evidence:**
 - [2026-09-29T12:17:09Z] [CX] `python -m pytest -q tests/test_worktree_ps1.py tests/test_dispatch_worktree.py` → 41 passed in 90.01s; `python -m pytest -q tests/test_dispatch_worktree.py::TestWorktreeNamespacing::test_master_base_branch_fixture_is_supported tests/test_worktree_ps1.py` → 3 passed in 3.33s; `node hooks/run-tests.js` → 47 passed, 0 failed.
-**Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT
-**Updated_By:** CX
-**Updated_At:** 2026-09-29T12:17:42Z
+**Review_Findings:** ORCH RE-CARVE 2026-09-29T13:53:19Z: OWNERSHIP_CONFLICT resolved — scripts/dispatch.sh and scripts/plan_commit.sh added to Owned_Paths and Protected_Grants for item (3) CR stripping (TASK-034 done; TASK-036 now sequenced after this task). Resume on task/TASK-037-cx from 90b389a.
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-29T13:53:19Z
 
 ### TASK-038
 **Title:** Wave E E-H2 — CLI launch smoke test in harness-audit
@@ -1644,3 +1644,28 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-09-27T15:50:01Z
+
+### TASK-044
+**Title:** Wave E E-G2 — new-project `git.push_policy: batch` default (split from TASK-036)
+**Status:** pending
+**Assigned_To:** CX
+**Priority:** medium
+**Spec_References:** specs/LOOP_HYGIENE_2026-09.md §9 (E-G), §8 item 7 (ask-don't-auto-flip precedent)
+**Owned_Paths:** scripts/sync_from_pack.py, tests/test_sync_from_pack.py, dossiers/TASK-044.md
+**Protected_Grants:** scripts/sync_from_pack.py
+**Depends_On:** TASK-036, TASK-040
+**Description:** Split from TASK-036 (OWNERSHIP_CONFLICT). When sync_from_pack creates a NEW project's autopilot.json it writes `git.push_policy: "batch"` (and `git.push_batch_minutes: 30`); when it syncs into an EXISTING project's autopilot.json it never adds or changes `git.push_policy` — an absent key keeps TASK-036's `every` behaviour, and the upgrade path only reports the option (ask-don't-auto-flip). DEVDEPARTMENT's own live autopilot.json is not edited by this task; opting this project into `batch` is Alister's call, applied by ORCH. **Protected-path grants (ORCH applies before dispatch):** scripts/sync_from_pack.py.
+**Acceptance_Criteria:**
+- [ ] A new-project sync writes `git.push_policy: "batch"` and `git.push_batch_minutes: 30` (spec §9: default `batch` for new projects)
+- [ ] Syncing into an existing project whose autopilot.json lacks `git.push_policy` leaves it absent, and one that sets it keeps its value byte-for-byte
+- [ ] The existing-project sync output mentions the `batch` option without applying it
+- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-29T13:53:19Z
