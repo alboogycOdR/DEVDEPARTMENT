@@ -29,6 +29,7 @@ param(
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $ParentDir = Split-Path $RepoRoot -Parent
+$ScriptsDir = Join-Path $RepoRoot "scripts"
 Set-Location $RepoRoot
 
 function Get-PythonCmd {
@@ -141,7 +142,7 @@ switch ($Cli) {
 }
 
 Write-Host "[dispatch] Validating PLAN.md..." -ForegroundColor Cyan
-& $Py "scripts\validate_plan.py" "PLAN.md"
+& $Py (Join-Path $ScriptsDir "validate_plan.py") "PLAN.md"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "[dispatch] PLAN.md illegal - fix before dispatching."
     exit 1
@@ -269,7 +270,7 @@ try {
 $TaskId = ""
 $ResumeOrClaim = ""
 if ($ControlMode -eq "strict") {
-    $ClaimArgs = @("scripts\control.py", "claim", "--unit", $Id, "--repo", $RepoRoot)
+    $ClaimArgs = @((Join-Path $ScriptsDir "control.py"), "claim", "--unit", $Id, "--repo", $RepoRoot)
     if ($DryRun) { $ClaimArgs += "--dry-run" }
     $ClaimOut = (Remove-PythonCr (& $Py @ClaimArgs | Out-String)).Trim()
 
@@ -397,7 +398,7 @@ Procedure: (1) Read AGENTS.md and $Briefing, then PLAN.md, fresh from disk. If d
 # Wave C: inject project instincts (fail-open).
 $InstinctsSection = ""
 try {
-    $InstinctsSection = Remove-PythonCr (& $Py "scripts\instincts.py" "inject" "--unit" $Id "--repo" $RepoRoot "--limit" "5" 2>$null | Out-String)
+    $InstinctsSection = Remove-PythonCr (& $Py (Join-Path $ScriptsDir "instincts.py") "inject" "--unit" $Id "--repo" $RepoRoot "--limit" "5" 2>$null | Out-String)
 } catch {
     $InstinctsSection = ""
 }
@@ -520,7 +521,7 @@ except Exception:
             $AtlasScanOk = $false
             foreach ($attempt in 1, 2) {
                 try {
-                    & $Py "scripts\atlas.py" "scan" 2>$null | Out-Null
+                    & $Py (Join-Path $ScriptsDir "atlas.py") "scan" 2>$null | Out-Null
                     if ($LASTEXITCODE -eq 0) { $AtlasScanOk = $true; break }
                 } catch { }
                 if ($attempt -eq 1) { Start-Sleep -Seconds 3 }
@@ -529,7 +530,7 @@ except Exception:
                 Write-Warning "[dispatch] atlas scan failed twice (concurrent dispatch can contend on .devteam/atlas.db) - packing against the existing, possibly stale index."
             }
             try {
-                $AtlasSection = Remove-PythonCr (& $Py "scripts\atlas.py" "pack" "--task" $AtlasTaskId "--budget" $AtlasBudget 2>$null | Out-String)
+                $AtlasSection = Remove-PythonCr (& $Py (Join-Path $ScriptsDir "atlas.py") "pack" "--task" $AtlasTaskId "--budget" $AtlasBudget 2>$null | Out-String)
                 $AtlasOk = ($LASTEXITCODE -eq 0)
             } catch {
                 $AtlasOk = $false
@@ -675,7 +676,7 @@ if ($ControlMode -eq "strict") {
         [System.IO.File]::WriteAllText($LogPath, $RawLog, (New-Object System.Text.UTF8Encoding($false)))
     }
     Write-Host "[dispatch] Session ended. Extracting devteam-control block..." -ForegroundColor Cyan
-    $ExtractOut = (Remove-PythonCr (& $Py "scripts\control.py" "extract" "--log" $LogPath "--task" $TaskId "--unit" $Id "--repo" $RepoRoot | Out-String)).Trim()
+    $ExtractOut = (Remove-PythonCr (& $Py (Join-Path $ScriptsDir "control.py") "extract" "--log" $LogPath "--task" $TaskId "--unit" $Id "--repo" $RepoRoot | Out-String)).Trim()
     Write-Host "[dispatch] $ExtractOut"
     if ($ExtractOut -like "UNREPORTED:*") {
         Write-Warning "[dispatch] NOTE: no CONTROL block found - PLAN.md state will not change until the next supervisor tick's fallback handling. Log: $LogPath"
@@ -814,7 +815,7 @@ sys.exit(0 if has_resumable_task('.', '$Id') else 1)
     }
 
     Write-Host "[dispatch] Session ended. Re-validating PLAN.md..." -ForegroundColor Cyan
-    & $Py "scripts\validate_plan.py" "PLAN.md"
+    & $Py (Join-Path $ScriptsDir "validate_plan.py") "PLAN.md"
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "[dispatch] PLAN.md now protocol-illegal - builder violated protocol. Inspect: git log -p -- PLAN.md"
         exit 1
