@@ -1385,7 +1385,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.1–3, E-H.5)
@@ -1398,15 +1398,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] CI matrix (windows-latest + ubuntu-latest) green on the task branch push — link to the run in Test_Evidence (§10 Acceptance)
 - [ ] .gitattributes ships the three eol rules (E-H.5)
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-037-cx
+**Started_At:** 2026-09-29T12:03:44Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-27T19:07:45Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-29T12:03:57Z
 
 ### TASK-038
 **Title:** Wave E E-H2 — CLI launch smoke test in harness-audit
