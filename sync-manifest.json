@@ -66,6 +66,7 @@
     "scripts/plan_commit.ps1",
     "scripts/plan_commit.sh",
     "scripts/plan_guard.py",
+    "scripts/plan_stamp.py",
     "scripts/preflight_paths.py",
     "scripts/retro.py",
     "scripts/scheduling.py",
