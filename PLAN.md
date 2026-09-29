@@ -1492,12 +1492,14 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
     FILE   dossiers/TASK-040.md  -> exists, 19 line(s), 1646 bytes
   [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
   ```
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-29T08:25:49Z] [CX] Implemented and committed roster rendering, `retire_unit.py`, per-unit briefing validation, and briefing lint (4f49fbc). Focused Python coverage: 101 passed; Node suite: 47 passed. Full Python suite remains to run before review.
+**Artifacts:** scripts/sync_from_pack.py, scripts/retire_unit.py, scripts/validate_plan.py, briefings/CODEX_BRIEFING.md, briefings/GROK_BUILD_BRIEFING.md, briefings/S5_BUILD_BRIEFING.md, tests/test_retire_unit.py
+**Test_Evidence:**
+- [2026-09-29T08:25:49Z] [CX] `python -m pytest -q tests/test_retire_unit.py tests/test_sync_from_pack.py tests/test_validate_plan.py` → 101 passed in 3.08s; `node hooks/run-tests.js` → 47 passed, 0 failed.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-29T08:23:41Z
+**Updated_At:** 2026-09-29T08:26:19Z
 
 ### TASK-041
 **Title:** Wave E E-J2 — superseded, owner_hold, external tasks, ORCH-SOLO lane, Blocked_Reason vocabulary
