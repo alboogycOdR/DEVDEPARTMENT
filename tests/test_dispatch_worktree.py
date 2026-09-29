@@ -19,6 +19,7 @@ NOT gated by --dry-run in dispatch.sh (only builder launch and prompt
 display are), so a dry run still exercises every line of the fix.
 """
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -570,3 +571,298 @@ class TestAutopilotTickPortability:
         low = src.lower()
         for banned in ("oikonomos", "oik_", "cx9", r"e:\dell-projects"):
             assert banned not in low, banned
+
+
+class TestLegacyModePinnedBaseAndClaimVerification:
+    """E-F.3/E-F.4/E-F.7 carry-over (TASK-035): in legacy mode dispatch does
+    not claim for the builder, but it can still (a) refuse when the main
+    checkout's PLAN.md is dirty, and (b) reset the worktree to the base tip
+    before a launch that is going to be a fresh claim -- unless this unit
+    already has a resumable (claimed/in_progress) task, in which case the
+    worktree is left exactly where its own branch is."""
+
+    def _legacy_project(self, tmp_path, name):
+        proj = make_project(tmp_path, name, REPO_ROOT)
+        (proj / "autopilot.json").write_text(
+            '{"control": {"mode": "legacy"}, "git": {"base_branch": "main"}}',
+            encoding="utf-8", newline="\n")
+        return proj
+
+    def test_dirty_plan_md_in_main_checkout_refuses_to_dispatch(self, tmp_path):
+        proj = self._legacy_project(tmp_path, "projectDirty")
+        (proj / "PLAN.md").write_text(
+            (proj / "PLAN.md").read_text(encoding="utf-8") + "\n<!-- uncommitted edit -->\n",
+            encoding="utf-8", newline="\n")
+        result = run_dispatch(proj, dry_run=True)
+        assert result.returncode != 0
+        assert "uncommitted changes in the main checkout" in _combined(result)
+
+    def test_clean_plan_md_does_not_trigger_the_dirty_refusal(self, tmp_path):
+        proj = self._legacy_project(tmp_path, "projectClean")
+        result = run_dispatch(proj, dry_run=True)
+        assert result.returncode == 0, _combined(result)
+        assert "uncommitted changes in the main checkout" not in _combined(result)
+
+    def test_worktree_on_a_previous_task_branch_is_reset_to_base_tip_when_no_resumable_task(self, tmp_path):
+        proj = self._legacy_project(tmp_path, "projectResetMe")
+        # First dispatch creates the worktree at the base tip.
+        setup = run_dispatch(proj, dry_run=True)
+        assert setup.returncode == 0, _combined(setup)
+        wt = proj.parent / "wt-grok-projectResetMe"
+        assert wt.is_dir()
+        subprocess.run(
+            ["bash", "-c",
+             "git checkout -B task/TASK-001-gb && "
+             "printf 'previous task leftover\n' > foreign.txt && "
+             "git add foreign.txt && git commit -q -m 'previous task commit'"],
+            cwd=wt, check=True, capture_output=True)
+        foreign = subprocess.check_output(["bash", "-c", "git rev-parse HEAD"], cwd=wt, text=True).strip()
+        base = subprocess.check_output(["bash", "-c", "git rev-parse main"], cwd=proj, text=True).strip()
+        assert foreign != base
+        # PLAN.md has no task for GB at all (fixture default) -> no resumable
+        # task -> the next dispatch must reset the worktree to the base tip.
+        result = run_dispatch(proj, dry_run=True)
+        assert result.returncode == 0, _combined(result)
+        assert "worktree reset to main tip" in _combined(result), _combined(result)
+        wt_sha = subprocess.check_output(["bash", "-c", "git rev-parse HEAD"], cwd=wt, text=True).strip()
+        assert wt_sha == base
+        assert wt_sha != foreign
+
+    def test_worktree_is_left_alone_when_this_unit_has_a_resumable_task(self, tmp_path):
+        proj = self._legacy_project(tmp_path, "projectKeepMe")
+        setup = run_dispatch(proj, dry_run=True)
+        assert setup.returncode == 0, _combined(setup)
+        wt = proj.parent / "wt-grok-projectKeepMe"
+        subprocess.run(
+            ["bash", "-c",
+             "git checkout -B task/TASK-001-gb && "
+             "printf 'in-flight work\n' > wip.txt && "
+             "git add wip.txt && git commit -q -m 'in-flight work'"],
+            cwd=wt, check=True, capture_output=True)
+        in_flight = subprocess.check_output(["bash", "-c", "git rev-parse HEAD"], cwd=wt, text=True).strip()
+        # Now PLAN.md shows GB actually claimed/in_progress on TASK-001 --
+        # has_resumable_task must return True, and the worktree must be left
+        # exactly where it is (no reset), even though it's on a task branch.
+        plan_path = proj / "PLAN.md"
+        plan_path.write_text(
+            plan_path.read_text(encoding="utf-8") + """
+### TASK-001
+**Title:** In-flight task
+**Status:** in_progress
+**Assigned_To:** GB
+**Priority:** high
+**Spec_References:** specs/x.md
+**Owned_Paths:** src/a.py
+**Depends_On:** —
+**Description:** d
+**Acceptance_Criteria:**
+- [ ] c
+**Branch:** task/TASK-001-gb
+**Started_At:** 2026-09-29T00:00:00Z
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** GB
+**Updated_At:** 2026-09-29T00:00:00Z
+""", encoding="utf-8", newline="\n")
+        subprocess.run(["git", "add", "-A"], cwd=proj, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-q", "-m", "plant in-progress claim"], cwd=proj, check=True, capture_output=True)
+        result = run_dispatch(proj, dry_run=True)
+        assert result.returncode == 0, _combined(result)
+        assert "has a resumable task" in _combined(result), _combined(result)
+        assert "worktree reset to main tip" not in _combined(result)
+        wt_sha = subprocess.check_output(["bash", "-c", "git rev-parse HEAD"], cwd=wt, text=True).strip()
+        assert wt_sha == in_flight
+
+
+class TestClaimVerifiedAfterLegacyLaunch:
+    """E-F.3: legacy mode verifies the claim AFTER launch (it can't claim
+    for the builder), polling the main checkout's PLAN.md for up to
+    dispatch.claim_verify_seconds while the session runs. A fake `grok`
+    binary that never touches PLAN.md exercises the real (non-dry-run)
+    launch path end to end."""
+
+    def _fake_grok(self, tmp_path, sleep_seconds: float) -> Path:
+        bindir = tmp_path / "fakebin"
+        bindir.mkdir(exist_ok=True)
+        script = bindir / "grok"
+        script.write_text(
+            "#!/usr/bin/env bash\n"
+            f"sleep {sleep_seconds}\n"
+            "echo fake session output\n",
+            encoding="utf-8", newline="\n")
+        script.chmod(0o755)
+        return bindir
+
+    def test_no_claim_flip_within_window_logs_claim_unverified(self, tmp_path):
+        proj = make_project(tmp_path, "projectUnverified", REPO_ROOT)
+        (proj / "autopilot.json").write_text(
+            '{"control": {"mode": "legacy"}, "git": {"base_branch": "main"}, '
+            '"dispatch": {"claim_verify_seconds": 1}}',
+            encoding="utf-8", newline="\n")
+        bindir = self._fake_grok(tmp_path, sleep_seconds=3)
+        env = dict(os.environ)
+        env["PATH"] = f"{bindir}{os.pathsep}{env.get('PATH', '')}"
+        result = subprocess.run(
+            ["bash", "scripts/dispatch.sh", "grok"],
+            cwd=proj, capture_output=True, text=True, timeout=30, env=env)
+        assert result.returncode == 0, _combined(result)
+        assert "CLAIM_UNVERIFIED" in _combined(result), _combined(result)
+
+    def test_claim_flip_within_window_does_not_log_claim_unverified(self, tmp_path):
+        proj = make_project(tmp_path, "projectVerified", REPO_ROOT)
+        (proj / "autopilot.json").write_text(
+            '{"control": {"mode": "legacy"}, "git": {"base_branch": "main"}, '
+            '"dispatch": {"claim_verify_seconds": 30}}',
+            encoding="utf-8", newline="\n")
+        bindir = self._fake_grok(tmp_path, sleep_seconds=3)
+        # Plant the claim flip on the MAIN checkout's PLAN.md shortly after
+        # launch, in the background, from a separate process -- exactly
+        # what a real builder's own plan_commit would do concurrently.
+        plan_path = proj / "PLAN.md"
+        base_text = plan_path.read_text(encoding="utf-8")
+        claimed_text = base_text + """
+### TASK-001
+**Title:** In-flight task
+**Status:** claimed
+**Assigned_To:** GB
+**Priority:** high
+**Spec_References:** specs/x.md
+**Owned_Paths:** src/a.py
+**Depends_On:** —
+**Description:** d
+**Acceptance_Criteria:**
+- [ ] c
+**Branch:** task/TASK-001-gb
+**Started_At:** 2026-09-29T00:00:00Z
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** GB
+**Updated_At:** 2026-09-29T00:00:00Z
+"""
+        writer = subprocess.Popen(
+            ["bash", "-c",
+             f"sleep 1 && printf %s {shlex.quote(claimed_text)} > PLAN.md && "
+             "git add PLAN.md && git commit -q -m 'chore(plan): claim TASK-001 [GB]'"],
+            cwd=proj)
+        env = dict(os.environ)
+        env["PATH"] = f"{self._fake_grok(tmp_path, sleep_seconds=3)}{os.pathsep}{env.get('PATH', '')}"
+        try:
+            result = subprocess.run(
+                ["bash", "scripts/dispatch.sh", "grok"],
+                cwd=proj, capture_output=True, text=True, timeout=30, env=env)
+        finally:
+            writer.wait(timeout=10)
+        assert result.returncode == 0, _combined(result)
+        assert "CLAIM_UNVERIFIED" not in _combined(result), _combined(result)
+
+
+class TestPs1LegacyModePinnedBaseAndClaimVerification:
+    """Same behaviour, PowerShell mirror (TASK-035 review: dispatch.sh and
+    dispatch.ps1 must agree; TASK-033's lesson was that a shared rule left
+    to two hand-written copies drifts)."""
+
+    def _legacy_project(self, tmp_path, name):
+        proj = make_project(tmp_path, name, REPO_ROOT)
+        (proj / "autopilot.json").write_text(
+            '{"control": {"mode": "legacy"}, "git": {"base_branch": "main"}}',
+            encoding="utf-8", newline="\n")
+        return proj
+
+    def test_ps1_dirty_plan_md_in_main_checkout_refuses_to_dispatch(self, tmp_path):
+        proj = self._legacy_project(tmp_path, "projectDirtyPs")
+        (proj / "PLAN.md").write_text(
+            (proj / "PLAN.md").read_text(encoding="utf-8") + "\n<!-- uncommitted edit -->\n",
+            encoding="utf-8", newline="\n")
+        result = run_dispatch_ps1(proj, dry_run=True)
+        assert result.returncode != 0
+        assert "uncommitted changes in the main checkout" in _combined(result)
+
+    def test_ps1_worktree_on_a_previous_task_branch_is_reset_to_base_tip_when_no_resumable_task(self, tmp_path):
+        proj = self._legacy_project(tmp_path, "projectResetMePs")
+        setup = run_dispatch_ps1(proj, dry_run=True)
+        assert setup.returncode == 0, _combined(setup)
+        wt = proj.parent / "wt-grok-projectResetMePs"
+        assert wt.is_dir()
+        subprocess.run(
+            ["git", "checkout", "-B", "task/TASK-001-gb"], cwd=wt, check=True, capture_output=True)
+        (wt / "foreign.txt").write_text("previous task leftover", encoding="utf-8", newline="\n")
+        subprocess.run(["git", "add", "foreign.txt"], cwd=wt, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-q", "-m", "previous task commit"], cwd=wt, check=True, capture_output=True)
+        foreign = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=wt, text=True).strip()
+        base = subprocess.check_output(["git", "rev-parse", "main"], cwd=proj, text=True).strip()
+        assert foreign != base
+        result = run_dispatch_ps1(proj, dry_run=True)
+        assert result.returncode == 0, _combined(result)
+        assert "worktree reset to main tip" in _combined(result), _combined(result)
+        wt_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=wt, text=True).strip()
+        assert wt_sha == base
+        assert wt_sha != foreign
+
+    def test_ps1_worktree_is_left_alone_when_this_unit_has_a_resumable_task(self, tmp_path):
+        proj = self._legacy_project(tmp_path, "projectKeepMePs")
+        setup = run_dispatch_ps1(proj, dry_run=True)
+        assert setup.returncode == 0, _combined(setup)
+        wt = proj.parent / "wt-grok-projectKeepMePs"
+        subprocess.run(["git", "checkout", "-B", "task/TASK-001-gb"], cwd=wt, check=True, capture_output=True)
+        (wt / "wip.txt").write_text("in-flight work", encoding="utf-8", newline="\n")
+        subprocess.run(["git", "add", "wip.txt"], cwd=wt, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-q", "-m", "in-flight work"], cwd=wt, check=True, capture_output=True)
+        in_flight = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=wt, text=True).strip()
+        plan_path = proj / "PLAN.md"
+        plan_path.write_text(
+            plan_path.read_text(encoding="utf-8") + """
+### TASK-001
+**Title:** In-flight task
+**Status:** in_progress
+**Assigned_To:** GB
+**Priority:** high
+**Spec_References:** specs/x.md
+**Owned_Paths:** src/a.py
+**Depends_On:** —
+**Description:** d
+**Acceptance_Criteria:**
+- [ ] c
+**Branch:** task/TASK-001-gb
+**Started_At:** 2026-09-29T00:00:00Z
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** GB
+**Updated_At:** 2026-09-29T00:00:00Z
+""", encoding="utf-8", newline="\n")
+        subprocess.run(["git", "add", "-A"], cwd=proj, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-q", "-m", "plant in-progress claim"], cwd=proj, check=True, capture_output=True)
+        result = run_dispatch_ps1(proj, dry_run=True)
+        assert result.returncode == 0, _combined(result)
+        assert "has a resumable task" in _combined(result), _combined(result)
+        assert "worktree reset to main tip" not in _combined(result)
+        wt_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=wt, text=True).strip()
+        assert wt_sha == in_flight
+
+    def test_ps1_no_claim_flip_within_window_logs_claim_unverified(self, tmp_path):
+        proj = make_project(tmp_path, "projectUnverifiedPs", REPO_ROOT)
+        (proj / "autopilot.json").write_text(
+            '{"control": {"mode": "legacy"}, "git": {"base_branch": "main"}, '
+            '"dispatch": {"claim_verify_seconds": 1}}',
+            encoding="utf-8", newline="\n")
+        bindir = tmp_path / "fakebin"
+        bindir.mkdir(exist_ok=True)
+        script = bindir / "grok.cmd"
+        script.write_text("@echo off\r\nping -n 4 127.0.0.1 >nul\r\necho fake session output\r\n",
+                          encoding="utf-8")
+        env = dict(os.environ)
+        env["PATH"] = f"{bindir}{os.pathsep}{env.get('PATH', '')}"
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+             "-File", str(proj / "scripts" / "dispatch.ps1"), "-Builder", "grok", "-InProcess"],
+            cwd=proj, capture_output=True, text=True, timeout=30, env=env)
+        assert result.returncode == 0, _combined(result)
+        assert "CLAIM_UNVERIFIED" in _combined(result), _combined(result)

@@ -881,3 +881,66 @@ class TestShippedTestFileRegistrationIsBranchAware:
         assert inst._integration_branch_test_files() is None
         with pytest.raises(AssertionError, match="test_a.py"):
             inst.test_every_shipped_test_file_is_registered()
+
+
+class TestStrictModeUpgradeOffer:
+    """E-F.7: existing-project sync never flips control.mode; it only lists
+    the strict offer in the checklist, and only when every active unit is a
+    verified CONTROL emitter (per spec text: cli=codex today)."""
+
+    def _project(self, tmp_path, autopilot: dict) -> Path:
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / "autopilot.json").write_text(json.dumps(autopilot), encoding="utf-8")
+        return proj
+
+    def test_no_offer_when_already_strict(self, tmp_path):
+        proj = self._project(tmp_path, {
+            "control": {"mode": "strict"},
+            "builders": {"active": ["CX"], "defined": {"CX": {"cli": "codex"}}},
+        })
+        assert sfp.strict_mode_offer(proj) is None
+
+    def test_offer_when_all_active_units_are_codex(self, tmp_path):
+        proj = self._project(tmp_path, {
+            "control": {"mode": "legacy"},
+            "builders": {"active": ["CX"], "defined": {"CX": {"cli": "codex"}}},
+        })
+        offer = sfp.strict_mode_offer(proj)
+        assert offer is not None
+        assert "strict" in offer and "CX" in offer
+
+    def test_no_offer_when_any_active_unit_is_not_a_verified_emitter(self, tmp_path):
+        proj = self._project(tmp_path, {
+            "control": {"mode": "legacy"},
+            "builders": {"active": ["CX", "GB"],
+                        "defined": {"CX": {"cli": "codex"}, "GB": {"cli": "grok"}}},
+        })
+        assert sfp.strict_mode_offer(proj) is None
+
+    def test_no_offer_when_claude_cli_active_not_yet_verified(self, tmp_path):
+        proj = self._project(tmp_path, {
+            "control": {"mode": "legacy"},
+            "builders": {"active": ["S5"], "defined": {"S5": {"cli": "claude"}}},
+        })
+        assert sfp.strict_mode_offer(proj) is None
+
+    def test_no_offer_with_no_active_units_or_missing_config(self, tmp_path):
+        proj = self._project(tmp_path, {"control": {"mode": "legacy"}, "builders": {"active": []}})
+        assert sfp.strict_mode_offer(proj) is None
+        missing = tmp_path / "no-autopilot"
+        missing.mkdir()
+        assert sfp.strict_mode_offer(missing) is None
+
+    def test_sync_never_writes_control_mode_even_when_eligible(self, tmp_path):
+        pack = make_pack(tmp_path, {"scripts/a.py": "same\n", "autopilot.json": "{}\n"})
+        proj = make_project(tmp_path, {"scripts/a.py": "same\n", "autopilot.json": json.dumps({
+            "control": {"mode": "legacy"},
+            "builders": {"active": ["CX"], "defined": {"CX": {"cli": "codex"}}},
+        })})
+        before = (proj / "autopilot.json").read_text(encoding="utf-8")
+        report = sfp.run_sync(pack, proj, apply=True)
+        after = (proj / "autopilot.json").read_text(encoding="utf-8")
+        assert json.loads(before)["control"] == json.loads(after)["control"]
+        rendered = sfp.render_report(report, True)
+        assert "control.mode is never changed by sync" in rendered

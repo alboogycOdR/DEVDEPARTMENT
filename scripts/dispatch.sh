@@ -105,6 +105,16 @@ esac
 echo "[dispatch] Validating PLAN.md..."
 python3 scripts/validate_plan.py PLAN.md || { echo "[dispatch] PLAN.md illegal — fix before dispatching." >&2; exit 1; }
 
+# E-F.4: the main checkout's PLAN.md must be exactly what's committed — a
+# dirty main-checkout PLAN.md means some earlier write never landed (the
+# oikonomos SYNC_MISMATCH class), and dispatching against it risks reading
+# state nobody else can see. This refuses, it never stashes/discards.
+if ! git -C "$REPO_ROOT" diff --quiet -- PLAN.md || ! git -C "$REPO_ROOT" diff --quiet --cached -- PLAN.md; then
+  echo "[dispatch] ERROR: PLAN.md has uncommitted changes in the main checkout ($REPO_ROOT)." >&2
+  echo "[dispatch] Refusing to dispatch — commit or discard them first; do not work around this." >&2
+  exit 1
+fi
+
 # Warn (not block) if an OLD-style unnamespaced worktree sits at the legacy
 # path — a leftover from before this fix, or from a pre-fix dispatch of
 # this exact project. It's orphaned now, not reused, so it's safe to leave,
@@ -182,6 +192,27 @@ if [[ "$CONTROL_MODE" == "strict" ]]; then
       ;;
   esac
   echo "[dispatch] $RESUME_OR_CLAIM $TASK_ID for $ID (control.mode=strict$( [[ "$DRY" == "--dry-run" ]] && echo ", DRY RUN — no write performed" ))."
+fi
+
+# E-F.4/E-F.7 carry-over from TASK-024 review: the pinned-base pre-create
+# below only fires when dispatch itself claims (strict mode, RESUME_OR_CLAIM
+# == "claimed"). In LEGACY mode the builder claims its own task from inside
+# its session, so dispatch never sees a task id here -- but it CAN still
+# guarantee the worktree's HEAD is the base tip before launch, unless this
+# unit has a resumable (claimed/in_progress) task, in which case leaving the
+# worktree exactly where its own branch is is the whole point of resuming.
+if [[ "$CONTROL_MODE" == "legacy" && -d "$WT" ]]; then
+  if python3 -c "
+import sys; sys.path.insert(0, 'scripts')
+from validate_plan import has_resumable_task
+sys.exit(0 if has_resumable_task('.', '$ID') else 1)
+" 2>/dev/null; then
+    echo "[dispatch] $ID has a resumable task — leaving worktree on its current branch."
+  else
+    git -C "$WT" checkout --detach "$BASE_BRANCH" >/dev/null 2>&1 \
+      && echo "[dispatch] worktree reset to $BASE_BRANCH tip (fresh-claim pinned base, legacy mode)." \
+      || echo "[dispatch] WARNING: could not reset worktree to $BASE_BRANCH tip; a fresh claim may branch from a stale base." >&2
+  fi
 fi
 
 # Port of oikonomos bceb8eb2: a FRESH claim must start from the integration
@@ -437,7 +468,44 @@ if [[ "$CONTROL_MODE" == "strict" ]]; then
   echo "[dispatch] control.mode=strict: PLAN.md is applied by the supervisor's next tick, not here. Run /devteam-status once it has ticked."
   exit 0
 else
-  ( cd "$WT" && "${AUTH_ENV[@]}" "${CMD[@]}" "$PROMPT" ) || true
+  ( cd "$WT" && "${AUTH_ENV[@]}" "${CMD[@]}" "$PROMPT" ) &
+  LAUNCH_PID=$!
+
+  # E-F.3: verified claim before launch is strict mode's job (it claims
+  # itself); legacy mode instead verifies AFTER launch, polling the main
+  # checkout's PLAN.md for this unit's claim flip while the session runs.
+  # None within the window -> CLAIM_UNVERIFIED, logged (not fatal): the
+  # builder's own commit is not rejected, it is left for the next
+  # /devteam-status or supervisor tick's reconciliation to notice and
+  # investigate, exactly as an in-flight, not-yet-verified claim should be.
+  CLAIM_VERIFY_SECONDS="$(python3 -c "
+import json
+try:
+    print(int((json.load(open('autopilot.json')).get('dispatch') or {}).get('claim_verify_seconds', 120)))
+except Exception:
+    print(120)
+" 2>/dev/null || echo 120)"
+  CLAIM_SEEN=0
+  ELAPSED=0
+  while [[ "$ELAPSED" -lt "$CLAIM_VERIFY_SECONDS" ]]; do
+    if ! kill -0 "$LAUNCH_PID" 2>/dev/null; then
+      break  # session already ended -- nothing left to poll for
+    fi
+    if python3 -c "
+import sys; sys.path.insert(0, 'scripts')
+from validate_plan import has_resumable_task
+sys.exit(0 if has_resumable_task('.', '$ID') else 1)
+" 2>/dev/null; then
+      CLAIM_SEEN=1
+      break
+    fi
+    sleep 2
+    ELAPSED=$((ELAPSED + 2))
+  done
+  if [[ "$CLAIM_SEEN" -eq 0 ]] && kill -0 "$LAUNCH_PID" 2>/dev/null; then
+    echo "[dispatch] CLAIM_UNVERIFIED: no PLAN.md claim/in_progress flip observed for $ID within ${CLAIM_VERIFY_SECONDS}s. Not fatal -- the builder's first commit will be picked up and reconciled on the next check." >&2
+  fi
+  wait "$LAUNCH_PID" || true
 
   echo "[dispatch] Session ended. Re-validating PLAN.md..."
   python3 scripts/validate_plan.py PLAN.md || {
