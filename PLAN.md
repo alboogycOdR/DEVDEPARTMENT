@@ -1608,7 +1608,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-041
 **Title:** Wave E E-J2 — superseded, owner_hold, external tasks, ORCH-SOLO lane, Blocked_Reason vocabulary
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §12 (E-J.2, E-J.5, E-J.6)
@@ -1627,6 +1627,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Branch:** task/TASK-041-cx
 **Started_At:** 2026-09-30T15:38:37Z
 **Progress_Notes:**
+- [2026-09-30T16:04:54Z] [CX] Full Python suite: 1202 passed, 3 failed in 561.95s. All failures are bare Blocked_Reason fixtures in tests/test_supervisor_ledgers.py (SPEC_AMBIGUITY x3, TOOLING_FAILURE) and tests/test_token_efficiency.py (MISSING_DEPENDENCY); these files are outside Owned_Paths. Need ORCH ownership grant for both files, then update fixtures to CATEGORY: detail and rerun full suite. Branch commits 6372c30, bec8279, 88ea3a1; focused Python 96 passed, Node 47 passed.
 - [2026-09-30T15:52:58Z] [CX] Implemented and committed initial E-J2 lane/status validation, supervisor owner-hold digest, CONTROL reason grammar, and TASK-036 per-tick push guard (6372c30). Bare-remote regression reproduced before fix and passes after. Focused Python: 96 passed; Node: 47 passed. Full Python suite pending.
 - 2026-09-30T15:39:09Z [CX] Pre-flight path inspection completed before implementation:
   ```text
@@ -1643,11 +1644,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
   ```
 **Artifacts:** scripts/validate_plan.py, scripts/supervisor.py, scripts/control.py, tests/test_validate_plan.py, tests/test_supervisor.py, tests/test_lanes.py, dossiers/TASK-041.md
-**Test_Evidence:** —
+**Test_Evidence:**
+- [2026-09-30T16:04:54Z] [CX] `python -m pytest -q tests/test_lanes.py tests/test_validate_plan.py tests/test_control.py` → 96 passed; `node hooks/run-tests.js` → 47 passed, 0 failed; `python scripts/validate_plan.py C:\CLAUDECODE_kingdom.work\DEVDEPARTMENT\PLAN.md` → legal (1 size warning).
+- [2026-09-30T16:04:54Z] [CX] `python -m pytest -q` → 1202 passed, 3 failed in 561.95s; failures are the unowned legacy bare-reason fixtures detailed in Progress_Notes and dossier.
 **Review_Findings:** —
-**Blocked_Reason:** —
+**Blocked_Reason:** OWNERSHIP_CONFLICT: tests/test_supervisor_ledgers.py and tests/test_token_efficiency.py require fixture updates for mandatory CATEGORY: detail blocked reasons
 **Updated_By:** CX
-**Updated_At:** 2026-09-30T15:53:01Z
+**Updated_At:** 2026-09-30T16:04:55Z
 
 ### TASK-042
 **Title:** Wave E E-J3 — review rules into the command file, clock-stamped verdicts, frontmatter freshness, untracked-work detector
