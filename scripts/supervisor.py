@@ -44,6 +44,7 @@ import maintenance  # noqa: E402 — Wave B: nightly self-audit
 import distiller  # noqa: E402 — Wave C: post-review-batch distillation
 import retro  # noqa: E402 — Wave C: weekly retro drafter
 import control  # noqa: E402 — Wave I (I1): CONTROL-block single-writer blackboard
+import push_policy  # noqa: E402 — Wave E: bookkeeping push schedule
 import usage_probe  # noqa: E402 — Wave I (I2): live usage-window meters
 import circuit_breaker  # noqa: E402 — stagnation detection (ported from ralph-claude-code, MIT)
 import builder_registry  # noqa: E402 — worktree/branch resolution for stagnation git-diff
@@ -861,6 +862,10 @@ def _run_review(action: Action, cfg: dict, state: RuntimeState, repo: Path, now:
     after = {task.task_id: task for task in parse_tasks(plan_path.read_text(encoding="utf-8"), Report())}
     status = after.get(action.task_id).get("Status") if action.task_id in after else ""
     verdict = {"done": "approved", "in_progress": "rework"}.get(status, "none") if result == 0 else "none"
+    if verdict == "approved":
+        pushed, note = push_policy.maybe_push(repo, "merge", now=now)
+        if not pushed:
+            log_line(repo, f"MERGE_PUSH: {note}")
     if result == 0:
         state.reviews_since_distill += 1
         for task_id, before_task in before.items():
@@ -909,6 +914,9 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
             notify(cfg, "P1", a.detail, repo)   # P1 is NEVER muted — safety rail, not a preference
             state.escalated[escalation_key(a)] = now.strftime(UTC_FMT)
             state.parked = {"kind": "P1", "reason": a.detail, "since": now.strftime(UTC_FMT)}
+            pushed, note = push_policy.maybe_push(repo, "park", now=now)
+            if not pushed:
+                log_line(repo, f"PARK_PUSH: {note}")
         elif a.kind == "ESCALATE_P2":
             if is_muted(state, now):
                 log_line(repo, f"MUTED: suppressed P2 — {a.detail}")
@@ -927,6 +935,9 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
             else:
                 notify(cfg, "P0", detail, repo)
             state.parked = {"kind": "WAVE_DONE", "reason": a.detail, "since": now.strftime(UTC_FMT)}
+            pushed, note = push_policy.maybe_push(repo, "park", now=now)
+            if not pushed:
+                log_line(repo, f"PARK_PUSH: {note}")
         elif a.kind == "REVIEW":
             review_ran = True
             _run_review(a, cfg, state, repo, now)
@@ -1336,7 +1347,7 @@ def _process_tg_answer_or_rework(item: dict, repo: Path, cfg: dict, ts: str, tok
         return
 
     plan_path.write_text(result.text, encoding="utf-8")
-    committed, pushed, note = tgc.git_commit_and_push_detailed(
+    committed, pushed, note = push_policy.commit_plan(
         repo, f"chore(plan): {result.detail} [TG]")
     if committed:
         tgc.send_reply(token, chat_id,
@@ -1882,6 +1893,12 @@ def main(argv: list[str]) -> int:
                 reap_inflight(inflight, cfg, state, repo, datetime.now(timezone.utc), wait_seconds=3.0)
             if not args.dry_run:
                 state.save(state_path)
+                try:
+                    # A batch boundary can arrive with no new PLAN.md commit.
+                    # The persisted window is therefore checked every tick.
+                    push_policy.maybe_push(repo, "bookkeeping", now=now)
+                except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                    print(f"[push_policy] skipped this tick: {exc}", file=sys.stderr)
 
             # v4: publish Mission Control board (throttled; a dead board never blocks a wave)
             if not args.dry_run:

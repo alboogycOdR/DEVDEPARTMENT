@@ -11,9 +11,13 @@
 ## Territory
 - Owned_Paths: scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/control.py, tests/test_control.py, tests/test_plan_commit.py, scripts/push_policy.py (new), tests/test_push_policy.py (new), scripts/supervisor.py
 - Protected-path grants: scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/control.py, scripts/push_policy.py, scripts/supervisor.py
-- Depends_On: TASK-034, TASK-031
+- Depends_On: TASK-034, TASK-031, TASK-037
 
 ## Intended approach
 Write the failing test first (it must fail against current master — spec §1 H7), then implement, then run BOTH full suites. Ported code cites its origin SHA and lists anything not ported, with the reason, in the Work Log.
 
 ## Work Log
+
+- 2026-09-30 [CX]: The TASK-044 split owns the new-project `batch` default; this task keeps a missing policy key at `every`. Added `push_policy.py` with a durable `.devteam/push_policy.json` batch window and a cross-process lock. `plan_commit.sh`/`.ps1`, CONTROL commits, Telegram answer/rework commits, and the supervisor's merge, park, and scheduled tick paths now use the same policy. The scheduled tick flushes at the batch boundary even when no new commit arrives.
+- 2026-09-30 [CX]: Regression fixtures use a bare Git remote and an advanced clock across separate Python processes. Twenty commits in ten minutes caused zero pushes; the boundary tick caused one. Merge and park flushes, missing-key `every`, a no-change PLAN commit, and the shell `plan_commit` batch path are covered. Focused suite: 87 passed. Full Python suite: 1195 passed in 543.37s. Node suite: 47 passed, 0 failed.
+- 2026-09-30 [CX]: New framework files `scripts/push_policy.py` and `tests/test_push_policy.py` need `sync-manifest.json` registration in ORCH's merge commit. That manifest is outside TASK-036 Owned_Paths, and the pack tests explicitly defer registration of new task files until integration.

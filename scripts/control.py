@@ -12,10 +12,10 @@ before launch. The builder emits a machine-parseable CONTROL block as the
 last thing it prints; the supervisor is the sole writer applying that block
 to PLAN.md through the exact same micro-transaction discipline Wave
 A-remainder's tg_commands.py already established for Telegram commands
-(pull -> parse -> edit ONLY the target task's block -> commit -> push). This
+(pull -> parse -> edit ONLY the target task's block -> commit -> scheduled push). This
 module deliberately reuses tg_commands.py's git plumbing and line-editing
-primitives (_task_span/_set_field/_append_to_field/git_pull/
-git_commit_and_push) rather than reimplementing a second PLAN.md editor.
+primitives (_task_span/_set_field/_append_to_field/git_pull) rather than
+reimplementing a second PLAN.md editor. push_policy owns commit/push timing.
 
 All PLAN.md/claim writes made by this module use Updated_By: "SV" — one
 writer identity for the whole single-writer blackboard (claim-at-dispatch
@@ -47,6 +47,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import tg_commands as tgc  # noqa: E402 — reuse git plumbing + PLAN.md line editor
+import push_policy  # noqa: E402 — shared durable bookkeeping push scheduler
 import builder_registry as _br  # noqa: E402 — unit IDs come from the registry, never hardcoded
 from validate_plan import Report, Task, parse_tasks  # noqa: E402
 
@@ -281,7 +282,7 @@ def apply_control_file(repo: Path, control_json_path: Path, ts: str) -> tuple[bo
         return False, result.detail
 
     plan_path.write_text(result.text, encoding="utf-8")
-    committed, pushed, note = tgc.git_commit_and_push_detailed(
+    committed, pushed, note = push_policy.commit_plan(
         repo, f"chore(plan): {result.detail} [SV origin={unit}]")
     if not committed:
         return True, result.detail + f" (PLAN.md written but NOT committed — {note})"
@@ -352,7 +353,7 @@ def drain_unreported_queue(repo: Path, ts: str) -> list[tuple[str, str, bool]]:
         result = apply_unreported_to_plan(plan_text, task_id, ts, log_rel, capacity=capacity)
         if result.changed:
             plan_path.write_text(result.text, encoding="utf-8")
-            tgc.git_commit_and_push(repo, f"chore(plan): {result.detail} [SV]")
+            push_policy.commit_plan(repo, f"chore(plan): {result.detail} [SV]")
         results.append((task_id, result.detail, result.changed))
         applied_dir.mkdir(parents=True, exist_ok=True)
         try:
@@ -439,7 +440,7 @@ def claim_for_unit(repo: Path, unit: str, ts: str, dry_run: bool = False) -> Cla
 
     tgc.git_pull(repo)
     plan_path.write_text("\n".join(lines), encoding="utf-8")
-    tgc.git_commit_and_push(repo, f"chore(plan): claim {target.task_id} [SV origin={unit}]")
+    push_policy.commit_plan(repo, f"chore(plan): claim {target.task_id} [SV origin={unit}]")
 
     _write_inflight(repo, unit, target.task_id)
     return ClaimResult("claimed", target.task_id, f"claimed {target.task_id} on {branch}")

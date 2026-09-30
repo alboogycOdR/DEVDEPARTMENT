@@ -33,6 +33,7 @@ PLAN_COMMIT = REPO_ROOT / "scripts" / "plan_commit.sh"
 PLAN_COMMIT_PS1 = REPO_ROOT / "scripts" / "plan_commit.ps1"
 PLAN_GUARD = REPO_ROOT / "scripts" / "plan_guard.py"
 PLAN_STAMP = REPO_ROOT / "scripts" / "plan_stamp.py"
+PUSH_POLICY = REPO_ROOT / "scripts" / "push_policy.py"
 
 pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
 
@@ -85,6 +86,7 @@ def repo(tmp_path: Path) -> Path:
     (r / "scripts" / "plan_commit.sh").chmod(0o755)
     shutil.copyfile(PLAN_GUARD, r / "scripts" / "plan_guard.py")
     shutil.copyfile(PLAN_STAMP, r / "scripts" / "plan_stamp.py")
+    shutil.copyfile(PUSH_POLICY, r / "scripts" / "push_policy.py")
     (r / "PLAN.md").write_text(plan(), encoding="utf-8", newline="\n")
     (r / "autopilot.json").write_text('{"git": {"base_branch": "main"}}',
                                       encoding="utf-8", newline="\n")
@@ -138,6 +140,26 @@ def run_commit_ps1(repo: Path, message: str, env: dict[str, str] | None = None):
 def files_in_head(repo: Path) -> set[str]:
     out = git(repo, "show", "--name-only", "--pretty=format:", "HEAD").stdout
     return {ln.strip() for ln in out.splitlines() if ln.strip()}
+
+
+def test_plan_commit_respects_batch_policy(repo, tmp_path):
+    remote = tmp_path / "remote.git"
+    git(repo, "init", "--bare", str(remote))
+    git(repo, "remote", "add", "origin", str(remote))
+    git(repo, "push", "-u", "origin", "main")
+    config = repo / "autopilot.json"
+    config.write_text('{"git": {"base_branch": "main", "push_policy": "batch", '
+                      '"push_batch_minutes": 30}}', encoding="utf-8")
+    git(repo, "add", "autopilot.json")
+    git(repo, "commit", "-m", "configure batch")
+    git(repo, "push")
+    remote_before = git(repo, "rev-parse", "origin/main").stdout.strip()
+    (repo / "PLAN.md").write_text(plan(status="claimed", by="S5"), encoding="utf-8", newline="\n")
+    result = run_commit(repo, "chore(plan): claim TASK-007 [S5]")
+    assert result.returncode == 0, result.stderr
+    assert "deferred until batch boundary" in result.stdout
+    assert git(repo, "rev-parse", "origin/main").stdout.strip() == remote_before
+    assert git(repo, "rev-parse", "HEAD").stdout.strip() != remote_before
 
 
 class TestCannotCarryCode:
