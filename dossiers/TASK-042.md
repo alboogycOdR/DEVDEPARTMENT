@@ -17,3 +17,4 @@
 Write the failing test first (it must fail against current master — spec §1 H7), then implement, then run BOTH full suites. Ported code cites its origin SHA and lists anything not ported, with the reason, in the Work Log.
 
 ## Work Log
+- [2026-09-30T20:27:02Z] [CX] Test-first checkpoint: the new regression module failed collection against the unimplemented state (`ModuleNotFoundError: plan_health`), then the checker and integrations were added. No external code was ported, so there is no origin SHA to cite; all changes are new implementations in this task's Owned_Paths. Focused suite now passes 7/7. Full Python and Node suites remain required before review.

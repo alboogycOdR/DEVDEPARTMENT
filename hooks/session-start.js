@@ -34,6 +34,16 @@ function main() {
     { encoding: 'utf8', timeout: 5000 });
   if (sync.status === 0 && sync.stdout.trim()) lines.push(`[devteam session-start] ${sync.stdout.trim()}`);
 
+  // E-J.7/E-J.8: report PLAN.md freshness and untagged base-branch work at
+  // session start. This is observational and bounded; it must never block a
+  // session if Python or Git is unavailable.
+  const health = spawnSync(process.env.PYTHON || 'python',
+    [path.join(root, 'scripts', 'plan_health.py'), '--repo', main],
+    { encoding: 'utf8', timeout: 10000 });
+  if (health.status === 0 && health.stdout.trim()) {
+    for (const line of health.stdout.trim().split(/\r?\n/)) lines.push(`[devteam session-start] ${line}`);
+  }
+
   if (fs.existsSync(path.join(root, 'STOP'))) {
     lines.push('[devteam session-start] STOP file present — autopilot halted; do not dispatch or auto-merge until it is removed.');
   }
