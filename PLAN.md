@@ -1729,7 +1729,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-044
 **Title:** Wave E E-G2 — new-project `git.push_policy: batch` default (split from TASK-036)
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §9 (E-G), §8 item 7 (ask-don't-auto-flip precedent)
@@ -1744,13 +1744,21 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-044-cx
 **Started_At:** 2026-09-30T20:59:08Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-30T20:59:30Z] [CX] TASK-044 preflight (c8b9872) inspected all Owned_Paths before edits:
+  ```text
+  [preflight] TASK-044 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-codex-DEVDEPARTMENT
+    FILE   scripts/sync_from_pack.py  -> exists, 777 line(s), 39762 bytes
+    FILE   tests/test_sync_from_pack.py  -> exists, 826 line(s), 52437 bytes
+    MISSING dossiers/TASK-044.md  -> absent
+  ```
+  Spec §9 requires new projects to start with `batch`/30, while existing projects retain the configured or absent setting; sync currently handles only existing autopilot files.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-30T20:59:19Z
+**Updated_At:** 2026-09-30T21:00:03Z
 
 ### TASK-045
 **Title:** Wave E E-H2b — smoke test detects a codex argv without worktree write access (split from TASK-038)
