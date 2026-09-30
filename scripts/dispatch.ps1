@@ -387,7 +387,7 @@ Procedure: (1) Read AGENTS.md and $Briefing, then PLAN.md, fresh from disk, for 
 ${Fence}devteam-control
 {"control_version": 1, "task": "$TaskId", "unit": "$Id", "status": "needs_review", "progress_note": "...", "artifacts": ["path/a.dart"], "test_evidence": "...", "blocked_reason": null, "next_step": null}
 ${Fence}
-status must be exactly one of in_progress (mid-session checkpoint - dossier note + next_step, nothing else changes) / needs_review (requires non-empty test_evidence) / blocked (blocked_reason must start with SPEC_AMBIGUITY, MISSING_DEPENDENCY, OWNERSHIP_CONFLICT, SYNC_MISMATCH, TOOLING_FAILURE, or OTHER:). Never done/pending/claimed - those are the supervisor's alone. Conventional Commits ending [$TaskId] for your code commits (never for PLAN.md - you don't touch it). Never write to specs/, docs/, REVIEW.md, scripts/, .claude/, PLAN.md, other dossiers, or main.
+status must be exactly one of in_progress (mid-session checkpoint - dossier note + next_step, nothing else changes) / needs_review (requires non-empty test_evidence) / blocked (blocked_reason must use CATEGORY: detail; ': detail' is required and non-empty; CATEGORY is SPEC_AMBIGUITY, MISSING_DEPENDENCY, OWNERSHIP_CONFLICT, SYNC_MISMATCH, TOOLING_FAILURE, CAPACITY, or OTHER). Never done/pending/claimed - those are the supervisor's alone. Conventional Commits ending [$TaskId] for your code commits (never for PLAN.md - you don't touch it). Never write to specs/, docs/, REVIEW.md, scripts/, .claude/, PLAN.md, other dossiers, or main.
 "@
 } else {
     $Prompt = $IdentityOverride + @"
@@ -606,7 +606,9 @@ if ($env:DEVTEAM_PREFLIGHT_ACTIVE -ne "1" -and (Test-Path $PreflightScript)) {
     try {
         $env:DEVTEAM_PREFLIGHT_ACTIVE = "1"
         & $Py $PreflightScript --preflight --repo $RepoRoot --units $Id
-        if ($LASTEXITCODE -ne 0) {
+        if ($LASTEXITCODE -eq 77) {
+            Write-Warning "[dispatch] Registry shell fixture preflight unavailable (Bash missing); continuing native PowerShell dispatch. PowerShell argv was not checked by this shell smoke."
+        } elseif ($LASTEXITCODE -ne 0) {
             Write-Error "[dispatch] Registry fixture preflight failed; refusing to launch $Id."
             exit 1
         }

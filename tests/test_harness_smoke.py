@@ -25,6 +25,13 @@ class SmokeFailure(RuntimeError):
     pass
 
 
+class SmokeUnavailable(SmokeFailure):
+    """The shell smoke cannot run because its interpreter is absent."""
+
+
+PREFLIGHT_UNAVAILABLE = 77
+
+
 @dataclass
 class SmokeResult:
     unit: str
@@ -58,8 +65,11 @@ def _bash() -> str:
                           Path("C:/Program Files/Git/usr/bin/bash.exe")):
             if candidate.is_file():
                 return str(candidate)
-        raise SmokeFailure("Git Bash is required for the Windows shell dispatcher")
-    return shutil.which("bash") or "bash"
+        raise SmokeUnavailable("Git Bash is required for the Windows shell dispatcher")
+    bash = shutil.which("bash")
+    if not bash:
+        raise SmokeUnavailable("Bash is required for the shell dispatcher")
+    return bash
 
 
 def _run_bounded(command: list[str], *, cwd: Path, env: dict[str, str],
@@ -192,7 +202,7 @@ if [[ "${1:-}" == "--version" ]]; then echo "stub-""" + cli + """ 1.0"; exit 0; 
 if [[ " $* " == *" --max-turns "* ]]; then echo "accepted --max-turns"; exit 0; fi
 mkdir -p "$(dirname "$DEVTEAM_SMOKE_TARGET")"
 if [[ -n "${DEVTEAM_SMOKE_ARGV:-}" ]]; then printf '%s\\0' "$@" > "$DEVTEAM_SMOKE_ARGV"; fi
-""" + ('''if [[ " $* " == *" -s read-only "* ]]; then echo "worktree write denied by codex sandbox read-only" >&2; exit 73; fi
+""" + ('''if [[ " $* " == *" -s read-only "* ]]; then exit 0; fi
 ''' if cli == "codex" else "") + """
 if [[ "${SMOKE_DENY_WRITE:-0}" == "1" ]]; then echo "write denied" >&2; exit 0; fi
 if [[ -t 0 ]]; then echo "unexpected TTY" >&2; exit 9; fi
@@ -289,6 +299,7 @@ def run_registry_preflight(repo: Path, units: list[str] | None = None) -> list[S
     Dispatch calls this before launch. The fixture exercises the exact
     registry-derived argv and must be able to write under the worktree.
     """
+    _bash()  # Report an unavailable smoke distinctly, before creating fixtures.
     registry = load_registry(repo)
     selected = registry["active"] if units is None else units
     unknown = set(selected).difference(registry["defined"])
@@ -352,11 +363,22 @@ def test_read_only_codex_registry_fixture_fails_the_write_smoke(tmp_path):
     source = json.loads(fixture.read_text(encoding="utf-8"))["builders"]["defined"]["CX"]
     root, fakebin, output_file = create_fixture_project(tmp_path, source_entry=source)
 
-    with pytest.raises(SmokeFailure, match=r"(?s)dispatch exited 73:.*sandbox read-only") as failure:
-        run_dispatch_smoke(root, "CX", "codex", fakebin, output_file)
+    with pytest.raises(SmokeFailure, match="CLI exited 0 but did not write its Owned_Paths smoke file"):
+        run_dispatch_smoke(root, "CX", "codex", fakebin, output_file,
+                           artifact_timeout=0)
 
     assert not output_file.exists()
-    assert "[dispatch] Done." not in str(failure.value)
+
+
+def test_builder_start_failure_is_not_reported_as_dispatch_success(tmp_path):
+    root, fakebin, output_file = create_fixture_project(tmp_path)
+    _write_stub(fakebin / "codex", '#!/usr/bin/env bash\n'
+                'if [[ "${1:-}" == "--version" ]]; then echo "stub-codex 1.0"; exit 0; fi\n'
+                'echo "builder failed to start" >&2\nexit 73\n')
+    with pytest.raises(SmokeFailure, match=r"(?s)dispatch exited 73:.*builder failed to start"):
+        run_dispatch_smoke(root, "CX", "codex", fakebin, output_file,
+                           artifact_timeout=0)
+    assert not output_file.exists()
 
 
 def test_codex_registry_change_is_covered_by_ci_harness_suite():
@@ -377,12 +399,73 @@ def test_preflight_command_runs_a_registry_fixture_smoke(tmp_path, monkeypatch, 
                            (cli, "exec", "-s", "danger-full-access"))
 
     monkeypatch.setattr(sys.modules[__name__], "run_fixture_smoke", fake_smoke)
+    monkeypatch.setattr(sys.modules[__name__], "_bash", lambda: "bash")
 
     run_registry_preflight(root, ["CX"])
 
     assert calls[0][0:2] == ("CX", "codex")
     assert calls[0][2]["codex_sandbox"] == "danger-full-access"
     assert "CX: fixture argv smoke passed (codex exec -s danger-full-access)" in capsys.readouterr().out
+
+
+def test_preflight_missing_bash_is_distinct_from_a_failed_write(tmp_path, monkeypatch, capsys):
+    # Exercise actual interpreter discovery without removing an installation.
+    monkeypatch.setattr(Path, "is_file", lambda _: False)
+    monkeypatch.setattr(shutil, "which", lambda _: None)
+    assert main(["--preflight", "--repo", str(tmp_path)]) == PREFLIGHT_UNAVAILABLE
+    captured = capsys.readouterr()
+    assert "smoke unavailable:" in captured.out and "Bash is required" in captured.out
+    assert not captured.err
+    assert not list(tmp_path.iterdir())
+
+
+def test_preflight_failed_write_is_a_failure(monkeypatch, capsys):
+    def failed_write(*args):
+        raise SmokeFailure("CLI exited 0 but did not write its Owned_Paths smoke file")
+
+    monkeypatch.setattr(sys.modules[__name__], "run_registry_preflight", failed_write)
+    assert main(["--preflight"]) == 1
+    assert "did not write its Owned_Paths smoke file" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("preflight_exit", [0, PREFLIGHT_UNAVAILABLE, 1])
+def test_powershell_preflight_warns_only_when_unavailable(tmp_path, preflight_exit):
+    powershell = shutil.which("powershell") or shutil.which("pwsh")
+    if not powershell:
+        pytest.skip("PowerShell unavailable")
+    # Execute the actual production preflight block in isolation: no real
+    # builder, credentials, or unrelated worktree setup is needed to test
+    # whether it permits launch and restores the recursion guard.
+    dispatch = (SCRIPTS / "dispatch.ps1").read_text(encoding="utf-8")
+    block = dispatch.split('$PreflightScript = Join-Path', 1)[1]
+    block = '$PreflightScript = Join-Path' + block.split('Write-Host "[dispatch] Launching', 1)[0]
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_harness_smoke.py").write_text(
+        f"raise SystemExit({preflight_exit})\n", encoding="utf-8")
+    quote = lambda value: "'" + str(value).replace("'", "''") + "'"
+    script = ("$ErrorActionPreference = 'Stop'\n"
+              f"$RepoRoot = {quote(tmp_path)}\n$Py = {quote(sys.executable)}\n"
+              "$Id = 'CX'\n$env:DEVTEAM_PREFLIGHT_ACTIVE = 'prior'\n" + block +
+              '\nWrite-Host "LAUNCH_ALLOWED guard=$env:DEVTEAM_PREFLIGHT_ACTIVE"\nexit 0\n')
+    result = subprocess.run([powershell, "-NoProfile", "-NonInteractive",
+                             "-Command", script], capture_output=True, text=True, timeout=20)
+    output = result.stdout + result.stderr
+    if preflight_exit == 1:
+        assert result.returncode != 0
+        assert "refusing to launch" in output
+        assert "LAUNCH_ALLOWED" not in result.stdout
+    else:
+        assert result.returncode == 0, output
+        assert "LAUNCH_ALLOWED guard=prior" in output
+        assert ("continuing native PowerShell dispatch" in output) == (preflight_exit == PREFLIGHT_UNAVAILABLE)
+
+
+def test_control_prompt_blocked_reason_format_matches_in_both_dispatchers():
+    for name in ("dispatch.sh", "dispatch.ps1"):
+        dispatch = (SCRIPTS / name).read_text(encoding="utf-8")
+        assert "blocked_reason must use CATEGORY: detail; ': detail' is required and non-empty" in dispatch
+        assert "TOOLING_FAILURE, CAPACITY, or OTHER" in dispatch
+        assert "blocked_reason must start with" not in dispatch
 
 
 def test_codex_stub_exiting_without_worktree_write_fails_smoke(tmp_path):
@@ -447,7 +530,7 @@ def test_fixture_keeps_prompt_away_from_windows_leading_slash_path_conversion():
     assert "codex exec" in dispatch
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--live", action="store_true", help="run selected active real builder CLIs")
     parser.add_argument("--preflight", action="store_true",
@@ -455,7 +538,7 @@ if __name__ == "__main__":
     parser.add_argument("--repo", default=str(ROOT))
     parser.add_argument("--units", default=os.environ.get("DEVTEAM_SMOKE_UNITS"),
                         help="comma-separated active units; default: every active unit")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     selected = [unit.strip() for unit in args.units.split(",") if unit.strip()] if args.units else None
     try:
         if args.preflight:
@@ -464,6 +547,16 @@ if __name__ == "__main__":
             run_live_smoke(Path(args.repo).resolve(), selected)
         else:
             parser.error("pass --live for real CLIs, --preflight for registry fixture coverage, or run pytest")
+    except SmokeUnavailable as exc:
+        # stdout avoids PowerShell 5.1 treating native stderr as a terminating
+        # error before dispatch can inspect the distinct unavailable exit code.
+        print(f"smoke unavailable: {exc}")
+        return PREFLIGHT_UNAVAILABLE
     except SmokeFailure as exc:
         print(f"smoke failed: {exc}", file=sys.stderr)
-        raise SystemExit(1) from exc
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
