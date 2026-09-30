@@ -86,14 +86,14 @@ def test_max_rework_freezes_and_escalates():
 
 
 def test_spec_ambiguity_escalates_p2():
-    acts = decide(FM + task(status="blocked", blocked="SPEC_AMBIGUITY",
+    acts = decide(FM + task(status="blocked", blocked="SPEC_AMBIGUITY: which retry policy?",
                             branch="task/TASK-001-gb", started="2026-07-12T18:00:00Z"),
                   RuntimeState(), CFG, NOW)
     assert "ESCALATE_P2" in kinds(acts)
 
 
 def test_first_ownership_conflict_self_heals_second_escalates():
-    plan = FM + task(status="blocked", blocked="OWNERSHIP_CONFLICT",
+    plan = FM + task(status="blocked", blocked="OWNERSHIP_CONFLICT: needs shared path",
                      branch="task/TASK-001-gb", started="2026-07-12T18:00:00Z")
     first = decide(plan, RuntimeState(), CFG, NOW)
     assert "TRIAGE_UNBLOCK" in kinds(first)
@@ -830,6 +830,40 @@ def test_tick_identical_when_tower_slack_inbox_all_disabled(tmp_path, capsys):
     for marker in ("[tower]", "Slack listener", "TOWER_COMMAND"):
         assert marker not in combined
     assert not (repo / ".devteam" / "inbox").exists()
+
+
+def test_unconfigured_push_policy_never_pushes_from_ticks(tmp_path, monkeypatch):
+    """A legacy project's unrelated ahead commits stay local across ticks."""
+    import subprocess
+
+    def git(where, *args):
+        return subprocess.run(["git", *args], cwd=where, check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    remote = tmp_path / "remote.git"
+    remote.mkdir()
+    git(remote, "init", "--bare", "-q")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git(repo, "init", "-q")
+    git(repo, "config", "user.name", "Test")
+    git(repo, "config", "user.email", "test@example.com")
+    (repo / "PLAN.md").write_text(FM + task(assignee="TBD"), encoding="utf-8")
+    (repo / "autopilot.json").write_text(json.dumps({"builders": ["GB"],
+        "maintenance": {"enabled": False}, "status_digest_minutes": 999999}), encoding="utf-8")
+    git(repo, "add", "PLAN.md", "autopilot.json")
+    git(repo, "commit", "-qm", "fixture")
+    git(repo, "remote", "add", "origin", str(remote))
+    git(repo, "push", "-qu", "origin", "HEAD")
+    published = git(remote, "rev-parse", "HEAD")
+    (repo / "local.txt").write_text("unpublished", encoding="utf-8")
+    git(repo, "add", "local.txt")
+    git(repo, "commit", "-qm", "local work")
+    monkeypatch.setattr(sup, "maybe_status_digest", lambda *a: None)
+    monkeypatch.setattr(sup.scheduling, "should_run_daily", lambda *a: False)
+    for _ in range(3):
+        assert sup.main(["--once", "--repo", str(repo)]) == 0
+    assert git(remote, "rev-parse", "HEAD") == published
 
 
 # --------------------------------------------------------- E-K.3 SOURCE_MISSING

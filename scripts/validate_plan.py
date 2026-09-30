@@ -31,7 +31,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-VALID_STATUSES = {"pending", "claimed", "in_progress", "needs_review", "done", "blocked"}
+VALID_STATUSES = {"pending", "claimed", "in_progress", "needs_review", "done", "blocked",
+                  "superseded", "owner_hold"}
 ACTIVE_STATUSES = {"claimed", "in_progress", "needs_review"}
 # Registry-driven (v4.7): the module-level values below are the LEGACY
 # defaults, kept so this file works standalone (hooks/run-tests.js, a bare
@@ -39,11 +40,11 @@ ACTIVE_STATUSES = {"claimed", "in_progress", "needs_review"}
 # main() loads the real roster from autopilot.json via builder_registry and
 # passes it into validate() — see _apply_registry().
 VALID_UNITS = {"ORCH", "GB", "CX", "S5", "SV"}
-VALID_ASSIGNEES = {"GB", "CX", "S5", "TBD"}
+VALID_ASSIGNEES = {"GB", "CX", "S5", "TBD", "ORCH-SOLO"}
 VALID_PRIORITIES = {"critical", "high", "medium", "low"}
 BLOCKED_REASONS = {
     "SPEC_AMBIGUITY", "MISSING_DEPENDENCY", "OWNERSHIP_CONFLICT",
-    "SYNC_MISMATCH", "TOOLING_FAILURE",
+    "SYNC_MISMATCH", "TOOLING_FAILURE", "CAPACITY",
 }
 REQUIRED_FIELDS = [
     "Title", "Status", "Assigned_To", "Priority", "Spec_References",
@@ -67,7 +68,7 @@ def _apply_registry(repo: str = "."):
         import builder_registry as _br
         reg = _br.load_registry(repo)
         units = set(_br.STRUCTURAL_UNITS) | set(reg["defined"].keys())
-        assignees = set(reg["defined"].keys()) | {"TBD"}
+        assignees = set(reg["defined"].keys()) | {"TBD", "ORCH-SOLO"}
         suffixes = {u: "-" + e["branch_suffix"] for u, e in reg["defined"].items()}
         return units, assignees, suffixes
     except Exception:
@@ -322,9 +323,33 @@ def has_resumable_task(repo: str = ".", unit: str = "") -> bool:
         return True
 
 
+def _valid_blocked_reason(reason: str) -> bool:
+    category, sep, detail = reason.partition(":")
+    return bool(sep and detail.strip() and category in BLOCKED_REASONS | {"OTHER"})
+
+
+def _approved_review_row(review_text: str, task_id: str) -> str:
+    for line in review_text.splitlines():
+        cells = [part.strip() for part in line.strip().strip("|").split("|")]
+        if len(cells) >= 4 and cells[0] == task_id and cells[2].lower() == "approved":
+            return cells[3]
+    return ""
+
+
+def _independent_solo_review(review_text: str, task_id: str, maker_model: str) -> bool:
+    findings = _approved_review_row(review_text, task_id)
+    if not findings or not maker_model:
+        return False
+    explicit = re.search(r"reviewer_model\s*[:=]\s*([\w.-]+)", findings, re.I)
+    legacy = re.search(r"\((claude-[\w.-]+|gpt-[\w.-]+|human)\)", findings, re.I)
+    reviewer = (explicit.group(1) if explicit else legacy.group(1) if legacy else "").casefold()
+    return bool(reviewer and (reviewer == "human" or reviewer != maker_model.casefold()))
+
+
 def validate(text: str, control_mode: str = "legacy",
              registry_views: tuple | None = None,
-             notes_max_chars: int = NOTES_MAX_CHARS_DEFAULT) -> Report:
+             notes_max_chars: int = NOTES_MAX_CHARS_DEFAULT,
+             review_text: str | None = None, solo_max_files: int = 5) -> Report:
     # registry_views = (valid_units, valid_assignees, branch_suffixes) from
     # _apply_registry(); None (the safe default, e.g. standalone/test calls)
     # means the legacy module constants — same precedent as control_mode.
@@ -358,10 +383,32 @@ def validate(text: str, control_mode: str = "legacy",
                 rep.error(f"{ctx}: an archived stub must have Status done (got '{status or 'empty'}')")
         else:
             for fld in REQUIRED_FIELDS:
+                if fld == "Owned_Paths" and t.get("Type") == "external":
+                    continue
                 if fld not in t.fields or t.is_empty(fld):
                     rep.error(f"{ctx}: required field '{fld}' missing or empty")
         if status and status not in VALID_STATUSES:
             rep.error(f"{ctx}: illegal Status '{status}' (allowed: {sorted(VALID_STATUSES)})")
+
+        if status == "superseded" and t.is_empty("Superseded_By"):
+            rep.error(f"{ctx}: superseded requires Superseded_By (task ID or ADR)")
+        elif status == "superseded" and not re.fullmatch(r"(?:TASK-[A-Z0-9-]+|ADR-[A-Z0-9-]+)", t.get("Superseded_By")):
+            rep.error(f"{ctx}: Superseded_By must be a task ID or ADR ID")
+        if status == "owner_hold":
+            hold = t.get("Hold_On")
+            if hold not in {"CREDENTIALS", "HARDWARE", "ACCOUNT", "DECISION"} and not re.fullmatch(r"EXTERNAL: .+", hold):
+                rep.error(f"{ctx}: owner_hold requires Hold_On: CREDENTIALS, HARDWARE, ACCOUNT, DECISION, or EXTERNAL: <detail>")
+
+        if t.get("Type") == "external":
+            if not t.is_empty("Owned_Paths"):
+                rep.error(f"{ctx}: Type external must not claim Owned_Paths")
+            if "- [" not in t.get("Acceptance_Criteria"):
+                rep.error(f"{ctx}: Type external requires checklist Acceptance_Criteria")
+            if status == "done":
+                if t.is_empty("Evidence"):
+                    rep.error(f"{ctx}: completed external task requires an Evidence line")
+                if review_text is not None and not _approved_review_row(review_text, t.task_id):
+                    rep.error(f"{ctx}: completed external task requires an approved REVIEW row")
 
         if not t.is_empty("Owned_Paths"):
             for problem in check_owned_paths_grammar(t.get("Owned_Paths")):
@@ -398,14 +445,26 @@ def validate(text: str, control_mode: str = "legacy",
             reason = t.get("Blocked_Reason")
             if t.is_empty("Blocked_Reason"):
                 rep.error(f"{ctx}: Status is blocked but Blocked_Reason is empty")
-            elif reason not in BLOCKED_REASONS and not reason.startswith("OTHER:"):
-                rep.error(f"{ctx}: Blocked_Reason '{reason}' not in vocabulary {sorted(BLOCKED_REASONS)} or 'OTHER:<text>'")
+            elif not _valid_blocked_reason(reason):
+                rep.error(f"{ctx}: Blocked_Reason '{reason}' not in vocabulary or missing ': detail' ({sorted(BLOCKED_REASONS)} / OTHER)")
+
+        if assignee == "ORCH-SOLO":
+            if t.is_empty("Maker_Model"):
+                rep.error(f"{ctx}: ORCH-SOLO requires Maker_Model")
+            files = parse_owned_paths(t.get("Owned_Paths"))
+            artifacts = parse_owned_paths(t.get("Artifacts"))
+            if any(re.search(r"[*?\[]", path) for path in files):
+                rep.error(f"{ctx}: ORCH-SOLO Owned_Paths must list exact files for the file cap")
+            if len(files) > solo_max_files or len(artifacts) > solo_max_files:
+                rep.error(f"{ctx}: ORCH-SOLO exceeds plan.solo_max_files={solo_max_files}")
+            if status == "done" and review_text is not None and not _independent_solo_review(review_text, t.task_id, t.get("Maker_Model")):
+                rep.error(f"{ctx}: ORCH-SOLO done requires approved REVIEW row by a different model or human")
 
         if status == "needs_review" and t.is_empty("Test_Evidence"):
             rep.error(f"{ctx}: Status is needs_review but Test_Evidence is empty — untested work is unfinished work")
 
         if status in ACTIVE_STATUSES:
-            if t.is_empty("Branch"):
+            if t.is_empty("Branch") and assignee != "ORCH-SOLO":
                 rep.error(f"{ctx}: Status '{status}' requires Branch to be set")
             if t.is_empty("Started_At"):
                 rep.error(f"{ctx}: Status '{status}' requires Started_At to be set")
@@ -560,7 +619,14 @@ def lint_review(text: str) -> Report:
                     return rep
             break
         if stripped.startswith("|"):
-            if not ROW_RE.match(stripped):
+            # The learning parser counts builder reviews; external work and
+            # the ORCH-SOLO lane still need legal verdict rows of their own.
+            other_lane_row = re.match(
+                r"^\|\s*TASK-[A-Z0-9-]+\s*\|\s*(?:ORCH-SOLO|ORCH|human)\s*\|"
+                r"\s*(?:approved|rework)\s*\|.+\|\s*(?:first-pass:\s*)?(?:yes|no)\s*\|"
+                r"\s*\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\s*\|$",
+                stripped, re.I)
+            if not ROW_RE.match(stripped) and not other_lane_row:
                 rep.error(f"REVIEW: broken verdict row at line {i + 1}")
         else:
             break
@@ -645,15 +711,20 @@ def main(argv: list[str]) -> int:
     repo_dir = str(path.resolve().parent)
     control_mode = "legacy"
     notes_max = NOTES_MAX_CHARS_DEFAULT
+    solo_max = 5
     try:
         _cfg = json.loads((Path(repo_dir) / "autopilot.json").read_text(encoding="utf-8"))
         if (_cfg.get("control") or {}).get("mode") == "strict":
             control_mode = "strict"
         notes_max = int((_cfg.get("plan") or {}).get("notes_max_chars", NOTES_MAX_CHARS_DEFAULT))
+        solo_max = int((_cfg.get("plan") or {}).get("solo_max_files", 5))
     except Exception:
         pass
+    review_path = Path(repo_dir) / "REVIEW.md"
+    review_text = review_path.read_text(encoding="utf-8") if review_path.is_file() else ""
     rep = validate(path.read_text(encoding="utf-8"), control_mode=control_mode,
-                   registry_views=_apply_registry(repo_dir), notes_max_chars=notes_max)
+                   registry_views=_apply_registry(repo_dir), notes_max_chars=notes_max,
+                   review_text=review_text, solo_max_files=solo_max)
     for w in rep.warnings:
         print(f"WARN  {w}", file=sys.stderr)
     for e in rep.errors:

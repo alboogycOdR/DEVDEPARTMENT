@@ -17,3 +17,7 @@
 Write the failing test first (it must fail against current master — spec §1 H7), then implement, then run BOTH full suites. Ported code cites its origin SHA and lists anything not ported, with the reason, in the Work Log.
 
 ## Work Log
+
+- 2026-09-30: Reproduced the carried TASK-036 regression with a real local bare remote: three supervisor `--once` ticks published an unrelated ahead commit when `git.push_policy` was absent. Added the per-tick `only_if_configured` guard; the same fixture now keeps the remote ref unchanged.
+- Added validation for `superseded`, `owner_hold`, external work, ORCH-SOLO file limits and independent review, and `CATEGORY: detail` blocked reasons. Supervisor now treats superseded as terminal, leaves owner holds and solo work out of dispatch/triage, and includes owner holds with age in its generated status digest. CONTROL blocks use the same blocked-reason grammar.
+- REVIEW data is supplied to the plan validator by its CLI and by supervisor ticks. Other pure callers without REVIEW data retain structural validation; this avoids making maintenance's existing `validate(plan_text)` call reject a completed solo task solely because it cannot see REVIEW.md.
