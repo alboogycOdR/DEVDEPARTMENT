@@ -1814,7 +1814,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-046
 **Title:** Wave E E-H1b — full suite green on the CI matrix (split from TASK-037)
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H) Acceptance
@@ -1823,9 +1823,9 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-037, TASK-036, TASK-041
 **Description:** Split from TASK-037 (3rd ownership block while chasing CI green). Make the whole Python + Node suite pass on windows-latest AND ubuntu-latest in the TASK-037 workflow: gate or port PowerShell-dependent tests (use `pwsh` when `powershell` is absent; skip with a clear reason when neither exists) and fix any cross-platform defects in plan_commit.ps1 (known: line 69 `Get-Command git.exe` fails on Linux — 6 Ubuntu failures) and tests/test_supervisor.py::test_triage_unblock_uses_judgment_model (hard-coded /tmp; remove the C:\tmp workaround from the workflow once fixed). If a failure lands in a file outside these Owned_Paths, block with the exact test id and file so ORCH can grant it — list them all at once, not one per session.
 **Acceptance_Criteria:**
-- [ ] CI matrix (windows-latest + ubuntu-latest) green on the task branch push — link the run in Test_Evidence (spec §10 Acceptance)
-- [ ] No test is skipped on windows-latest that runs locally on Windows; every Ubuntu skip names its reason
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+- [x] CI matrix (windows-latest + ubuntu-latest) green on the task branch push — link the run in Test_Evidence (spec §10 Acceptance)
+- [x] No test is skipped on windows-latest that runs locally on Windows; every Ubuntu skip names its reason
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-046-cx
 **Started_At:** 2026-09-30T23:04:16Z
 **Progress_Notes:**
@@ -1840,9 +1840,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
              .github/workflows/tests.yml
     NEW    dossiers/TASK-046.md  -> does not exist; parent dossiers/ exists
   ```
+- [2026-09-30T23:17:51Z] [CX] Repaired Git PATH ambiguity in 97e7f9d; both complete CI matrix jobs now green. Final dossier-only commit 33385f6 changes no executable code/tests. Clean task worktree; ready for ORCH independent review.
 **Artifacts:** —
+- scripts/plan_commit.ps1; tests/test_plan_commit.py; tests/test_supervisor.py; .github/workflows/tests.yml; dossiers/TASK-046.md
 **Test_Evidence:** —
+- [2026-09-30T23:17:51Z] [CX] Full suites in fresh CI task-branch worktrees at 97e7f9d: Windows harness-audit.ps1 -NoShield invoked python -m pytest tests\ -q (1210 passed, zero skipped, 288.53s) and node hooks/run-tests.js (47 passed, 0 failed); Ubuntu harness-audit.sh --no-shield invoked python3 -m pytest tests/ -q (1209 passed, 1 skipped, 78.29s) and Node (47 passed, 0 failed). Both audits exit 0. Ubuntu sole skip: test_worktree_ps1.py Windows process/worktree lifecycle. CI: https://github.com/alboogycOdR/DEVDEPARTMENT/actions/runs/36789689399 .
+- [2026-09-30T23:17:51Z] [CX] Local repaired PowerShell CAS/stamping regression: python -m pytest -q tests/test_plan_commit.py::TestPowerShellCasBytes tests/test_plan_commit.py::TestClockStampedUpdatedAt -k "powershell or cas_reapply or untouched" -> 7 passed, 5 deselected, 34.51s, exit 0; node hooks/run-tests.js -> 47 passed, 0 failed. Windows CI PS5.1 parsing of all three scripts passed; git diff --check clean. Initial six Git-path failures and their repaired reruns documented in dossier.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-30T23:08:35Z
+**Updated_At:** 2026-09-30T23:18:13Z
