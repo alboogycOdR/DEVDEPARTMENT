@@ -404,9 +404,10 @@ def validate(text: str, control_mode: str = "legacy",
                 rep.error(f"{ctx}: Type external must not claim Owned_Paths")
             if "- [" not in t.get("Acceptance_Criteria"):
                 rep.error(f"{ctx}: Type external requires checklist Acceptance_Criteria")
-            if status == "done":
+            if status in ("needs_review", "done"):
                 if t.is_empty("Evidence"):
-                    rep.error(f"{ctx}: completed external task requires an Evidence line")
+                    rep.error(f"{ctx}: external task reaching review/completion requires an Evidence line")
+            if status == "done":
                 if not _approved_review_row(review_text or "", t.task_id):
                     rep.error(f"{ctx}: completed external task requires an approved REVIEW row")
 
@@ -465,14 +466,14 @@ def validate(text: str, control_mode: str = "legacy",
             rep.error(f"{ctx}: Status is needs_review but Test_Evidence is empty — untested work is unfinished work")
 
         if status in ACTIVE_STATUSES:
-            if t.is_empty("Branch") and assignee != "ORCH-SOLO":
+            if t.is_empty("Branch") and assignee != "ORCH-SOLO" and t.get("Type") != "external":
                 rep.error(f"{ctx}: Status '{status}' requires Branch to be set")
             if t.is_empty("Started_At"):
                 rep.error(f"{ctx}: Status '{status}' requires Started_At to be set")
             if assignee == "TBD":
                 rep.error(f"{ctx}: active task cannot be Assigned_To TBD")
             branch = t.get("Branch")
-            if branch and assignee in branch_suffix:
+            if branch and t.get("Type") != "external" and assignee in branch_suffix:
                 expected = f"task/{t.task_id}{branch_suffix[assignee]}"
                 if branch != expected:
                     rep.error(f"{ctx}: Branch '{branch}' should be '{expected}' for assignee {assignee}")

@@ -20,7 +20,7 @@ NOW = datetime(2026, 9, 30, 15, tzinfo=timezone.utc)
 
 def task(*, status="pending", assignee="CX", owned="src/a.py", kind="code",
          hold="—", superseded="—", evidence="—", maker="—", artifacts="—",
-         blocked="—"):
+         blocked="—", test_evidence="—"):
     return f"""
 ### TASK-901
 **Title:** Fixture
@@ -37,7 +37,7 @@ def task(*, status="pending", assignee="CX", owned="src/a.py", kind="code",
 **Started_At:** 2026-09-30T10:00:00Z
 **Progress_Notes:** —
 **Artifacts:** {artifacts}
-**Test_Evidence:** —
+**Test_Evidence:** {test_evidence}
 **Evidence:** {evidence}
 **Review_Findings:** —
 **Blocked_Reason:** {blocked}
@@ -79,6 +79,15 @@ def test_external_done_requires_evidence_and_review_row():
     assert any("REVIEW row" in e for e in validate(plan).errors)
     assert any("REVIEW row" in e for e in validate(plan, review_text="").errors)
     assert validate(plan, review_text=review()).ok
+
+
+def test_external_can_reach_review_without_code_branch_but_needs_evidence():
+    plan = FM + task(status="needs_review", kind="external", owned="—",
+                     evidence="store-review ID 42", test_evidence="human verification")
+    assert validate(plan).ok
+    without_evidence = FM + task(status="needs_review", kind="external", owned="—",
+                                 test_evidence="human verification")
+    assert any("Evidence line" in e for e in validate(without_evidence).errors)
 
 
 def test_solo_done_requires_independent_reviewer_and_obeys_file_cap():
