@@ -1650,9 +1650,9 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-30T16:04:54Z] [CX] `python -m pytest -q tests/test_lanes.py tests/test_validate_plan.py tests/test_control.py` → 96 passed; `node hooks/run-tests.js` → 47 passed, 0 failed; `python scripts/validate_plan.py C:\CLAUDECODE_kingdom.work\DEVDEPARTMENT\PLAN.md` → legal (1 size warning).
 - [2026-09-30T16:04:54Z] [CX] `python -m pytest -q` → 1202 passed, 3 failed in 561.95s; failures are the unowned legacy bare-reason fixtures detailed in Progress_Notes and dossier.
 **Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT: tests/test_supervisor_ledgers.py and tests/test_token_efficiency.py require fixture updates for mandatory CATEGORY: detail blocked reasons
+**Blocked_Reason:** OWNERSHIP_CONFLICT
 **Updated_By:** CX
-**Updated_At:** 2026-09-30T16:29:55Z
+**Updated_At:** 2026-09-30T16:30:25Z
 
 ### TASK-042
 **Title:** Wave E E-J3 — review rules into the command file, clock-stamped verdicts, frontmatter freshness, untracked-work detector
