@@ -1658,7 +1658,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-042
 **Title:** Wave E E-J3 — review rules into the command file, clock-stamped verdicts, frontmatter freshness, untracked-work detector
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §12 (E-J.4, E-J.7, E-J.8), §6 (review timestamp bullet)
@@ -1671,15 +1671,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Stale frontmatter is flagged by /devteam-status and session-start on a fixture (E-J.7)
 - [ ] review_cmd contains no standing rules, only a pointer; the review command stamps verdict time from the clock and names the reviewing model (E-J.4, §6)
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-042-cx
+**Started_At:** 2026-09-30T20:20:01Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-27T19:07:45Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-30T20:20:16Z
 
 ### TASK-043
 **Title:** Wave E exit — scripted exit-criteria scenario (10 × --once then accelerated 12 h --loop)
