@@ -1702,7 +1702,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-043
 **Title:** Wave E exit — scripted exit-criteria scenario (10 × --once then accelerated 12 h --loop)
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §15, §16
@@ -1718,13 +1718,21 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-043-cx
 **Started_At:** 2026-09-30T23:05:12Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-30T23:05:12Z] [CX] Resumed Wave E exit proof on isolated task/TASK-043-cx; checking real supervisor entry points with a fake clock and durable state. Preflight:
+  ```text
+  [preflight] TASK-043 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-codex-043-DEVDEPARTMENT
+  [preflight] 3 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    NEW    tests/test_wave_e_exit.py  -> does not exist; parent tests/ exists
+    GLOB   tests/fixtures/wave_e_exit/**  -> matches nothing yet (new territory)
+    FILE   dossiers/TASK-043.md  -> exists, 19 line(s), 1198 bytes
+  ```
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-30T23:05:26Z
+**Updated_At:** 2026-09-30T23:06:21Z
 
 ### TASK-044
 **Title:** Wave E E-G2 — new-project `git.push_policy: batch` default (split from TASK-036)
