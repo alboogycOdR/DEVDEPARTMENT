@@ -69,8 +69,10 @@ function Write-PlanBlob([string]$Destination) {
     # directly so the UTF-8 blob bytes, including em dashes, remain untouched.
     # Prefer the native Windows executable over .cmd shims; Unix installs
     # expose the same executable as `git` without the .exe suffix.
-    $GitCommand = Get-Command git.exe -CommandType Application -ErrorAction SilentlyContinue
-    if (-not $GitCommand) { $GitCommand = Get-Command git -CommandType Application -ErrorAction Stop }
+    $GitCommand = Get-Command git.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $GitCommand) {
+        $GitCommand = Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1
+    }
     $GitExe = $GitCommand.Source
     $StartInfo = New-Object System.Diagnostics.ProcessStartInfo
     $StartInfo.FileName = $GitExe
