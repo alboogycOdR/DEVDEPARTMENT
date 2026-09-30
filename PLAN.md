@@ -1454,7 +1454,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-038
 **Title:** Wave E E-H2 — CLI launch smoke test in harness-audit
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.4, E-H.5), docs/reviews/LIVE_CHECKS_2026-09.md
@@ -1463,9 +1463,9 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-035
 **Description:** harness-audit.sh/.ps1 launch every ACTIVE unit's CLI through the real dispatch argv, in a scratch worktree, with a no-op prompt that must write one file under its territory and exit; check exit 0, file written, no TTY prompt, CLI version recorded. Runs on builder_registry changes and before an onboarding's first dispatch. Fails on a CR in any *.sh in the checkout. From LIVE_CHECKS: assert `--max-turns` is still accepted (hidden flag), and that Windows Git Bash launch paths set MSYS_NO_PATHCONV=1 or never pass a leading-slash prompt. Fixture tests use stub CLIs; one real run per active unit recorded in Test_Evidence. **Protected-path grants (ORCH applies before dispatch):** scripts/harness-audit.sh, scripts/harness-audit.ps1.
 **Acceptance_Criteria:**
-- [ ] Smoke test fails on a CRLF dispatch.sh (§10 Acceptance)
+- [x] Smoke test fails on a CRLF dispatch.sh (§10 Acceptance)
 - [ ] Live CX smoke run: performed BY ORCH at review (outside any Codex session) with `harness-audit --smoke`/`-Smoke`; CX does NOT attempt it. CX delivers the entrypoints, the bounded-timeout + exact-PID cleanup, and stub-CLI fixture tests. GB and S5 live runs DEFERRED per owner directive 2026-09-29
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-038-cx
 **Started_At:** 2026-09-29T12:17:50Z
 **Progress_Notes:**
@@ -1485,12 +1485,14 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-29T19:14:31Z] [CX] Fixed the Windows-safe version probe and bounded negative-fixture wait in 10d1be7; `python -m pytest -q tests/test_harness_smoke.py` is green (6 passed, 31.75s). Next: authorized CX-only live probe under an exact-PID timeout wrapper; GB/S5 remain deferred by owner directive.
 - [2026-09-30T13:31:16Z] [CX] Added an exact-launcher process-group timeout wrapper for the authorized CX-only live probe; it never matches or terminates unrelated Codex processes. Stub fixture cases pass individually. The first real probe did not produce a normal result before the runner deadline, so the Windows launcher path is being isolated before retry; GB/S5 remain deferred by owner directive.
 - [2026-09-30T13:33:16Z] [CX] Confirmed `codex.cmd --version` works directly (`codex-cli 0.159.0`), but the real probe remains live past its 45 s bounded-dispatch deadline without a smoke child or output. I terminated only the exact test-harness PID I created (never a wildcard Codex match). TASK-038 remains in progress: next step is to make bounded-process cleanup return deterministically on the Windows launcher path, then rerun the CX-only probe; GB/S5 remain deferred by owner directive.
-**Artifacts:** `scripts/harness-audit.sh`, `scripts/harness-audit.ps1`, `tests/test_harness_smoke.py`; code commit `dec547d` on `task/TASK-038-cx`.
+- [2026-09-30T14:02:46Z] [CX] Per ORCH’s stop directive, no further nested live Codex probes were run. The exact-launcher cleanup and stub smoke coverage are complete in 182206d; merged current master (7d4b786) to resolve the pre-existing manifest drift, then completed foreground verification for review. ORCH retains the CX live-smoke acceptance check.
+**Artifacts:** `scripts/harness-audit.sh`, `scripts/harness-audit.ps1`, `tests/test_harness_smoke.py`; code commits `dec547d`, `10d1be7`, `1ed8235`, `182206d` on `task/TASK-038-cx`.
 **Test_Evidence:** `python -m pytest -q tests/test_harness_smoke.py` — 5 passed; `node hooks/run-tests.js` — 47 passed; `python -m pytest -q` — 1165 passed in 412.01s. Fixture detects CRLF shell bytes and fails when the stub exits 0 without writing the Owned_Paths file. CX live attempt failed in the pre-dispatch version probe due Windows Git Bash argument passing; GB/S5 not run per owner directive.
+- [2026-09-30T14:02:46Z] [CX] `python -m pytest -q tests/test_harness_smoke.py tests/test_sync_from_pack.py` → 69 passed in 35.78s after merging master; `python -m pytest -q` → 1188 passed in 487.58s; `node hooks/run-tests.js` → 47 passed, 0 failed. The prior full-run manifest failure was resolved by the master merge, not an out-of-territory edit.
 **Review_Findings:** ORCH RE-SCOPE 2026-09-29T14:11:59Z (owner approved): (a) GB/S5 live launches deferred — CX live run only; (b) the codex-lacks-write-access fixture criterion is DROPPED from this task and moved to TASK-045 (needs dispatch/registry ownership). Resume on task/TASK-038-cx from dec547d (worktree wt-codex-DEVDEPARTMENT-T038). | ORCH 2026-09-29T19:09:29Z: previous CX session died ~18:43Z right after running `Stop-Process` on a PID matched only by CommandLine -like '*codex*' — almost certainly its OWN codex exec process. NEVER kill processes by a '*codex*' pattern: record the smoke child's PID when YOU start it (Start-Process -PassThru / $!) and stop only that exact PID, with a timeout wrapper around the live smoke run. Uncommitted work in tests/test_harness_smoke.py is still in the worktree — review it and continue from it. | ORCH 2026-09-30T13:44:28Z: 3rd stalled session on the live probe (a Codex session launching a nested real `codex exec` hangs past the 45 s bound). STOP attempting the live run. Finish what is in territory: deterministic bounded-process cleanup, fixture tests green, BOTH full suites in the foreground, then submit needs_review in the SAME turn. ORCH runs the live CX smoke itself during review.
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-30T13:33:48Z
+**Updated_At:** 2026-09-30T14:03:15Z
 
 ### TASK-039
 **Title:** Wave E E-I — learning loop earns its sessions or stays off
