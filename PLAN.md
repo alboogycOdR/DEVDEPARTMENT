@@ -1810,7 +1810,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-046
 **Title:** Wave E E-H1b — full suite green on the CI matrix (split from TASK-037)
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H) Acceptance
@@ -1824,10 +1824,21 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-046-cx
 **Started_At:** 2026-09-30T23:04:16Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-30T23:10:00Z] [CX] Portability implementation committed d493417 and pushed to the task branch for required Windows/Ubuntu CI. Preflight:
+  ```text
+  [preflight] TASK-046 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-codex-046-DEVDEPARTMENT
+  [preflight] 5 entr(y/ies). FILE/DIR/GLOB = exists, NEW = you are creating it.
+    FILE   scripts/plan_commit.ps1  -> exists, 229 line(s), 11091 bytes
+    FILE   tests/test_plan_commit.py  -> exists, 721 line(s), 36736 bytes
+    FILE   tests/test_supervisor.py  -> exists, 925 line(s), 42491 bytes
+    GLOB   .github/workflows/**  -> 1 file(s):
+             .github/workflows/tests.yml
+    NEW    dossiers/TASK-046.md  -> does not exist; parent dossiers/ exists
+  ```
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-30T23:04:44Z
+**Updated_At:** 2026-09-30T23:08:35Z
