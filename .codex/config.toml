@@ -15,7 +15,7 @@
 # coding model (see ~/.codex/models_cache.json), probe-verified.
 model = "gpt-6-sol"
 model_reasoning_effort = "high"     # owner decision 2026-09-30 (was terra @ medium); probe-verified.
-                                    # "high" only if quality issues persist on this model.
+# 2026-09-30: switched to gpt-6-sol @ high on owner request (probe-verified on this account).
 
 # --- Sandbox & approvals -------------------------------------------------------
 # Matches dispatch.sh: codex exec -s danger-full-access. Builders run inside an
