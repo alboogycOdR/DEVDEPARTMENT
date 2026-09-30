@@ -1802,7 +1802,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-046
 **Title:** Wave E E-H1b — full suite green on the CI matrix (split from TASK-037)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H) Acceptance
@@ -1814,12 +1814,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] CI matrix (windows-latest + ubuntu-latest) green on the task branch push — link the run in Test_Evidence (spec §10 Acceptance)
 - [ ] No test is skipped on windows-latest that runs locally on Windows; every Ubuntu skip names its reason
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-046-cx
+**Started_At:** 2026-09-30T23:04:16Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-29T17:02:24Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-30T23:04:44Z
