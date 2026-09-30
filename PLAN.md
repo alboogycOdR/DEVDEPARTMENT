@@ -1608,7 +1608,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-041
 **Title:** Wave E E-J2 — superseded, owner_hold, external tasks, ORCH-SOLO lane, Blocked_Reason vocabulary
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §12 (E-J.2, E-J.5, E-J.6)
@@ -1617,16 +1617,17 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-040, TASK-036
 **Description:** (2) `superseded` terminal status requiring `Superseded_By:`; excluded from awaiting-ORCH banners. (5) `owner_hold` status with required `Hold_On:` (CREDENTIALS | HARDWARE | ACCOUNT | DECISION | EXTERNAL: <detail>) — never dispatched, never triaged, listed in the digest with age. `Type: external` tasks: no Owned_Paths, checklist acceptance, evidence line, still get a REVIEW row. Solo lane `Assigned_To: ORCH-SOLO`: direct to base with [TASK-NNN] commits; cannot reach done without a REVIEW row whose reviewer model differs from the solo session's; capped by `plan.solo_max_files`=5. (6) Blocked_Reason must be `CATEGORY: detail` from the vocabulary (+ CAPACITY); prose-only fails validation. Protocol text (docs/COORDINATION_PROTOCOL.md) is ORCH-applied at wave close. **Protected-path grants (ORCH applies before dispatch):** scripts/validate_plan.py, scripts/supervisor.py, scripts/control.py.
 **Acceptance_Criteria:**
-- [ ] Carried from TASK-036 review (do this FIRST): scripts/supervisor.py's per-tick `push_policy.maybe_push(repo, "bookkeeping", now=now)` passes `only_if_configured=True` (or is skipped unless the policy is explicitly `batch`), so a project with no `git.push_policy` never pushes from a tick; test with a real bare remote that N ticks leave the remote ref unchanged when the key is absent
-- [ ] A superseded task without Superseded_By fails validation (spec §12 Acceptance)
-- [ ] An owner_hold task is never dispatched or triaged and appears in the digest (§12 Acceptance)
-- [ ] An ORCH-SOLO task cannot reach done without a REVIEW row whose reviewer model differs from the solo session's (§12 Acceptance)
-- [ ] A prose Blocked_Reason fails validation (§12 Acceptance)
-- [ ] An external task validates without Owned_Paths and requires an evidence line to reach done (E-J.5)
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+- [x] Carried from TASK-036 review (do this FIRST): scripts/supervisor.py's per-tick `push_policy.maybe_push(repo, "bookkeeping", now=now)` passes `only_if_configured=True` (or is skipped unless the policy is explicitly `batch`), so a project with no `git.push_policy` never pushes from a tick; test with a real bare remote that N ticks leave the remote ref unchanged when the key is absent
+- [x] A superseded task without Superseded_By fails validation (spec §12 Acceptance)
+- [x] An owner_hold task is never dispatched or triaged and appears in the digest (§12 Acceptance)
+- [x] An ORCH-SOLO task cannot reach done without a REVIEW row whose reviewer model differs from the solo session's (§12 Acceptance)
+- [x] A prose Blocked_Reason fails validation (§12 Acceptance)
+- [x] An external task validates without Owned_Paths and requires an evidence line to reach done (E-J.5)
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-041-cx
 **Started_At:** 2026-09-30T15:38:37Z
 **Progress_Notes:**
+- [2026-09-30T20:18:12Z] [CX] After ORCH granted both fixture paths, updated the bare-reason fixtures to `CATEGORY: detail` and increased bounded subprocess deadlines for supervisor one-shot tests that timed out under full-suite load (commit f69636f). All 1206 Python tests now pass; Node 47/47; final plan validation and `git diff --check` are clean. Submitting TASK-041 for review.
 - [2026-09-30T16:29:00Z] [CX] Added regression coverage that external tasks may enter needs_review without a code branch only when they provide evidence (commit 9ed0129). Focused validator/lane tests: 41 passed. Final full-suite attempt: 1203 passed, 3 failed in 905.99s; failures remain limited to old bare-reason fixtures in `tests/test_supervisor_ledgers.py` (SPEC_AMBIGUITY and TOOLING_FAILURE) and `tests/test_token_efficiency.py` (MISSING_DEPENDENCY). Both files remain outside Owned_Paths. `git diff --check` clean; no out-of-scope edits.
 - [2026-09-30T16:04:54Z] [CX] Full Python suite: 1202 passed, 3 failed in 561.95s. All failures are bare Blocked_Reason fixtures in tests/test_supervisor_ledgers.py (SPEC_AMBIGUITY x3, TOOLING_FAILURE) and tests/test_token_efficiency.py (MISSING_DEPENDENCY); these files are outside Owned_Paths. Need ORCH ownership grant for both files, then update fixtures to CATEGORY: detail and rerun full suite. Branch commits 6372c30, bec8279, 88ea3a1; focused Python 96 passed, Node 47 passed.
 - [2026-09-30T15:52:58Z] [CX] Implemented and committed initial E-J2 lane/status validation, supervisor owner-hold digest, CONTROL reason grammar, and TASK-036 per-tick push guard (6372c30). Bare-remote regression reproduced before fix and passes after. Focused Python: 96 passed; Node: 47 passed. Full Python suite pending.
@@ -1644,15 +1645,16 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
     FILE   dossiers/TASK-041.md  -> exists, 19 line(s), 1723 bytes
   [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
   ```
-**Artifacts:** scripts/validate_plan.py, scripts/supervisor.py, scripts/control.py, tests/test_validate_plan.py, tests/test_supervisor.py, tests/test_lanes.py, dossiers/TASK-041.md
+**Artifacts:** scripts/validate_plan.py, scripts/supervisor.py, scripts/control.py, tests/test_validate_plan.py, tests/test_supervisor.py, tests/test_lanes.py, dossiers/TASK-041.md, tests/test_supervisor_ledgers.py, tests/test_token_efficiency.py
 **Test_Evidence:**
+- [2026-09-30T20:18:12Z] [CX] `python -m pytest -q` → 1206 passed in 1161.64s; `node hooks/run-tests.js` → 47 passed, 0 failed; `python scripts/validate_plan.py PLAN.md` → protocol-legal (1 size warning); `git diff --check` → clean.
 - [2026-09-30T16:29:00Z] [CX] `python -m pytest -q tests/test_lanes.py tests/test_validate_plan.py` → 41 passed in 0.80s; `python -m pytest -q` → 1203 passed, 3 failed in 905.99s (only the listed out-of-scope legacy fixtures); `node hooks/run-tests.js` → 47 passed, 0 failed; `git diff --check` → clean.
 - [2026-09-30T16:04:54Z] [CX] `python -m pytest -q tests/test_lanes.py tests/test_validate_plan.py tests/test_control.py` → 96 passed; `node hooks/run-tests.js` → 47 passed, 0 failed; `python scripts/validate_plan.py C:\CLAUDECODE_kingdom.work\DEVDEPARTMENT\PLAN.md` → legal (1 size warning).
 - [2026-09-30T16:04:54Z] [CX] `python -m pytest -q` → 1202 passed, 3 failed in 561.95s; failures are the unowned legacy bare-reason fixtures detailed in Progress_Notes and dossier.
 **Review_Findings:** ORCH 2026-09-30T19:21:24Z (owner-directed unblock): OWNERSHIP_CONFLICT resolved — tests/test_supervisor_ledgers.py and tests/test_token_efficiency.py added to Owned_Paths so CX can update their fixtures; Status blocked -> in_progress. Branch task/TASK-041-cx, its commits, Progress_Notes and Test_Evidence are unchanged. ORCH edited neither test file nor any implementation file; CX makes and verifies the fixture updates.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-30T19:21:34Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-30T20:19:41Z
 
 ### TASK-042
 **Title:** Wave E E-J3 — review rules into the command file, clock-stamped verdicts, frontmatter freshness, untracked-work detector
