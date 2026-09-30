@@ -1627,6 +1627,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Branch:** task/TASK-041-cx
 **Started_At:** 2026-09-30T15:38:37Z
 **Progress_Notes:**
+- [2026-09-30T15:52:58Z] [CX] Implemented and committed initial E-J2 lane/status validation, supervisor owner-hold digest, CONTROL reason grammar, and TASK-036 per-tick push guard (6372c30). Bare-remote regression reproduced before fix and passes after. Focused Python: 96 passed; Node: 47 passed. Full Python suite pending.
 - 2026-09-30T15:39:09Z [CX] Pre-flight path inspection completed before implementation:
   ```text
   [preflight] TASK-041 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-codex-DEVDEPARTMENT
@@ -1641,12 +1642,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
     FILE   dossiers/TASK-041.md  -> exists, 19 line(s), 1723 bytes
   [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
   ```
-**Artifacts:** —
+**Artifacts:** scripts/validate_plan.py, scripts/supervisor.py, scripts/control.py, tests/test_validate_plan.py, tests/test_supervisor.py, tests/test_lanes.py, dossiers/TASK-041.md
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-30T15:39:11Z
+**Updated_At:** 2026-09-30T15:53:01Z
 
 ### TASK-042
 **Title:** Wave E E-J3 — review rules into the command file, clock-stamped verdicts, frontmatter freshness, untracked-work detector
