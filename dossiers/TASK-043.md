@@ -17,3 +17,17 @@ Build the §15 scenario on a fixture project using tests/tick_harness.py: 10 sch
 Write the failing test first (it must fail against current master — spec §1 H7), then implement, then run BOTH full suites. Ported code cites its origin SHA and lists anything not ported, with the reason, in the Work Log.
 
 ## Work Log
+
+- Implemented `tests/test_wave_e_exit.py` and a test-only clock/transport
+  adapter in `tests/fixtures/wave_e_exit/supervisor.py`. The actual supervisor
+  entry point, ledgers, durable inbox and Git push policy run throughout.
+- `python -m pytest -q -s tests/test_wave_e_exit.py`: **4 passed, 1 failed**
+  in 177.01 seconds, exit 1. The single failure is
+  `test_escalation_conditions_and_reminder_ceiling`: 13 P1 sends exceed 2.
+- Other evidence: 10 separate processes, 145 loop ticks, 1 review launch,
+  3 distinct P2 conditions, 1 P1 condition, exactly 1 `/answer` application,
+  2,509-byte PLAN, and 1 successful push to a temporary bare remote.
+- Blocker: spec section 4 requires hourly P1 reminders; section 15 allows
+  only one repeat over 12 hours. ORCH must clarify whether to configure a
+  longer timer in the exit fixture or grant production reminder-policy work.
+  No production files were changed and the failing assertion is retained.
