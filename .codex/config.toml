@@ -13,8 +13,8 @@
 # 2026-08-13: gpt-5.6-sol 400s on ChatGPT-account Codex ("not supported when
 # using Codex with a ChatGPT account"). terra is the account's flagship agentic
 # coding model (see ~/.codex/models_cache.json), probe-verified.
-model = "gpt-5.6-terra"
-model_reasoning_effort = "medium"   # medium is the token-budget sweet spot; raise to
+model = "gpt-6-sol"
+model_reasoning_effort = "high"     # owner decision 2026-09-30 (was terra @ medium); probe-verified.
                                     # "high" only if quality issues persist on this model.
 
 # --- Sandbox & approvals -------------------------------------------------------
