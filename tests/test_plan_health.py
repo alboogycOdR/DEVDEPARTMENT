@@ -133,4 +133,3 @@ def test_session_start_reports_stale_frontmatter_from_fixture_repo(tmp_path):
 
     assert "[plan_health] STALE frontmatter" in result.stdout
     assert "overall_status" in result.stdout
-
