@@ -1768,7 +1768,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-045
 **Title:** Wave E E-H2b — smoke test detects a codex argv without worktree write access (split from TASK-038)
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.4) Acceptance
@@ -1777,9 +1777,9 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-037, TASK-038
 **Description:** Split from TASK-038 (owner-approved 2026-09-29). dispatch hard-codes Codex `-s danger-full-access`, so no fixture registry can express a codex unit that lacks write access. Make the codex sandbox/write-access flag come from the builder registry entry (default unchanged: danger-full-access, so live dispatch argv is byte-identical), then add the harness smoke fixture whose codex argv lacks worktree write access and assert the smoke test FAILS on it. Also carried from TASK-038 review: (a) wire the smoke to run on builder_registry changes and before an onboarding's first dispatch (spec §10); (b) dispatch.sh must not report success when the builder CLI fails to start (observed: `exec: node: not found` -> "Session ended", exit 0).
 **Acceptance_Criteria:**
-- [ ] Smoke test fails on a fixture registry whose codex argv lacks write access to the worktree (spec §10 Acceptance)
-- [ ] Default registry produces a byte-identical codex dispatch argv to before (dry-run comparison in a test)
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+- [x] Smoke test fails on a fixture registry whose codex argv lacks write access to the worktree (spec §10 Acceptance)
+- [x] Default registry produces a byte-identical codex dispatch argv to before (dry-run comparison in a test)
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-045-cx
 **Started_At:** 2026-09-30T21:18:24Z
 **Progress_Notes:**
@@ -1795,12 +1795,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
     MISSING dossiers/TASK-045.md  -> absent
   ```
   Registry currently has no Codex sandbox field; dispatch defaults Codex to `danger-full-access`. I’m checking existing smoke/onboarding wiring before implementation.
-**Artifacts:** —
-**Test_Evidence:** —
+- [2026-09-30T22:10:05Z] [CX] Implemented registry-configured Codex sandbox (default remains danger-full-access), read-only write-denial fixture, pre-dispatch smoke preflight, and nonzero CLI status propagation. Commit fd32c41. Full Python suite passed 1205 tests in 807.33s; Node suite 47/47. After the user requested test-runtime optimization, streamlined duplicate full-dispatch smoke cases and added an end-to-end preflight-before-launch check; final affected suite 42/42 in 61.23s. A second full-suite run was stopped at ~65% for the requested performance investigation; no failures had appeared. Broader suite optimization is outside this task's Owned_Paths and should be tracked separately.
+**Artifacts:** scripts/builder_registry.py, scripts/dispatch.sh, scripts/dispatch.ps1, tests/test_builder_registry.py, tests/test_harness_smoke.py, tests/fixtures/smoke/codex-read-only-registry.json, dossiers/TASK-045.md; commit fd32c41
+**Test_Evidence:** `python -m pytest -q` -> 1205 passed in 807.33s (full run before final test-only smoke-suite refactor); final affected tests `python -m pytest --durations=12 -q tests/test_builder_registry.py tests/test_harness_smoke.py` -> 42 passed in 61.23s; `node hooks/run-tests.js` -> 47 passed, 0 failed. Final changes also pass `bash -n scripts/dispatch.sh`, PowerShell parser, `python -m compileall`, `git diff --check`, and `python scripts/validate_plan.py PLAN.md` (one existing PLAN size warning).
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-30T21:19:26Z
+**Updated_At:** 2026-09-30T22:11:13Z
 
 ### TASK-046
 **Title:** Wave E E-H1b — full suite green on the CI matrix (split from TASK-037)
