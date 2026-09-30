@@ -1729,7 +1729,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-044
 **Title:** Wave E E-G2 — new-project `git.push_policy: batch` default (split from TASK-036)
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §9 (E-G), §8 item 7 (ask-don't-auto-flip precedent)
@@ -1738,13 +1738,14 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-036, TASK-040
 **Description:** Split from TASK-036 (OWNERSHIP_CONFLICT). When sync_from_pack creates a NEW project's autopilot.json it writes `git.push_policy: "batch"` (and `git.push_batch_minutes: 30`); when it syncs into an EXISTING project's autopilot.json it never adds or changes `git.push_policy` — an absent key keeps TASK-036's `every` behaviour, and the upgrade path only reports the option (ask-don't-auto-flip). DEVDEPARTMENT's own live autopilot.json is not edited by this task; opting this project into `batch` is Alister's call, applied by ORCH. **Protected-path grants (ORCH applies before dispatch):** scripts/sync_from_pack.py.
 **Acceptance_Criteria:**
-- [ ] A new-project sync writes `git.push_policy: "batch"` and `git.push_batch_minutes: 30` (spec §9: default `batch` for new projects)
-- [ ] Syncing into an existing project whose autopilot.json lacks `git.push_policy` leaves it absent, and one that sets it keeps its value byte-for-byte
-- [ ] The existing-project sync output mentions the `batch` option without applying it
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+- [x] A new-project sync writes `git.push_policy: "batch"` and `git.push_batch_minutes: 30` (spec §9: default `batch` for new projects)
+- [x] Syncing into an existing project whose autopilot.json lacks `git.push_policy` leaves it absent, and one that sets it keeps its value byte-for-byte
+- [x] The existing-project sync output mentions the `batch` option without applying it
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-044-cx
 **Started_At:** 2026-09-30T20:59:08Z
 **Progress_Notes:**
+- [2026-09-30T21:17:23Z] [CX] Full Python suite passed: 1202 passed in 788.61s; Node suite 47/47; focused sync suite 71/71; syntax/whitespace checks clean. TASK-044 is complete on task/TASK-044-cx, commit 426ce17; submitting for review.
 - [2026-09-30T21:03:43Z] [CX] Implemented and committed the new-project `batch`/30 config seed, preservation of project `git` settings, and existing-project opt-in message (commit 426ce17). Regression tests cover dry-run, new-project apply, missing and explicit existing policies. Focused sync suite 71/71; starting both full suites.
 - [2026-09-30T20:59:30Z] [CX] TASK-044 preflight (c8b9872) inspected all Owned_Paths before edits:
   ```text
@@ -1756,10 +1757,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   Spec §9 requires new projects to start with `batch`/30, while existing projects retain the configured or absent setting; sync currently handles only existing autopilot files.
 **Artifacts:** scripts/sync_from_pack.py, tests/test_sync_from_pack.py, dossiers/TASK-044.md
 **Test_Evidence:**
+- [2026-09-30T21:17:23Z] [CX] `python -m pytest -q` → 1202 passed in 788.61s; `node hooks/run-tests.js` → 47 passed, 0 failed; `python -m pytest -q tests/test_sync_from_pack.py::TestNewProjectPushPolicy tests/test_sync_from_pack.py` → 71 passed; `python -m compileall -q scripts/sync_from_pack.py` and `git diff --check` clean.
 - [2026-09-30T21:03:43Z] [CX] `python -m pytest -q tests/test_sync_from_pack.py::TestNewProjectPushPolicy tests/test_sync_from_pack.py` → 71 passed; `git diff --check` clean. Full Python and Node suites pending.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
+**Updated_At:** 2026-09-30T21:17:59Z
 **Updated_At:** 2026-09-30T21:03:55Z
 **Updated_At:** 2026-09-30T21:00:03Z
 
