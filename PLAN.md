@@ -1410,13 +1410,14 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
   ```
 - [2026-09-29T13:32:00Z] [CX] Blocked before implementation: acceptance requires changing the new-project default while preserving existing-project `every`; `autopilot.json` is both the live project config and template, and `scripts/sync_from_pack.py` owns how config is copied. Both are outside TASK-036 Owned_Paths; editing only the allowed files cannot safely meet the acceptance criteria.
+-
 **Artifacts:** scripts/push_policy.py, scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/control.py, scripts/supervisor.py, tests/test_push_policy.py, tests/test_plan_commit.py, dossiers/TASK-036.md
 **Test_Evidence:**
 - [2026-09-30T14:59:23Z] [CX] `python -m pytest -q tests/test_push_policy.py tests/test_control.py tests/test_plan_commit.py` → 87 passed in 81.71s; `python -m pytest -q` → 1195 passed in 543.37s; `node hooks/run-tests.js` → 47 passed, 0 failed.
 **Review_Findings:** ORCH RE-CARVE 2026-09-29T13:53:19Z: OWNERSHIP_CONFLICT resolved by SPLIT — the new-project `batch` default (needs sync_from_pack.py/onboarding config) moved to TASK-044; this task implements the policy with missing key → `every`, touching no autopilot.json. Now Depends_On TASK-037 (which temporarily owns scripts/plan_commit.sh). Existing branch task/TASK-036-cx (ab32d4e, no code) may be reused after rebasing on master once 037 merges.
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-30T14:59:25Z
+**Updated_At:** 2026-09-30T15:00:06Z
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
