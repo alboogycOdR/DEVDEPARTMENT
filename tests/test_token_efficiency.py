@@ -134,7 +134,7 @@ def test_p1_is_never_deduplicated():
 
 
 def test_missing_dependency_triage_is_capped():
-    plan = FM + task(status="blocked", blocked="MISSING_DEPENDENCY", assignee="GB")
+    plan = FM + task(status="blocked", blocked="MISSING_DEPENDENCY: upstream task is not complete", assignee="GB")
     assert "TRIAGE_UNBLOCK" in kinds(decide(plan, RuntimeState(), CFG, NOW))
     capped = decide(plan, RuntimeState(triage_counts={"TASK-001": 2}), CFG, NOW)
     assert "TRIAGE_UNBLOCK" not in kinds(capped) and "ESCALATE_P2" in kinds(capped)
