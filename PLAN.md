@@ -1360,7 +1360,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-036
 **Title:** Wave E E-G — bookkeeping push policy (every | batch | merge_only)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §9 (E-G)
@@ -1375,8 +1375,8 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Existing configs without the key keep `every` (a missing `git.push_policy` resolves to `every`); the new-project `batch` default is TASK-044's scope, not this task's
 - [ ] Every tick/process/hour-based criterion is proven by a multi-tick or multi-process test with an advanced (fake) clock, never a single tick (spec §1 H7, §16)
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-036-cx
+**Started_At:** 2026-09-30T14:39:48Z
 **Progress_Notes:**
 - [2026-09-29T13:28:12Z] [CX] TASK-036 owned-path preflight completed before implementation; output follows verbatim:
   ```text
@@ -1398,8 +1398,8 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Test_Evidence:** —
 **Review_Findings:** ORCH RE-CARVE 2026-09-29T13:53:19Z: OWNERSHIP_CONFLICT resolved by SPLIT — the new-project `batch` default (needs sync_from_pack.py/onboarding config) moved to TASK-044; this task implements the policy with missing key → `every`, touching no autopilot.json. Now Depends_On TASK-037 (which temporarily owns scripts/plan_commit.sh). Existing branch task/TASK-036-cx (ab32d4e, no code) may be reused after rebasing on master once 037 merges.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-29T14:06:49Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-30T14:39:49Z
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
