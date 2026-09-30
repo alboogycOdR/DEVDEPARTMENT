@@ -1745,6 +1745,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Branch:** task/TASK-044-cx
 **Started_At:** 2026-09-30T20:59:08Z
 **Progress_Notes:**
+- [2026-09-30T21:03:43Z] [CX] Implemented and committed the new-project `batch`/30 config seed, preservation of project `git` settings, and existing-project opt-in message (commit 426ce17). Regression tests cover dry-run, new-project apply, missing and explicit existing policies. Focused sync suite 71/71; starting both full suites.
 - [2026-09-30T20:59:30Z] [CX] TASK-044 preflight (c8b9872) inspected all Owned_Paths before edits:
   ```text
   [preflight] TASK-044 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-codex-DEVDEPARTMENT
@@ -1753,11 +1754,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
     MISSING dossiers/TASK-044.md  -> absent
   ```
   Spec §9 requires new projects to start with `batch`/30, while existing projects retain the configured or absent setting; sync currently handles only existing autopilot files.
-**Artifacts:** —
-**Test_Evidence:** —
+**Artifacts:** scripts/sync_from_pack.py, tests/test_sync_from_pack.py, dossiers/TASK-044.md
+**Test_Evidence:**
+- [2026-09-30T21:03:43Z] [CX] `python -m pytest -q tests/test_sync_from_pack.py::TestNewProjectPushPolicy tests/test_sync_from_pack.py` → 71 passed; `git diff --check` clean. Full Python and Node suites pending.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
+**Updated_At:** 2026-09-30T21:03:55Z
 **Updated_At:** 2026-09-30T21:00:03Z
 
 ### TASK-045
