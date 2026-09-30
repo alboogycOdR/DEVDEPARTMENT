@@ -1768,7 +1768,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-045
 **Title:** Wave E E-H2b — smoke test detects a codex argv without worktree write access (split from TASK-038)
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.4) Acceptance
@@ -1782,13 +1782,25 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-045-cx
 **Started_At:** 2026-09-30T21:18:24Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-30T21:18:58Z] [CX] TASK-045 preflight (c8b9872) inspected all Owned_Paths before edits:
+  ```text
+  [preflight] TASK-045 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-codex-DEVDEPARTMENT
+    FILE   scripts/dispatch.sh  -> exists, 499 line(s), 31740 bytes
+    FILE   scripts/dispatch.ps1  -> exists, 788 line(s), 49782 bytes
+    FILE   scripts/builder_registry.py  -> exists, 237 line(s), 12376 bytes
+    FILE   tests/test_builder_registry.py  -> exists, 148 line(s), 8533 bytes
+    FILE   tests/test_harness_smoke.py  -> exists, 311 line(s), 15769 bytes
+    MISSING tests/fixtures/smoke  -> absent
+    MISSING dossiers/TASK-045.md  -> absent
+  ```
+  Registry currently has no Codex sandbox field; dispatch defaults Codex to `danger-full-access`. I’m checking existing smoke/onboarding wiring before implementation.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-30T21:18:36Z
+**Updated_At:** 2026-09-30T21:19:26Z
 
 ### TASK-046
 **Title:** Wave E E-H1b — full suite green on the CI matrix (split from TASK-037)
