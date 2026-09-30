@@ -944,3 +944,68 @@ class TestStrictModeUpgradeOffer:
         assert json.loads(before)["control"] == json.loads(after)["control"]
         rendered = sfp.render_report(report, True)
         assert "control.mode is never changed by sync" in rendered
+
+
+def push_policy_pack(tmp_path: Path, autopilot: dict) -> Path:
+    manifest = {
+        "manifest_version": 1,
+        "role": "pack",
+        "framework_owned": [],
+        "project_owned": [],
+        "merge_special": {"autopilot.json": {"strategy": "add_only_keys"}},
+    }
+    return make_pack(tmp_path, {"autopilot.json": json.dumps(autopilot)}, manifest=manifest)
+
+
+class TestNewProjectPushPolicy:
+    def test_new_project_dry_run_offers_defaults_without_writing(self, tmp_path):
+        pack = push_policy_pack(tmp_path, {"git": {"base_branch": "master"}})
+        project = make_project(tmp_path, {})
+
+        report = sfp.run_sync(pack, project)
+
+        assert not (project / "autopilot.json").exists()
+        assert "would create new-project config with git.push_policy=batch" in sfp.render_report(report, apply=False)
+
+    def test_new_project_sync_creates_batch_defaults_without_pack_base_branch(self, tmp_path):
+        pack = push_policy_pack(tmp_path, {
+            "interval_seconds": 300,
+            "git": {"base_branch": "master", "remote": "pack-only"},
+            "control": {"mode": "legacy"},
+        })
+        project = make_project(tmp_path, {})
+
+        report = sfp.run_sync(pack, project, apply=True)
+
+        config = json.loads((project / "autopilot.json").read_text(encoding="utf-8"))
+        assert config["git"] == {"push_policy": "batch", "push_batch_minutes": 30}
+        assert config["interval_seconds"] == 300
+        assert config["control"] == {"mode": "legacy"}
+        assert "base_branch" not in config["git"]
+        assert "batch" in sfp.render_report(report, apply=True)
+
+    def test_existing_project_without_policy_is_not_changed_and_gets_offer(self, tmp_path):
+        pack = push_policy_pack(tmp_path, {"git": {"base_branch": "master"}})
+        original = '{"interval_seconds": 42, "git": {"base_branch": "main"}}\n'
+        project = make_project(tmp_path, {"autopilot.json": original})
+
+        report = sfp.run_sync(pack, project, apply=True)
+
+        config = json.loads((project / "autopilot.json").read_text(encoding="utf-8"))
+        assert "push_policy" not in config["git"]
+        assert "push_batch_minutes" not in config["git"]
+        rendered = sfp.render_report(report, apply=True)
+        assert "git.push_policy: batch" in rendered
+        assert "NOT applied" in rendered
+
+    def test_existing_explicit_policy_is_preserved_byte_for_byte(self, tmp_path):
+        pack = push_policy_pack(tmp_path, {"git": {"base_branch": "master"}})
+        project = make_project(tmp_path, {})
+        project_file = project / "autopilot.json"
+        original = '{"git":{"base_branch":"main","push_policy":"merge_only","push_batch_minutes":7}}\n'
+        project_file.write_text(original, encoding="utf-8")
+
+        sfp.run_sync(pack, project, apply=True)
+
+        after = json.loads(project_file.read_text(encoding="utf-8"))
+        assert after["git"] == json.loads(original)["git"]

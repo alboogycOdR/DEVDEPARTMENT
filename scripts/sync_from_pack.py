@@ -593,19 +593,60 @@ def strict_mode_offer(project: Path) -> str | None:
 
 def merge_add_only_keys(project_file: Path, pack_file: Path, apply: bool,
                         report: Report) -> None:
-    """Recursively add keys present in the pack template but absent in the
-    project's copy. NEVER changes an existing value — the project's tuning
-    (interval, builders, control.mode, allowlists) is its own."""
+    """Seed a missing new-project config, or add safe keys to an existing one.
+
+    Existing values are never changed — project tuning and the whole ``git``
+    object remain project-owned. New projects receive the E-G batch default,
+    but not the pack's project-specific base-branch settings.
+    """
     rel = project_file.name
-    if not pack_file.exists() or not project_file.exists():
-        report.merge_notes.append(f"{rel}: one side missing — skipped")
+    if not pack_file.exists():
+        report.merge_notes.append(f"{rel}: pack template missing — skipped")
         return
     try:
         pack_cfg = json.loads(pack_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        report.merge_notes.append(f"{rel}: JSON parse failed ({exc}) — skipped, fix manually")
+        return
+    if not isinstance(pack_cfg, dict):
+        report.merge_notes.append(f"{rel}: pack template is not a JSON object — skipped, fix manually")
+        return
+
+    # A missing autopilot.json is a new-project path, not an existing project
+    # with a blank configuration. Seed safe pack defaults, but never copy the
+    # pack's project-specific `git` object (notably its base_branch). New
+    # projects get the E-G batch default here; existing project configs below
+    # remain ask-don't-auto-flip.
+    if not project_file.exists():
+        new_cfg = {key: value for key, value in pack_cfg.items() if key != "git"}
+        new_cfg["git"] = {"push_policy": "batch", "push_batch_minutes": 30}
+        if apply:
+            project_file.parent.mkdir(parents=True, exist_ok=True)
+            project_file.write_text(json.dumps(new_cfg, indent=2) + "\n",
+                                    encoding="utf-8", newline="\n")
+            report.merge_notes.append(
+                f"{rel}: CREATED for new project with git.push_policy=batch and "
+                "git.push_batch_minutes=30 (pack-specific git settings omitted)")
+        else:
+            report.merge_notes.append(
+                f"{rel}: would create new-project config with git.push_policy=batch and "
+                "git.push_batch_minutes=30 (pack-specific git settings omitted; dry-run)")
+        return
+
+    try:
         proj_cfg = json.loads(project_file.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         report.merge_notes.append(f"{rel}: JSON parse failed ({exc}) — skipped, fix manually")
         return
+    if not isinstance(proj_cfg, dict):
+        report.merge_notes.append(f"{rel}: project config is not a JSON object — skipped, fix manually")
+        return
+
+    project_git = proj_cfg.get("git")
+    if not isinstance(project_git, dict) or "push_policy" not in project_git:
+        report.merge_notes.append(
+            "existing project option: set git.push_policy: batch and "
+            "git.push_batch_minutes: 30 in autopilot.json if desired; NOT applied by sync")
 
     added: list[str] = []
 
