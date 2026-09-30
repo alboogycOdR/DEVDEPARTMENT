@@ -1768,7 +1768,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-045
 **Title:** Wave E E-H2b — smoke test detects a codex argv without worktree write access (split from TASK-038)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.4) Acceptance
@@ -1780,15 +1780,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Smoke test fails on a fixture registry whose codex argv lacks write access to the worktree (spec §10 Acceptance)
 - [ ] Default registry produces a byte-identical codex dispatch argv to before (dry-run comparison in a test)
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-045-cx
+**Started_At:** 2026-09-30T21:18:24Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-29T14:11:59Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-30T21:18:36Z
 
 ### TASK-046
 **Title:** Wave E E-H1b — full suite green on the CI matrix (split from TASK-037)
