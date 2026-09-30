@@ -132,7 +132,10 @@
     "tests/test_plan_archive.py",
     "tests/test_team_stats.py",
     "tests/fixtures/plan_archive/sample_plan.md",
-    "tests/test_supervisor_once_inbox.py"
+    "tests/test_supervisor_once_inbox.py",
+    "scripts/retire_unit.py",
+    "tests/test_retire_unit.py",
+    "tests/test_worktree_ps1.py"
   ],
   "project_owned": [
     "PLAN.md",

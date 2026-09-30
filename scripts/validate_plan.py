@@ -568,6 +568,38 @@ def lint_review(text: str) -> Report:
     return rep
 
 
+def lint_briefings(repo: str | Path = ".") -> Report:
+    """Warn about briefing drift without making ordinary plan validation noisy."""
+    root = Path(repo)
+    rep = Report()
+    try:
+        import builder_registry
+        registry = builder_registry.load_registry(root)
+    except Exception as exc:
+        rep.error(f"CONFIG: invalid builders registry: {exc}")
+        return rep
+    for unit, entry in registry["defined"].items():
+        briefing = root / entry["briefing"]
+        if not briefing.is_file():
+            rep.error(f"CONFIG: {unit} briefing does not exist: {entry['briefing']}")
+            continue
+        text = briefing.read_text(encoding="utf-8")
+        for candidate in re.findall(r"(?<!\w)(?:scripts|tests|briefings|hooks)/[A-Za-z0-9_./-]+", text):
+            if not (root / candidate).exists():
+                rep.warn(f"BRIEFING: {entry['briefing']} names nonexistent path {candidate}")
+    claude = root / "CLAUDE.md"
+    plan = root / "PLAN.md"
+    if claude.is_file() and plan.is_file():
+        open_ids = {t.task_id for t in parse_tasks(plan.read_text(encoding="utf-8"), Report())
+                    if t.get("Status") not in {"done", "superseded"}}
+        for line in claude.read_text(encoding="utf-8").splitlines():
+            if re.search(r"\b(parked|do not)\b", line, re.I):
+                for task_id in re.findall(r"TASK-\d+", line):
+                    if task_id in open_ids:
+                        rep.warn(f"BRIEFING: CLAUDE.md calls open {task_id} parked/do not")
+    return rep
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Protocol linter for PLAN.md")
     ap.add_argument("path", nargs="?", default="PLAN.md")
@@ -575,7 +607,21 @@ def main(argv: list[str]) -> int:
         "--review", nargs="?", const="", default=None,
         help="lint a REVIEW.md verdict table instead of PLAN.md (default path: REVIEW.md)",
     )
+    ap.add_argument("--config", action="store_true",
+                    help="validate the builder registry, including briefing files")
+    ap.add_argument("--lint-briefings", action="store_true",
+                    help="warn about briefing references that have drifted")
     args = ap.parse_args(argv)
+    if args.config or args.lint_briefings:
+        repo = Path(args.path).resolve() if Path(args.path).is_dir() else Path(args.path).resolve().parent
+        rep = lint_briefings(repo)
+        for warning in rep.warnings:
+            print(f"WARN  {warning}", file=sys.stderr)
+        for error in rep.errors:
+            print(f"ERROR {error}", file=sys.stderr)
+        if args.config and not rep.ok:
+            return 1
+        return 0
     if args.review is not None:
         path = Path(args.review) if args.review else Path("REVIEW.md")
         if not path.exists():

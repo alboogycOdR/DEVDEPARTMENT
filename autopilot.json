@@ -42,8 +42,8 @@
       },
       "CX": {
         "cli": "codex",
-        "model": "gpt-5.6-terra",
-        "_model_note": "gpt-5.6-sol rejected 400 on ChatGPT-account Codex (2026-08-13). terra = account's flagship agentic-coding model per models_cache.json, probe-verified same day. User-level ~/.codex/config.toml still pins sol; --model overrides it for dispatches.",
+        "model": "gpt-6-sol",
+        "_model_note": "gpt-6-sol @ high effort, owner decision 2026-09-30 (probe-verified same day on the ChatGPT-account Codex: codex exec --model gpt-6-sol -c model_reasoning_effort=high -> OK). Previous: gpt-5.6-terra @ medium (gpt-5.6-sol had been rejected 400 on 2026-08-13). Effort lives in .codex/config.toml; --model overrides the user-level ~/.codex/config.toml pin.",
         "auth": {
           "mode": "default"
         },

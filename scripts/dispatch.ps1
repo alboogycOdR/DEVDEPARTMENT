@@ -29,6 +29,7 @@ param(
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $ParentDir = Split-Path $RepoRoot -Parent
+$ScriptsDir = Join-Path $RepoRoot "scripts"
 Set-Location $RepoRoot
 
 function Get-PythonCmd {
@@ -38,6 +39,10 @@ function Get-PythonCmd {
     throw "No Python interpreter found on PATH (tried python, python3, py)."
 }
 $Py = Get-PythonCmd
+function Remove-PythonCr([object]$Value) {
+    if ($null -eq $Value) { return "" }
+    return ([string]$Value).Replace("`r", "")
+}
 
 # Worktree paths are namespaced by this project's own folder name (not just
 # "wt-grok"/"wt-codex") because they're created as SIBLINGS of the project
@@ -51,13 +56,15 @@ $ProjectName = Split-Path $RepoRoot -Leaf
 # legacy cli name (grok/codex/claude -> first ACTIVE unit on that cli).
 # FAIL-CLOSED on anything unresolvable: no safe default exists for a wrong
 # worktree/CLI guess.
-$RegOut = & $Py "scripts\builder_registry.py" resolve $Builder --repo $RepoRoot 2>&1
+$RegistryScript = Join-Path $RepoRoot "scripts/builder_registry.py"
+$RegOut = & $Py $RegistryScript resolve $Builder --repo $RepoRoot 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Error "[dispatch] Cannot resolve builder '$Builder' from the registry - refusing to dispatch. ($RegOut)"
     exit 1
 }
 $Reg = @{}
 foreach ($line in $RegOut) {
+    $line = Remove-PythonCr $line
     $i = "$line".IndexOf("=")
     if ($i -gt 0) { $Reg["$line".Substring(0, $i)] = "$line".Substring($i + 1) }
 }
@@ -135,7 +142,7 @@ switch ($Cli) {
 }
 
 Write-Host "[dispatch] Validating PLAN.md..." -ForegroundColor Cyan
-& $Py "scripts\validate_plan.py" "PLAN.md"
+& $Py (Join-Path $ScriptsDir "validate_plan.py") "PLAN.md"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "[dispatch] PLAN.md illegal - fix before dispatching."
     exit 1
@@ -263,9 +270,9 @@ try {
 $TaskId = ""
 $ResumeOrClaim = ""
 if ($ControlMode -eq "strict") {
-    $ClaimArgs = @("scripts\control.py", "claim", "--unit", $Id, "--repo", $RepoRoot)
+    $ClaimArgs = @((Join-Path $ScriptsDir "control.py"), "claim", "--unit", $Id, "--repo", $RepoRoot)
     if ($DryRun) { $ClaimArgs += "--dry-run" }
-    $ClaimOut = (& $Py @ClaimArgs | Out-String).Trim()
+    $ClaimOut = (Remove-PythonCr (& $Py @ClaimArgs | Out-String)).Trim()
 
     if ($ClaimOut -like "RESUME:*") {
         $TaskId = $ClaimOut.Substring(7)
@@ -354,7 +361,7 @@ $IdentityOverride = ""
 #   treating it with suspicion is behaving correctly, so the fix is to stop
 #   needing it rather than to word it harder.
 # identity=preamble (default) -> today's behavior, byte-identical.
-$Peers = & $Py -c "
+$Peers = Remove-PythonCr (& $Py -c "
 import sys; sys.path.insert(0, 'scripts')
 import builder_registry as br
 try:
@@ -362,7 +369,7 @@ try:
     print(' and '.join([', '.join(ids[:-1]), ids[-1]]) if len(ids) > 1 else (ids[0] if ids else 'the other builders'))
 except Exception:
     print('the other builders')
-" 2>$null
+" 2>$null)
 if (-not $Peers) { $Peers = "the other builders" }
 if ($AutoLoadsContext -and $Identity -eq "agent") {
     $CmdArgs += @("--agent", $AgentName)
@@ -391,7 +398,7 @@ Procedure: (1) Read AGENTS.md and $Briefing, then PLAN.md, fresh from disk. If d
 # Wave C: inject project instincts (fail-open).
 $InstinctsSection = ""
 try {
-    $InstinctsSection = & $Py "scripts\instincts.py" "inject" "--unit" $Id "--repo" $RepoRoot "--limit" "5" 2>$null | Out-String
+    $InstinctsSection = Remove-PythonCr (& $Py (Join-Path $ScriptsDir "instincts.py") "inject" "--unit" $Id "--repo" $RepoRoot "--limit" "5" 2>$null | Out-String)
 } catch {
     $InstinctsSection = ""
 }
@@ -423,13 +430,13 @@ if (Test-Path $AtlasDbPath) {
     $env:PYTHONIOENCODING = "utf-8"
     $AtlasEnabled = "False"
     try {
-        $AtlasEnabled = (& $Py -c "
+        $AtlasEnabled = (Remove-PythonCr (& $Py -c "
 import json
 try:
     print(bool((json.load(open('autopilot.json')).get('atlas') or {}).get('enabled', False)))
 except Exception:
     print('False')
-" 2>$null | Out-String).Trim()
+" 2>$null | Out-String)).Trim()
     } catch {
         $AtlasEnabled = "False"
     }
@@ -437,7 +444,7 @@ except Exception:
         $AtlasTaskId = $TaskId
         if (-not $AtlasTaskId) {
             try {
-                $AtlasTaskId = (& $Py -c "
+                $AtlasTaskId = (Remove-PythonCr (& $Py -c "
 import sys; sys.path.insert(0, 'scripts')
 import instincts
 from pathlib import Path
@@ -458,7 +465,7 @@ try:
     print(target.task_id if target else '')
 except Exception:
     print('')
-" 2>$null | Out-String).Trim()
+" 2>$null | Out-String)).Trim()
             } catch {
                 $AtlasTaskId = ""
             }
@@ -466,13 +473,13 @@ except Exception:
         if ($AtlasTaskId) {
             $AtlasBudget = "3000"
             try {
-                $AtlasBudget = (& $Py -c "
+                $AtlasBudget = (Remove-PythonCr (& $Py -c "
 import json
 try:
     print(int((json.load(open('autopilot.json')).get('atlas') or {}).get('budget_tokens', 3000)))
 except Exception:
     print(3000)
-" 2>$null | Out-String).Trim()
+" 2>$null | Out-String)).Trim()
             } catch {
                 $AtlasBudget = "3000"
             }
@@ -514,7 +521,7 @@ except Exception:
             $AtlasScanOk = $false
             foreach ($attempt in 1, 2) {
                 try {
-                    & $Py "scripts\atlas.py" "scan" 2>$null | Out-Null
+                    & $Py (Join-Path $ScriptsDir "atlas.py") "scan" 2>$null | Out-Null
                     if ($LASTEXITCODE -eq 0) { $AtlasScanOk = $true; break }
                 } catch { }
                 if ($attempt -eq 1) { Start-Sleep -Seconds 3 }
@@ -523,7 +530,7 @@ except Exception:
                 Write-Warning "[dispatch] atlas scan failed twice (concurrent dispatch can contend on .devteam/atlas.db) - packing against the existing, possibly stale index."
             }
             try {
-                $AtlasSection = (& $Py "scripts\atlas.py" "pack" "--task" $AtlasTaskId "--budget" $AtlasBudget 2>$null | Out-String)
+                $AtlasSection = Remove-PythonCr (& $Py (Join-Path $ScriptsDir "atlas.py") "pack" "--task" $AtlasTaskId "--budget" $AtlasBudget 2>$null | Out-String)
                 $AtlasOk = ($LASTEXITCODE -eq 0)
             } catch {
                 $AtlasOk = $false
@@ -605,7 +612,7 @@ Write-Host "[dispatch] Launching $Builder ($Id) in $Wt..." -ForegroundColor Gree
 # firewall can refuse autopilot.json writes.
 if (-not $TaskId) {
     try {
-        $Predicted = (& $Py -c "import sys; sys.path.insert(0, 'scripts'); from validate_plan import predict_dispatch_task; print(predict_dispatch_task('.', '$Id') or '')" 2>$null | Out-String).Trim()
+        $Predicted = (Remove-PythonCr (& $Py -c "import sys; sys.path.insert(0, 'scripts'); from validate_plan import predict_dispatch_task; print(predict_dispatch_task('.', '$Id') or '')" 2>$null | Out-String)).Trim()
         if ($Predicted) { $TaskId = $Predicted }
     } catch {
         Write-Warning "[dispatch] could not predict DEVTEAM_TASK ($($_.Exception.Message)); leaving it unset."
@@ -669,7 +676,7 @@ if ($ControlMode -eq "strict") {
         [System.IO.File]::WriteAllText($LogPath, $RawLog, (New-Object System.Text.UTF8Encoding($false)))
     }
     Write-Host "[dispatch] Session ended. Extracting devteam-control block..." -ForegroundColor Cyan
-    $ExtractOut = (& $Py "scripts\control.py" "extract" "--log" $LogPath "--task" $TaskId "--unit" $Id "--repo" $RepoRoot | Out-String).Trim()
+    $ExtractOut = (Remove-PythonCr (& $Py (Join-Path $ScriptsDir "control.py") "extract" "--log" $LogPath "--task" $TaskId "--unit" $Id "--repo" $RepoRoot | Out-String)).Trim()
     Write-Host "[dispatch] $ExtractOut"
     if ($ExtractOut -like "UNREPORTED:*") {
         Write-Warning "[dispatch] NOTE: no CONTROL block found - PLAN.md state will not change until the next supervisor tick's fallback handling. Log: $LogPath"
@@ -723,17 +730,26 @@ if ($ControlMode -eq "strict") {
         "& '$Cmd' (@('$($CmdArgs -join "','")') + @(`$Prompt)) 2>&1 | Tee-Object -FilePath '$LogPath'",
         "Write-Host ''",
         "Write-Host '[$Id] session ended. Run /devteam-status in the ORCH session.' -ForegroundColor Cyan",
-        "Write-Host 'This window stays open so the transcript is readable; close it when done.' -ForegroundColor DarkGray"
+        "Write-Host 'The runner window closes automatically when the builder exits.' -ForegroundColor DarkGray"
     )
     [System.IO.File]::WriteAllLines($RunnerPath, $RunnerLines, $Utf8NoBom)
 
-    Start-Process -FilePath "powershell.exe" `
-        -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-File", $RunnerPath) `
-        -WorkingDirectory $Wt | Out-Null
+    $RunnerProcess = Start-Process -FilePath "powershell.exe" `
+        -ArgumentList @("-ExecutionPolicy", "Bypass", "-File", $RunnerPath) `
+        -WorkingDirectory $Wt -PassThru
+    $PidPath = Join-Path $LaunchDir "$Id.pid"
+    $PidRecord = [ordered]@{
+        pid = $RunnerProcess.Id
+        runner = $RunnerPath
+        worktree = $Wt
+        started_utc_ticks = $RunnerProcess.StartTime.ToUniversalTime().Ticks
+    }
+    [System.IO.File]::WriteAllText($PidPath, ($PidRecord | ConvertTo-Json -Compress), $Utf8NoBom)
 
     Write-Host "[dispatch] $Id launched in its OWN window - detached from this process tree." -ForegroundColor Green
     Write-Host "[dispatch]   transcript: $LogPath"
     Write-Host "[dispatch]   runner:     $RunnerPath"
+    Write-Host "[dispatch]   runner PID: $($RunnerProcess.Id) (recorded at $PidPath)"
     Write-Host "[dispatch] This script does NOT wait. PLAN.md will change as the builder works;" -ForegroundColor Cyan
     Write-Host "[dispatch] run /devteam-status to follow it. Use -InProcess to block instead." -ForegroundColor Cyan
     exit 0
@@ -799,7 +815,7 @@ sys.exit(0 if has_resumable_task('.', '$Id') else 1)
     }
 
     Write-Host "[dispatch] Session ended. Re-validating PLAN.md..." -ForegroundColor Cyan
-    & $Py "scripts\validate_plan.py" "PLAN.md"
+    & $Py (Join-Path $ScriptsDir "validate_plan.py") "PLAN.md"
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "[dispatch] PLAN.md now protocol-illegal - builder violated protocol. Inspect: git log -p -- PLAN.md"
         exit 1
