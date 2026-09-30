@@ -21,9 +21,10 @@
     PLAN.md lives in the main checkout, which has the integration branch
     checked out. Commit it there with an explicit pathspec:
         git -C <repo-root> commit -m "<msg>" -- PLAN.md
-    No push, no HEAD, no rebase. The pathspec form bypasses the index and
+    No raw HEAD push, no rebase. The pathspec form bypasses the index and
     commits only PLAN.md's working-tree content, so carrying code onto the
     integration branch is impossible by construction, not by instruction.
+    push_policy.py subsequently decides when to publish that commit.
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File scripts\plan_commit.ps1 "chore(plan): claim TASK-007 [S5]"
 #>
@@ -203,6 +204,16 @@ for ($attempt = 1; $attempt -le 5; $attempt++) {
                     & $c $NotifyHelper $RepoRoot 2>$null
                     break
                 }
+            }
+        }
+
+        $PushHelper = Join-Path $RepoRoot "scripts\push_policy.py"
+        if (Test-Path $PushHelper) {
+            $PushResult = (& $PyBin $PushHelper --repo $RepoRoot --event bookkeeping --only-if-configured 2>&1 | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "[plan_commit] $PushResult; PLAN.md commit is local."
+            } else {
+                Write-Host $PushResult
             }
         }
 

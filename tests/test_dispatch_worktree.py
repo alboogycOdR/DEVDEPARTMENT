@@ -863,19 +863,37 @@ class TestClaimVerifiedAfterLegacyLaunch:
 **Updated_By:** GB
 **Updated_At:** 2026-09-29T00:00:00Z
 """
+        # The fake builder signals after dispatch has passed its dirty-PLAN
+        # preflight, then remains alive until the claim commit is visible.
+        fake_grok = self._fake_grok(tmp_path, sleep_seconds=3) / "grok"
+        fake_grok.write_text(
+            "#!/usr/bin/env bash\n"
+            "touch \"$(git rev-parse --git-common-dir)/claim-started\"\n"
+            "for ((i=0; i<300; i++)); do\n"
+            "  test -f \"$(git rev-parse --git-common-dir)/claim-finished\" && break\n"
+            "  sleep 0.05\n"
+            "done\n"
+            "sleep 3\n"
+            "echo fake session output\n",
+            encoding="utf-8", newline="\n")
         writer = subprocess.Popen(
             ["bash", "-c",
-             f"sleep 1 && printf %s {shlex.quote(claimed_text)} > PLAN.md && "
-             "git add PLAN.md && git commit -q -m 'chore(plan): claim TASK-001 [GB]'"],
+             "for ((i=0; i<200; i++)); do "
+             "test -f .git/claim-started && break; sleep 0.05; done; "
+             "test -f .git/claim-started || exit 1; "
+             f"printf %s {shlex.quote(claimed_text)} > PLAN.md && "
+             "git add PLAN.md && git commit -q -m 'chore(plan): claim TASK-001 [GB]'; "
+             "result=$?; touch .git/claim-finished; exit $result"],
             cwd=proj)
         env = dict(os.environ)
-        env["PATH"] = f"{self._fake_grok(tmp_path, sleep_seconds=3)}{os.pathsep}{env.get('PATH', '')}"
+        env["PATH"] = f"{fake_grok.parent}{os.pathsep}{env.get('PATH', '')}"
         try:
             result = subprocess.run(
                 ["bash", "scripts/dispatch.sh", "grok"],
                 cwd=proj, capture_output=True, text=True, timeout=30, env=env)
         finally:
-            writer.wait(timeout=10)
+            writer.wait(timeout=15)
+        assert writer.returncode == 0, "claim writer did not commit after builder launch"
         assert result.returncode == 0, _combined(result)
         assert "CLAIM_UNVERIFIED" not in _combined(result), _combined(result)
 

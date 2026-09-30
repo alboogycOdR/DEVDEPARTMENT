@@ -24,10 +24,11 @@
 # PLAN.md lives in the main checkout, which has the integration branch checked
 # out. So commit it there, with an explicit pathspec:
 #     git -C <repo-root> commit -m "<msg>" -- PLAN.md
-# No push. No HEAD. No rebase dance. The pathspec form bypasses the index
+# No raw HEAD push. No rebase dance. The pathspec form bypasses the index
 # entirely, so it commits ONLY PLAN.md's working-tree content and cannot pick
 # up code, staged or otherwise. Carrying code onto the integration branch is
-# impossible by construction rather than by instruction.
+# impossible by construction rather than by instruction. push_policy.py
+# subsequently decides whether this bookkeeping commit is published now.
 
 set -euo pipefail
 
@@ -206,6 +207,14 @@ for attempt in 1 2 3 4 5; do
     # script: notify_needs_review.py catches its own errors.
     if [ -n "$PY_BIN" ] && [ -f "$REPO_ROOT/scripts/notify_needs_review.py" ]; then
       "$PY_BIN" "$REPO_ROOT/scripts/notify_needs_review.py" "$REPO_ROOT" 2>/dev/null
+    fi
+
+    if [ -f "$REPO_ROOT/scripts/push_policy.py" ]; then
+      if PUSH_RESULT="$("$PY_BIN" "$REPO_ROOT/scripts/push_policy.py" --repo "$REPO_ROOT" --event bookkeeping --only-if-configured 2>&1)"; then
+        echo "$PUSH_RESULT"
+      else
+        echo "[plan_commit] $PUSH_RESULT; PLAN.md commit is local." >&2
+      fi
     fi
 
     exit 0
