@@ -1690,6 +1690,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
     FILE   dossiers/TASK-042.md  -> exists, 14 line(s), 1820 bytes
   ```
   Branch task/TASK-042-cx starts from master after TASK-041's code branch remained unmerged.
+- [2026-09-30T23:10:32Z] [CX] Resumed ORCH rework in isolated worktree. Commit 7e64f05 corrects bookkeeping false positives and restores configured reviewer/base-branch rules; regression 9 passed, Node 47 passed. Live repository count now 1 untracked commit. Full Python verification active with persistent log.
 **Artifacts:** scripts/plan_health.py, tests/test_plan_health.py, .claude/commands/devteam-review.md, .claude/commands/devteam-status.md, .claude/commands/devteam-decompose.md, hooks/session-start.js, autopilot.json, dossiers/TASK-042.md
 **Test_Evidence:**
 - [2026-09-30T20:57:34Z] [CX] `python -m pytest -q` → 1205 passed in 750.78s; `node hooks/run-tests.js` → 47 passed, 0 failed; `python -m pytest -q tests/test_plan_health.py` → 7 passed; `node --check hooks/session-start.js` and `git diff --check` clean.
@@ -1697,8 +1698,8 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-30T20:28:14Z] [CX] `python -m pytest -q tests/test_plan_health.py` → 7 passed; `node hooks/run-tests.js` → 47 passed, 0 failed; `node --check hooks/session-start.js` and `git diff --check` clean. Full Python suite pending.
 **Review_Findings:** ORCH 2026-09-30T22:49:49Z REWORK (reviewer model: claude-opus-5-5). Territory clean (8/8). BLOCKING: (1) E-J.8 untracked detector is dominated by false positives — on this repo `plan_health.py` reports 148/293 commits 'outside the plan', and nearly all are protocol-mandated bookkeeping (`chore(plan): claim|start|submit TASK-NNN [CX]`, `chore(review): TASK-NNN rework [AUTOPILOT]`, `Merge branch 'master' into task/TASK-NNN-cx`). The spec's intent is detecting release work done outside PLAN (rwc case), so a commit whose subject names a TASK-NNN with a unit/SV/AUTOPILOT tag, or a merge of/into a task/TASK-NNN-* branch, must count as tracked; only commits naming no task and carrying none of [TASK-NNN]/[ORCH]/[MAINT] count. Add a test on a fixture repo containing each bookkeeping shape plus one genuinely untagged commit (expect 1). (2) .claude/commands/devteam-review.md: the new 'Reviewer identity' paragraph REPLACED the model-discipline rule — restore it (review runs on the configured reviewer model, never on claude-sonnet-5 = the S5 builder's model; CLAUDE.md 'ORCH model discipline') and keep the identity/recording text alongside it. Also carry the dropped review_cmd fact 'the integration branch is autopilot.json git.base_branch' into the command file, since review_cmd no longer states it. NON-BLOCKING: freshness uses `git log --all`, so any in-flight task-branch commit makes frontmatter 'stale' — acceptable per spec wording, but say so in the message. ORCH will register scripts/plan_health.py + tests/test_plan_health.py in sync-manifest.json at merge.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-30T22:49:49Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-30T23:10:39Z
 
 ### TASK-043
 **Title:** Wave E exit — scripted exit-criteria scenario (10 × --once then accelerated 12 h --loop)
