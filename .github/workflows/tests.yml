@@ -11,6 +11,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # Include every skip reason in the full-suite evidence on both runners.
+      PYTEST_ADDOPTS: -ra
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,7 +29,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($path in @('scripts/dispatch.ps1', 'scripts/worktree.ps1')) {
+          foreach ($path in @('scripts/dispatch.ps1', 'scripts/worktree.ps1', 'scripts/plan_commit.ps1')) {
             $source = Get-Content -LiteralPath $path -Raw
             [void][scriptblock]::Create($source)
             Write-Host "PowerShell 5.1 parsed $path"
@@ -35,9 +38,6 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          # A legacy supervisor fixture intentionally writes to /tmp; make
-          # that POSIX-style absolute path available to Windows Python.
-          New-Item -ItemType Directory -Path C:\tmp -Force | Out-Null
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/harness-audit.ps1 -NoShield
       - name: Run Python and Node suites through harness-audit
         if: runner.os == 'Linux'

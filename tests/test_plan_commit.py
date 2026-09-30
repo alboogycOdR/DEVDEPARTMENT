@@ -12,9 +12,8 @@ PLAN.md's working-tree content and cannot pick up code, staged or not.
 That property is what these tests pin down; everything else here is
 guard rails around it.
 
-bash only: the .ps1 mirror cannot be executed in this environment (no
-pwsh), same standing caveat as every other .ps1 in this pack. Its logic is
-a 1:1 mirror and is reviewed by reading.
+Both shell mirrors execute against isolated fixture repositories. PowerShell
+tests use Windows PowerShell or pwsh, and skip explicitly if neither exists.
 """
 from __future__ import annotations
 
@@ -34,9 +33,6 @@ PLAN_COMMIT_PS1 = REPO_ROOT / "scripts" / "plan_commit.ps1"
 PLAN_GUARD = REPO_ROOT / "scripts" / "plan_guard.py"
 PLAN_STAMP = REPO_ROOT / "scripts" / "plan_stamp.py"
 PUSH_POLICY = REPO_ROOT / "scripts" / "push_policy.py"
-
-pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
-
 
 PLAN = """---
 plan_version: 4.7
@@ -114,11 +110,14 @@ def _bash() -> str:
                      os.path.join("C:", os.sep, "Program Files", "Git", "usr", "bin", "bash.exe")):
             if os.path.exists(cand):
                 return cand
-    return shutil.which("bash") or "bash"
+    shell = shutil.which("bash")
+    if shell is None:
+        pytest.skip("bash is required to execute the shell plan_commit mirror")
+    return shell
 
 
 def run_commit(repo: Path, message: str):
-    return subprocess.run(["bash", "scripts/plan_commit.sh", message], cwd=repo,
+    return subprocess.run([_bash(), "scripts/plan_commit.sh", message], cwd=repo,
                           capture_output=True, text=True, timeout=60)
 
 
@@ -129,7 +128,7 @@ def powershell() -> str | None:
 def run_commit_ps1(repo: Path, message: str, env: dict[str, str] | None = None):
     shell = powershell()
     if shell is None:
-        pytest.skip("PowerShell is not available")
+        pytest.skip("PowerShell mirror requires powershell or pwsh; neither is installed")
     return subprocess.run(
         [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
          "scripts/plan_commit.ps1", message],
@@ -293,7 +292,7 @@ class TestGuardRails:
         assert r.returncode == 0, r.stderr
 
     def test_usage_error_without_a_message(self, repo):
-        r = subprocess.run(["bash", "scripts/plan_commit.sh"], cwd=repo,
+        r = subprocess.run([_bash(), "scripts/plan_commit.sh"], cwd=repo,
                            capture_output=True, text=True, timeout=30)
         assert r.returncode == 2
         assert "usage:" in r.stderr
@@ -493,7 +492,7 @@ class TestPowerShellCasBytes:
     def test_cas_reapply_preserves_utf8_plan_bytes_and_concurrent_block(self, repo, tmp_path):
         shell = powershell()
         if shell is None:
-            pytest.skip("PowerShell is not available")
+            pytest.skip("PowerShell mirror requires powershell or pwsh; neither is installed")
 
         _, task_fields = plan().split("### TASK-007", 1)
         other = "### TASK-009" + task_fields.replace("S5", "GB").replace(
@@ -524,10 +523,16 @@ class TestPowerShellCasBytes:
         )
         shim_dir = tmp_path / "git-shim"
         shim_dir.mkdir()
-        (shim_dir / "git.cmd").write_text(
-            '@echo off\r\n"%PYTHON_EXE%" "%GIT_HOOK%" %*\r\nexit /b %ERRORLEVEL%\r\n',
-            encoding="ascii", newline="",
-        )
+        if os.name == "nt":
+            (shim_dir / "git.cmd").write_text(
+                '@echo off\r\n"%PYTHON_EXE%" "%GIT_HOOK%" %*\r\nexit /b %ERRORLEVEL%\r\n',
+                encoding="ascii", newline="",
+            )
+        else:
+            shim = shim_dir / "git"
+            shim.write_text('#!/bin/sh\nexec "$PYTHON_EXE" "$GIT_HOOK" "$@"\n',
+                            encoding="utf-8", newline="\n")
+            shim.chmod(0o755)
         env = os.environ.copy()
         env.update({
             "PATH": f"{shim_dir}{os.pathsep}{env.get('PATH', '')}",
