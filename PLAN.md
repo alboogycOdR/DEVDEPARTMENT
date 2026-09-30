@@ -1674,6 +1674,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Branch:** task/TASK-042-cx
 **Started_At:** 2026-09-30T20:20:01Z
 **Progress_Notes:**
+- [2026-09-30T20:44:14Z] [CX] First full Python run: 1204 passed, 1 failed in 867.12s; failure was a 30s timeout in existing `test_two_once_processes_share_an_exclusive_review_lock` under suite load. Immediate isolated rerun passed (1 passed in 32.93s). Treating as load-sensitive pending a clean full-suite rerun; no files outside TASK-042 Owned_Paths changed.
 - [2026-09-30T20:28:14Z] [CX] TASK-042 implementation committed as 17a907e; fixture whitespace cleanup in ecddd30. Added `plan_health.py` freshness/untracked checks, status/session-start reporting, review clock/model instructions, autopilot pointer, and selected decompose model. Focused tests pass 7/7; Node suite 47/47; starting full Python suite. No code was ported (origin SHA N/A).
 - [2026-09-30T20:20:59Z] [CX] TASK-042 preflight (c8b9872) inspected all Owned_Paths before edits:
   ```text
@@ -1690,11 +1691,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   Branch task/TASK-042-cx starts from master after TASK-041's code branch remained unmerged.
 **Artifacts:** scripts/plan_health.py, tests/test_plan_health.py, .claude/commands/devteam-review.md, .claude/commands/devteam-status.md, .claude/commands/devteam-decompose.md, hooks/session-start.js, autopilot.json, dossiers/TASK-042.md
 **Test_Evidence:**
+- [2026-09-30T20:44:14Z] [CX] `python -m pytest -q` → 1204 passed, 1 failed in 867.12s (single timeout in `test_two_once_processes_share_an_exclusive_review_lock`); `python -m pytest -q tests/test_supervisor_ledgers.py::test_two_once_processes_share_an_exclusive_review_lock` → 1 passed in 32.93s. Full rerun pending.
 - [2026-09-30T20:28:14Z] [CX] `python -m pytest -q tests/test_plan_health.py` → 7 passed; `node hooks/run-tests.js` → 47 passed, 0 failed; `node --check hooks/session-start.js` and `git diff --check` clean. Full Python suite pending.
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-30T20:28:45Z
+**Updated_At:** 2026-09-30T20:44:35Z
 
 ### TASK-043
 **Title:** Wave E exit — scripted exit-criteria scenario (10 × --once then accelerated 12 h --loop)
