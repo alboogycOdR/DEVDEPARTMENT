@@ -7,7 +7,8 @@ The frontmatter fields are treated as one status snapshot: when stale, the
 report names ``last_updated``, ``overall_status`` and ``orchestrator_notes``.
 
 The untracked-work check is narrower: it counts commits on the configured base
-branch in the last 14 days whose subject has none of the coordination tags.
+branch in the last 14 days whose subject has neither coordination tags nor
+task bookkeeping (a named task with a unit tag, or a task-branch merge).
 These are observations only; the command exits successfully when a check is
 stale or when Git data is unavailable, so status reporting never blocks work.
 """
@@ -26,6 +27,10 @@ UTC = timezone.utc
 TASK_HEADER_RE = re.compile(r"^###\s+(TASK-\d{3})\s*$")
 UPDATED_AT_RE = re.compile(r"^\*\*Updated_At:\*\*\s*(.*?)\s*$")
 TAG_RE = re.compile(r"\[(?:TASK-\d{3}|ORCH|MAINT)\]")
+TASK_REFERENCE_RE = re.compile(r"\bTASK-\d{3}\b")
+# Unit IDs are extensible and historical units can be retired from the registry.
+UNIT_TAG_RE = re.compile(r"\[[A-Z][A-Z0-9_-]*\]")
+TASK_BRANCH_RE = re.compile(r"\btask/TASK-\d{3}-[a-zA-Z0-9_-]+\b")
 
 
 @dataclass(frozen=True)
@@ -135,7 +140,8 @@ def freshness_report(repo: Path | str) -> FreshnessReport:
     if newest_task:
         candidates.append((newest_task[0], f"{newest_task[1]} Updated_At"))
     if newest_commit:
-        candidates.append((newest_commit[0], f"[TASK] commit {newest_commit[1]}") )
+        candidates.append((newest_commit[0], f"[TASK] commit {newest_commit[1]} "
+                           "(all refs, including unmerged task branches)"))
     newest_source_pair = max(candidates, default=None, key=lambda item: item[0])
     newest_source = newest_source_pair[0] if newest_source_pair else None
 
@@ -162,7 +168,8 @@ def freshness_report(repo: Path | str) -> FreshnessReport:
     return FreshnessReport(
         False,
         f"[plan_health] frontmatter fresh: last_updated {frontmatter_time.strftime('%Y-%m-%dT%H:%M:%SZ')} "
-        "covers the newest task update and tagged task commit",
+        "covers the newest task update and tagged task commit "
+        "(all refs, including unmerged task branches)",
         frontmatter_time,
         newest_source,
     )
@@ -181,6 +188,14 @@ def _configured_base_branch(repo: Path, override: str | None) -> str:
     return "main"
 
 
+def _is_tracked_subject(subject: str) -> bool:
+    if TAG_RE.search(subject):
+        return True
+    if TASK_REFERENCE_RE.search(subject) and UNIT_TAG_RE.search(subject):
+        return True
+    return subject.startswith("Merge ") and TASK_BRANCH_RE.search(subject) is not None
+
+
 def untracked_report(repo: Path | str, *, now: datetime | None = None,
                      base_branch: str | None = None) -> UntrackedReport:
     repo = Path(repo).resolve()
@@ -197,12 +212,13 @@ def untracked_report(repo: Path | str, *, now: datetime | None = None,
         stamp = _parse_time(stamp_text) if sep else None
         if stamp and cutoff <= stamp <= now:
             recent.append(row)
-    untagged = [row for row in recent if not TAG_RE.search(row.partition("\t")[2])]
+    untagged = [row for row in recent if not _is_tracked_subject(row.partition("\t")[2])]
     return UntrackedReport(
         len(recent),
         len(untagged),
         f"[plan_health] work outside the plan: {len(untagged)}/{len(recent)} base-branch commits "
-        "in the last 14 days lack [TASK-NNN]/[ORCH]/[MAINT] tags",
+        "in the last 14 days lack [TASK-NNN]/[ORCH]/[MAINT] tags or task bookkeeping "
+        "(task-naming unit tags or task-branch merges)",
     )
 
 

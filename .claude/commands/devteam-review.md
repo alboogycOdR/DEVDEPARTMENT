@@ -4,11 +4,15 @@ description: Review needs_review tasks — verify, verdict, merge or rework
 
 You are ORCH executing **Phase 4 — Review & Integration**. Review standard per CLAUDE.md; you are the quality gate and the only unit that can mark work done.
 
-> **Reviewer identity:** use the model selected for this ORCH review session. For a headless review, the configured model is the `--model` value in `autopilot.json`'s `review_cmd` (fall back to `judgment_model` only when no model is specified). Record the actual runtime model when exposed; otherwise identify it explicitly as the configured model. Never invent or infer a different model name.
+> **Reviewer model discipline:** run the review on the configured reviewer model, per CLAUDE.md's "ORCH model discipline". **Never run `/devteam-review` on `claude-sonnet-5`** — that is the S5 builder's own model; a checker must not share the maker's blind spots.
+>
+> **Reviewer identity:** for a headless review, the configured model is the `--model` value in `autopilot.json`'s `review_cmd` (fall back to `judgment_model` only when no model is specified). Record the actual runtime model when exposed; otherwise identify it explicitly as the configured model. Never invent or infer a different model name.
+
+The integration branch is `autopilot.json`'s `git.base_branch`. Read it before the review and substitute its value for `<base_branch>` below. Perform approved merges in the main checkout with that branch checked out.
 
 For each task with `Status: needs_review` (or the specific task in $ARGUMENTS):
 
-1. **Territory audit:** `git diff main...task/TASK-NNN-xx --stat`. Any file outside `Owned_Paths` → automatic verdict `rework`, no exceptions; record which paths violated.
+1. **Territory audit:** `git diff <base_branch>...task/TASK-NNN-xx --stat`. Any file outside `Owned_Paths` → automatic verdict `rework`, no exceptions; record which paths violated.
 2. **Filesystem check audit (c8b9872):** verify in `git log task/TASK-NNN-xx` that the builder ran `ls`/`find` on each `Owned_Paths` entry before writing code. Evidence is a shell command in the commit history or a Progress_Note. If no evidence of the check exists → flag as a protocol gap in `Review_Findings` (not automatic rework on first occurrence, but a repeat absence is a rework trigger).
 3. **PLAN.md discipline audit:** `git log -p -- PLAN.md` for this unit's edits — frontmatter touches, other-block edits, or deleted lines are protocol violations (verdict rework + note in REVIEW.md). For GB specifically: any edit to a task block that is not its own claimed task is an automatic rework per the c8b9872 hard prohibition.
 4. **Spec verification.** Check each acceptance criterion against the spec text itself — builder summaries are claims, not evidence. If a `Spec_References` document is long, delegate to a subagent (Task tool): "read <spec path>, extract only the passages bearing on these acceptance criteria: <list>, quote them verbatim with section refs." You verify against the extracted passages; the full document never enters this session. Short specs — read directly, delegation costs more than it saves.

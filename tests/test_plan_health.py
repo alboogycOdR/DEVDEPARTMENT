@@ -97,6 +97,45 @@ def test_untracked_report_counts_only_recent_untagged_base_commits(tmp_path):
     assert "1/3" in result.message
 
 
+def test_untracked_report_recognizes_protocol_bookkeeping(tmp_path):
+    repo = make_repo(tmp_path)
+    now = datetime.now(timezone.utc)
+    subjects = [
+        "chore(plan): claim TASK-042 [CX]",
+        "chore(plan): start TASK-043 [GB]",
+        "chore(plan): submit TASK-044 [S5]",
+        "chore(plan): TASK-045 needs_review [S5B]",
+        "chore(plan): TASK-046 in_progress [SV]",
+        "chore(review): TASK-042 rework [AUTOPILOT]",
+        "Merge branch 'master' into task/TASK-042-cx",
+        "Merge branch 'task/TASK-043-gb'",
+        "Merge branch 'task/TASK-044-s5' into master",
+        "maintenance [MAINT]",
+        "release changes outside the plan",
+    ]
+    for subject in subjects:
+        commit(repo, subject, now - timedelta(days=1))
+
+    result = plan_health.untracked_report(repo, now=now)
+
+    assert result.total_commits == len(subjects) + 1
+    assert result.untagged_commits == 1
+    assert "task bookkeeping" in result.message
+
+
+def test_freshness_reports_unmerged_task_branch_scope(tmp_path):
+    repo = make_repo(tmp_path)
+    _run(["git", "checkout", "-q", "-b", "task/TASK-124-cx"], repo)
+    commit(repo, "implementation [TASK-124]", datetime.now(timezone.utc) + timedelta(minutes=1))
+    _run(["git", "checkout", "-q", "master"], repo)
+
+    result = plan_health.freshness_report(repo)
+
+    assert result.stale
+    assert "implementation [TASK-124]" in result.message
+    assert "including unmerged task branches" in result.message
+
+
 def test_status_command_invokes_plan_health():
     command = (ROOT / ".claude" / "commands" / "devteam-status.md").read_text(encoding="utf-8")
     assert "python scripts/plan_health.py --repo ." in command
@@ -111,6 +150,10 @@ def test_review_cmd_only_points_at_review_document_and_document_uses_clock_and_m
     assert 'date -u +"%Y-%m-%dT%H:%M:%SZ"' in review_doc
     assert "[DateTime]::UtcNow" in review_doc
     assert "reviewer model" in review_doc
+    assert "Never run" in review_doc
+    assert "claude-sonnet-5" in review_doc
+    assert "git.base_branch" in review_doc
+    assert "git diff main..." not in review_doc
 
 
 def test_decompose_command_uses_owner_selected_model():
