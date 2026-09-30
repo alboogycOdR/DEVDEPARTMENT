@@ -1360,7 +1360,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-036
 **Title:** Wave E E-G — bookkeeping push policy (every | batch | merge_only)
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §9 (E-G)
@@ -1369,15 +1369,16 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-034, TASK-031, TASK-037
 **Description:** `git.push_policy`: every | batch | merge_only. Default `batch` for NEW projects only; existing projects keep `every` unless the owner opts in (ask-don't-auto-flip). batch: plan-only commits (chore(plan), CONTROL applications, status scans) pushed at most every `git.push_batch_minutes`=30, always on merge or park. merge_only: only on merge or park. Status scans that change nothing produce no commit. Implement the policy once in push_policy.py; plan_commit, control and the supervisor's merge/park paths call it. **Protected-path grants (ORCH applies before dispatch):** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/control.py, scripts/push_policy.py, scripts/supervisor.py.
 **Acceptance_Criteria:**
-- [ ] Under batch, 20 plan-only commits in 10 minutes produce 0 pushes, then 1 at the batch boundary (spec §9 Acceptance)
-- [ ] A merge pushes immediately (§9 Acceptance)
-- [ ] A no-change status scan creates no commit (§9 Acceptance)
-- [ ] Existing configs without the key keep `every` (a missing `git.push_policy` resolves to `every`); the new-project `batch` default is TASK-044's scope, not this task's
-- [ ] Every tick/process/hour-based criterion is proven by a multi-tick or multi-process test with an advanced (fake) clock, never a single tick (spec §1 H7, §16)
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+- [x] Under batch, 20 plan-only commits in 10 minutes produce 0 pushes, then 1 at the batch boundary (spec §9 Acceptance)
+- [x] A merge pushes immediately (§9 Acceptance)
+- [x] A no-change status scan creates no commit (§9 Acceptance)
+- [x] Existing configs without the key keep `every` (a missing `git.push_policy` resolves to `every`); the new-project `batch` default is TASK-044's scope, not this task's
+- [x] Every tick/process/hour-based criterion is proven by a multi-tick or multi-process test with an advanced (fake) clock, never a single tick (spec §1 H7, §16)
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-036-cx
 **Started_At:** 2026-09-30T14:39:48Z
 **Progress_Notes:**
+- [2026-09-30T14:59:23Z] [CX] Implemented durable push scheduling and committed 5a10368; all TASK-036 acceptance criteria verified. ORCH must register the two new framework files in sync-manifest.json at merge (outside this task territory).
 - [2026-09-30T14:40:14Z] [CX] Owned-path preflight completed before implementation; output follows verbatim:
   ```text
   [preflight] TASK-036 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-codex-DEVDEPARTMENT
@@ -1409,12 +1410,13 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   [preflight] Paste this output into your first Progress_Note as the c8b9872 filesystem check.
   ```
 - [2026-09-29T13:32:00Z] [CX] Blocked before implementation: acceptance requires changing the new-project default while preserving existing-project `every`; `autopilot.json` is both the live project config and template, and `scripts/sync_from_pack.py` owns how config is copied. Both are outside TASK-036 Owned_Paths; editing only the allowed files cannot safely meet the acceptance criteria.
-**Artifacts:** —
-**Test_Evidence:** —
+**Artifacts:** scripts/push_policy.py, scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/control.py, scripts/supervisor.py, tests/test_push_policy.py, tests/test_plan_commit.py, dossiers/TASK-036.md
+**Test_Evidence:**
+- [2026-09-30T14:59:23Z] [CX] `python -m pytest -q tests/test_push_policy.py tests/test_control.py tests/test_plan_commit.py` → 87 passed in 81.71s; `python -m pytest -q` → 1195 passed in 543.37s; `node hooks/run-tests.js` → 47 passed, 0 failed.
 **Review_Findings:** ORCH RE-CARVE 2026-09-29T13:53:19Z: OWNERSHIP_CONFLICT resolved by SPLIT — the new-project `batch` default (needs sync_from_pack.py/onboarding config) moved to TASK-044; this task implements the policy with missing key → `every`, touching no autopilot.json. Now Depends_On TASK-037 (which temporarily owns scripts/plan_commit.sh). Existing branch task/TASK-036-cx (ab32d4e, no code) may be reused after rebasing on master once 037 merges.
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-30T14:40:15Z
+**Updated_At:** 2026-09-30T14:59:25Z
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
