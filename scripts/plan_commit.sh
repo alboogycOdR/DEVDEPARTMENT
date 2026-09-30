@@ -210,8 +210,11 @@ for attempt in 1 2 3 4 5; do
     fi
 
     if [ -f "$REPO_ROOT/scripts/push_policy.py" ]; then
-      "$PY_BIN" "$REPO_ROOT/scripts/push_policy.py" --repo "$REPO_ROOT" --event bookkeeping || \
-        echo "[plan_commit] push failed; PLAN.md commit is local." >&2
+      if PUSH_RESULT="$("$PY_BIN" "$REPO_ROOT/scripts/push_policy.py" --repo "$REPO_ROOT" --event bookkeeping --only-if-configured 2>&1)"; then
+        echo "$PUSH_RESULT"
+      else
+        echo "[plan_commit] $PUSH_RESULT; PLAN.md commit is local." >&2
+      fi
     fi
 
     exit 0

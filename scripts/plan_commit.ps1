@@ -209,9 +209,11 @@ for ($attempt = 1; $attempt -le 5; $attempt++) {
 
         $PushHelper = Join-Path $RepoRoot "scripts\push_policy.py"
         if (Test-Path $PushHelper) {
-            & $PyBin $PushHelper --repo $RepoRoot --event bookkeeping
+            $PushResult = (& $PyBin $PushHelper --repo $RepoRoot --event bookkeeping --only-if-configured 2>&1 | Out-String).Trim()
             if ($LASTEXITCODE -ne 0) {
-                Write-Warning "[plan_commit] push failed; PLAN.md commit is local."
+                Write-Warning "[plan_commit] $PushResult; PLAN.md commit is local."
+            } else {
+                Write-Host $PushResult
             }
         }
 

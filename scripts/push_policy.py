@@ -20,18 +20,19 @@ def _run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
                           text=True, encoding="utf-8", errors="replace", timeout=30)
 
 
-def _config(repo: Path) -> tuple[str, float]:
+def _config(repo: Path) -> tuple[str, float, bool]:
     try:
         git = json.loads((repo / "autopilot.json").read_text(encoding="utf-8")).get("git", {})
     except (OSError, ValueError, TypeError):
         git = {}
+    configured = "push_policy" in git
     policy = git.get("push_policy", "every")
     if policy not in VALID_POLICIES:
         raise ValueError(f"invalid git.push_policy: {policy!r}")
     minutes = float(git.get("push_batch_minutes", 30))
     if minutes <= 0:
         raise ValueError("git.push_batch_minutes must be positive")
-    return policy, minutes
+    return policy, minutes, configured
 
 
 def _main_checkout(repo: Path) -> bool:
@@ -61,13 +62,16 @@ def commit_plan(repo: Path, message: str, *, now: datetime | None = None) -> tup
 
 
 def maybe_push(repo: Path, event: str = "bookkeeping", *,
-               now: datetime | None = None) -> tuple[bool, str]:
+               now: datetime | None = None,
+               only_if_configured: bool = False) -> tuple[bool, str]:
     """Push according to config; persist the batch window across processes."""
     if event not in {"bookkeeping", "merge", "park"}:
         raise ValueError(f"invalid push event: {event}")
     if not _main_checkout(repo):
         return False, f"{repo} is not the root of its git work tree"
-    policy, minutes = _config(repo)
+    policy, minutes, configured = _config(repo)
+    if only_if_configured and not configured:
+        return False, "policy not configured; preserving local-only plan_commit behaviour"
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
         raise ValueError("now must be timezone-aware")
@@ -130,14 +134,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", type=Path, default=Path("."))
     parser.add_argument("--event", choices=("bookkeeping", "merge", "park"), default="bookkeeping")
+    parser.add_argument("--only-if-configured", action="store_true",
+                        help="preserve legacy local-only behaviour when the policy key is absent")
     args = parser.parse_args(argv)
     try:
-        pushed, note = maybe_push(args.repo.resolve(), args.event)
+        pushed, note = maybe_push(args.repo.resolve(), args.event,
+                                  only_if_configured=args.only_if_configured)
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         print(f"[push_policy] {exc}", file=sys.stderr)
         return 1
     print(f"[push_policy] {note}")
-    return 0 if pushed or note.startswith(("deferred", "committed locally (no remote")) else 1
+    return 1 if note.startswith(("committed locally; push failed", "push scheduling failed",
+                                 "is not the root of its git work tree")) else 0
 
 
 if __name__ == "__main__":

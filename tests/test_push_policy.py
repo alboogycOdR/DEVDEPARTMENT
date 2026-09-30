@@ -97,3 +97,13 @@ def test_missing_policy_is_every_and_unchanged_plan_creates_no_commit(tmp_path):
     committed, pushed, _ = push_policy.commit_plan(repo, "chore(plan): edit")
     assert committed and pushed
     assert remote_head(remote) == git(repo, "rev-parse", "HEAD")
+
+
+def test_benign_scheduler_outcomes_exit_successfully(tmp_path):
+    repo, _ = fixture(tmp_path, None)
+    script = ROOT / "scripts" / "push_policy.py"
+    for args in (("--only-if-configured",), ()):
+        result = subprocess.run([sys.executable, str(script), "--repo", str(repo), *args],
+                                capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        assert "push failed" not in result.stderr

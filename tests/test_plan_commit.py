@@ -162,6 +162,38 @@ def test_plan_commit_respects_batch_policy(repo, tmp_path):
     assert git(repo, "rev-parse", "HEAD").stdout.strip() != remote_before
 
 
+def test_plan_commit_without_policy_keeps_local_only_behavior(repo, tmp_path):
+    remote = tmp_path / "remote.git"
+    git(repo, "init", "--bare", str(remote))
+    git(repo, "remote", "add", "origin", str(remote))
+    git(repo, "push", "-u", "origin", "main")
+    remote_before = git(repo, "rev-parse", "origin/main").stdout.strip()
+    (repo / "PLAN.md").write_text(plan(status="claimed", by="S5"), encoding="utf-8", newline="\n")
+    result = run_commit(repo, "chore(plan): claim TASK-007 [S5]")
+    assert result.returncode == 0, result.stderr
+    assert "policy not configured" in result.stdout
+    assert "push failed" not in result.stderr
+    assert git(repo, "rev-parse", "origin/main").stdout.strip() == remote_before
+    assert git(repo, "rev-parse", "HEAD").stdout.strip() != remote_before
+
+
+def test_plan_commit_explicit_every_pushes(repo, tmp_path):
+    remote = tmp_path / "remote.git"
+    git(repo, "init", "--bare", str(remote))
+    git(repo, "remote", "add", "origin", str(remote))
+    config = repo / "autopilot.json"
+    config.write_text('{"git": {"base_branch": "main", "push_policy": "every"}}',
+                      encoding="utf-8")
+    git(repo, "add", "autopilot.json")
+    git(repo, "commit", "-m", "configure every")
+    git(repo, "push", "-u", "origin", "main")
+    (repo / "PLAN.md").write_text(plan(status="claimed", by="S5"), encoding="utf-8", newline="\n")
+    result = run_commit(repo, "chore(plan): claim TASK-007 [S5]")
+    assert result.returncode == 0, result.stderr
+    assert "committed and pushed" in result.stdout
+    assert git(repo, "rev-parse", "origin/main").stdout.strip() == git(repo, "rev-parse", "HEAD").stdout.strip()
+
+
 class TestCannotCarryCode:
     """The whole point of the pathspec form."""
 
