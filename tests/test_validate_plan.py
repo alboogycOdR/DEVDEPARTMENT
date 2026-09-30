@@ -75,7 +75,7 @@ def test_blocked_requires_reason():
 
 
 def test_blocked_reason_vocabulary():
-    ok = validate(FM + task_block(status="blocked", blocked="SPEC_AMBIGUITY",
+    ok = validate(FM + task_block(status="blocked", blocked="SPEC_AMBIGUITY: which retry policy?",
                                   branch="task/TASK-001-gb", started="2026-07-12T09:00:00Z"))
     assert ok.ok, ok.errors
     other = validate(FM + task_block(status="blocked", blocked="OTHER: waiting on VPS access",

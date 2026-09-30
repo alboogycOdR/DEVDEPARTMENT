@@ -390,7 +390,8 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
            dossier_heartbeats: dict[str, datetime] | None = None,
            usage: dict | None = None,
            stagnation_signal: dict[str, dict] | None = None,
-           head_shas: dict[str, str] | None = None) -> list[Action]:
+           head_shas: dict[str, str] | None = None,
+           review_text: str = "") -> list[Action]:
     """Pure decision engine: plan + runtime state -> ordered list of actions for this tick.
 
     dossier_heartbeats (Wave I, control.mode=strict): task_id -> latest
@@ -424,7 +425,8 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
         return [Action("HALT", f"STOP file present in repo root — halting per safety rail #3 mtime={stop_file_mtime}")]
 
     # 1. Protocol legality gate
-    rep: Report = validate(plan_text, control_mode)
+    rep: Report = validate(plan_text, control_mode, review_text=review_text,
+                           solo_max_files=int((cfg.get("plan") or {}).get("solo_max_files", 5)))
     if not rep.ok:
         return [Action("ESCALATE_P1",
                        "PLAN.md is protocol-illegal — loop paused. Violations: " + " | ".join(rep.errors[:5]))]
@@ -516,7 +518,7 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
 
     # 4. Stale heartbeat detection
     for t in real:
-        if t.get("Status") in ("claimed", "in_progress"):
+        if t.get("Status") in ("claimed", "in_progress") and t.get("Assigned_To") != "ORCH-SOLO":
             ts = _parse_ts(t.get("Updated_At"))
             # E-C heartbeat is the newest independently observable source:
             # PLAN timestamp, branch commit and dossier mtime.  The caller
@@ -546,7 +548,8 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
     # the same unit in the same tick.
     already_handled = {a.task_id for a in actions if a.task_id}
     for t in real:
-        if t.get("Status") not in ("claimed", "in_progress") or t.task_id in already_handled:
+        if (t.get("Status") not in ("claimed", "in_progress")
+                or t.get("Assigned_To") == "ORCH-SOLO" or t.task_id in already_handled):
             continue
         sig = stagnation_signal.get(t.task_id)
         if sig is None:
@@ -614,7 +617,7 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
                                       unit=unit, task_id=pick.task_id))
 
     # 6. Wave complete?
-    if all(t.get("Status") == "done" for t in real):
+    if all(t.get("Status") in ("done", "superseded") for t in real):
         return [Action("DIGEST", f"WAVE COMPLETE — all {len(real)} tasks done. Digest + park.")]
 
     actions = _dedupe_escalations(actions, state, cfg, now)
@@ -1003,6 +1006,23 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
     return not halt
 
 
+def _owner_hold_digest(digest: str, plan_text: str, now: datetime) -> str:
+    """Add durable owner holds to the scripted digest's Pending action section."""
+    holds = []
+    for task in parse_tasks(plan_text, Report()):
+        if task.get("Status") != "owner_hold":
+            continue
+        since = _parse_ts(task.get("Updated_At"))
+        age = max(0, int((now - since).total_seconds() // 3600)) if since else 0
+        holds.append(f"- {task.task_id} owner hold: {task.get('Hold_On')} ({age}h)")
+    if not holds or "\nProd:" not in digest:
+        return digest
+    before, after = digest.split("\nProd:", 1)
+    if "\nPending action:\n- none" in before:
+        before = before.replace("\nPending action:\n- none", "\nPending action:", 1)
+    return before + "\n" + "\n".join(holds) + "\nProd:" + after
+
+
 def maybe_status_digest(repo: Path, cfg: dict, state: RuntimeState, now: datetime) -> None:
     """Scripted status digest (no model call): rewrites .devteam/STATUS.md every interval and
     sends it on the notify channels only when it changed. Fail-open."""
@@ -1016,6 +1036,8 @@ def maybe_status_digest(repo: Path, cfg: dict, state: RuntimeState, now: datetim
         # to this process so it shares H1's durable ledger rather than sending
         # once per new supervisor process.
         digest = status_digest.run(repo, cfg, now=now, send=False)
+        digest = _owner_hold_digest(digest, (repo / "PLAN.md").read_text(encoding="utf-8"), now)
+        (repo / ".devteam" / "STATUS.md").write_text(digest, encoding="utf-8")
         if bool((cfg.get("status_digest") or {}).get("send", False)):
             body = digest.rsplit("\nLocal time:", 1)[0]
             key = "STATUS_DIGEST|-|STATUS_DIGEST|" + hashlib.sha1(body.encode("utf-8")).hexdigest()
@@ -1879,12 +1901,15 @@ def main(argv: list[str]) -> int:
                 head_shas = {}
             stop_path = repo / "STOP"
             stop_mtime = str(stop_path.stat().st_mtime_ns) if stop_path.exists() else ""
+            review_path = repo / "REVIEW.md"
+            review_text = review_path.read_text(encoding="utf-8") if review_path.is_file() else ""
             actions = queue_actions + inbox_actions + decide(plan_text, state, cfg, now=now,
                                           stop_file_exists=stop_path.exists(), stop_file_mtime=stop_mtime,
                                           dossier_heartbeats=dossier_heartbeats,
                                           usage=usage,
                                           stagnation_signal=stagnation_signal,
-                                          head_shas=head_shas)
+                                          head_shas=head_shas,
+                                          review_text=review_text)
             keep_going = execute(actions, cfg, state, repo, args.dry_run, now=now, inflight=inflight)
             stopped = any(a.kind == "HALT" for a in actions)
             if args.once and not args.dry_run:
@@ -1896,7 +1921,8 @@ def main(argv: list[str]) -> int:
                 try:
                     # A batch boundary can arrive with no new PLAN.md commit.
                     # The persisted window is therefore checked every tick.
-                    push_policy.maybe_push(repo, "bookkeeping", now=now)
+                    push_policy.maybe_push(repo, "bookkeeping", now=now,
+                                           only_if_configured=True)
                 except (OSError, ValueError, subprocess.SubprocessError) as exc:
                     print(f"[push_policy] skipped this tick: {exc}", file=sys.stderr)
 

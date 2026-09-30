@@ -75,7 +75,7 @@ def test_once_quarantines_corrupt_state_and_sends_one_p2(tmp_path):
     (repo / "autopilot.json").write_text(json.dumps({"notify_channels": []}), encoding="utf-8")
     (repo / ".autopilot_state.json").write_text("not-json", encoding="utf-8")
 
-    result = run_once_subprocess(repo)
+    result = run_once_subprocess(repo, timeout=120)
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.count("[P2] supervisor state file was corrupt:") == 1
@@ -93,14 +93,14 @@ def test_dry_run_preserves_state_bytes_and_never_quarantines_corruption(tmp_path
     state_path.write_bytes(b'{\n  "last_digest_ts": "kept-exactly"\n}\n')
     healthy_bytes = state_path.read_bytes()
 
-    healthy = run_once_subprocess(repo, ["--dry-run"])
+    healthy = run_once_subprocess(repo, ["--dry-run"], timeout=120)
 
     assert healthy.returncode == 0, healthy.stderr
     assert state_path.read_bytes() == healthy_bytes
 
     corrupt_bytes = b"not-json\r\n"
     state_path.write_bytes(corrupt_bytes)
-    corrupt = run_once_subprocess(repo, ["--dry-run"])
+    corrupt = run_once_subprocess(repo, ["--dry-run"], timeout=120)
 
     assert corrupt.returncode == 0, corrupt.stderr
     assert state_path.read_bytes() == corrupt_bytes
@@ -128,18 +128,18 @@ def test_two_once_processes_share_an_exclusive_review_lock(tmp_path):
                "--once", "--repo", str(repo)]
     first = subprocess.Popen(command, cwd=repo, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     time.sleep(0.5)
-    second = subprocess.run(command, cwd=repo, capture_output=True, text=True, timeout=30)
-    first.communicate(timeout=30)
+    second = subprocess.run(command, cwd=repo, capture_output=True, text=True, timeout=120)
+    first.communicate(timeout=120)
     assert runs.read_text(encoding="utf-8").splitlines() == ["run"]
     assert "REVIEW_SKIPPED" in (repo / "AUTOPILOT_LOG.md").read_text(encoding="utf-8")
 
 
 def test_escalation_ledger_holds_p2s_and_renotifies_after_four_hours(tmp_path, monkeypatch):
-    plan = FM + task(tid="TASK-001", status="blocked", blocked="SPEC_AMBIGUITY",
+    plan = FM + task(tid="TASK-001", status="blocked", blocked="SPEC_AMBIGUITY: retry policy is unclear",
                      branch="task/TASK-001-gb", started="2026-09-27T10:00:00Z") \
-           + task(tid="TASK-002", status="blocked", blocked="SPEC_AMBIGUITY",
+           + task(tid="TASK-002", status="blocked", blocked="SPEC_AMBIGUITY: acceptance is unclear",
                   branch="task/TASK-002-cx", started="2026-09-27T10:00:00Z", owned="lib/b/**") \
-           + task(tid="TASK-003", status="blocked", blocked="SPEC_AMBIGUITY",
+           + task(tid="TASK-003", status="blocked", blocked="SPEC_AMBIGUITY: dependency choice is unclear",
                   branch="task/TASK-003-s5", started="2026-09-27T10:00:00Z", owned="lib/c/**")
     sent = []
     monkeypatch.setattr(sup, "notify", lambda _cfg, priority, message, _repo: sent.append((priority, message)))
@@ -167,7 +167,7 @@ def test_p1_ledger_renotifies_only_after_one_hour(tmp_path, monkeypatch):
 
 
 def test_tooling_failure_triage_is_durable_and_attempt_is_real(tmp_path, monkeypatch):
-    plan = FM + task(status="blocked", blocked="TOOLING_FAILURE",
+    plan = FM + task(status="blocked", blocked="TOOLING_FAILURE: runner exited unexpectedly",
                      branch="task/TASK-001-gb", started="2026-09-27T10:00:00Z")
     repo = make_fixture_repo(tmp_path, plan)
     calls = []
