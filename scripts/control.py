@@ -73,7 +73,7 @@ FENCE_RE = re.compile(
 )
 LEGAL_STATUSES = {"in_progress", "needs_review", "blocked"}
 BLOCKED_VOCAB = ("SPEC_AMBIGUITY", "MISSING_DEPENDENCY", "OWNERSHIP_CONFLICT",
-                 "SYNC_MISMATCH", "TOOLING_FAILURE", "OTHER:")
+                 "SYNC_MISMATCH", "TOOLING_FAILURE", "CAPACITY", "OTHER")
 _PRIORITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 INFLIGHT_DIR_REL = Path(".devteam") / "inflight"
 RUNS_DIR_REL = Path(".devteam") / "runs"
@@ -140,9 +140,10 @@ def validate_control(block: dict, expected_task: str, expected_unit: str) -> tup
         reason = block.get("blocked_reason")
         if not isinstance(reason, str) or not reason.strip():
             return False, "status=blocked requires a non-empty blocked_reason"
-        if not any(reason.startswith(v) for v in BLOCKED_VOCAB):
-            return False, (f"blocked_reason '{reason}' does not start with a legal vocabulary "
-                           f"term {BLOCKED_VOCAB}")
+        category, sep, detail = reason.partition(":")
+        if category not in BLOCKED_VOCAB or not sep or not detail.strip():
+            return False, (f"blocked_reason '{reason}' must be CATEGORY: detail "
+                           f"from the legal vocabulary {BLOCKED_VOCAB}")
 
     return True, ""
 
