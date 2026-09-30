@@ -11,7 +11,9 @@
     powershell -ExecutionPolicy Bypass -File scripts\harness-audit.ps1 -NoShield
 #>
 param(
-    [switch]$NoShield
+    [switch]$NoShield,
+    [switch]$Smoke,
+    [string]$SmokeUnits
 )
 
 $ErrorActionPreference = "Continue"
@@ -48,8 +50,24 @@ if ($NoShield) {
     Write-Host "WARN: npx not found - AgentShield skipped. Install Node.js to enable the harness scan." -ForegroundColor Yellow
 }
 
-# --- 2. Protocol validator -----------------------------------------------------------
-Write-Section "2/3 PLAN.md protocol validator"
+# --- 2. Active CLI smoke (opt-in; launches real CLIs) ------------------------------
+Write-Section "2/4 Active CLI smoke"
+if ($Smoke) {
+    if (-not $Py) {
+        Write-Host "FAIL: No Python interpreter found for CLI smoke." -ForegroundColor Red
+        $Fail = $true
+    } else {
+        $SmokeArgs = @("tests\test_harness_smoke.py", "--live", "--repo", $RepoRoot)
+        if ($SmokeUnits) { $SmokeArgs += @("--units", $SmokeUnits) }
+        & $Py @SmokeArgs
+        if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: active CLI smoke test failed." -ForegroundColor Red; $Fail = $true }
+    }
+} else {
+    Write-Host "SKIPPED (-Smoke not supplied)."
+}
+
+# --- 3. Protocol validator -----------------------------------------------------------
+Write-Section "3/4 PLAN.md protocol validator"
 if (-not $Py) {
     Write-Host "FAIL: No Python interpreter found on PATH (tried python, python3, py)." -ForegroundColor Red
     $Fail = $true
@@ -60,8 +78,8 @@ if (-not $Py) {
     Write-Host "No PLAN.md at repo root - skipped."
 }
 
-# --- 3. Internal test suites -----------------------------------------------------------
-Write-Section "3/3 Internal test suites"
+# --- 4. Internal test suites -----------------------------------------------------------
+Write-Section "4/4 Internal test suites"
 if ($Py -and (Test-Path "tests")) {
     & $Py -m pytest tests\ -q
     if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: python test suite red." -ForegroundColor Red; $Fail = $true }
