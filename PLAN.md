@@ -1729,7 +1729,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-044
 **Title:** Wave E E-G2 — new-project `git.push_policy: batch` default (split from TASK-036)
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §9 (E-G), §8 item 7 (ask-don't-auto-flip precedent)
@@ -1742,15 +1742,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Syncing into an existing project whose autopilot.json lacks `git.push_policy` leaves it absent, and one that sets it keeps its value byte-for-byte
 - [ ] The existing-project sync output mentions the `batch` option without applying it
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-044-cx
+**Started_At:** 2026-09-30T20:59:08Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-29T13:53:19Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-30T20:59:19Z
 
 ### TASK-045
 **Title:** Wave E E-H2b — smoke test detects a codex argv without worktree write access (split from TASK-038)
