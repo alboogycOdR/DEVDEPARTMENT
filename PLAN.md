@@ -1608,11 +1608,11 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-041
 **Title:** Wave E E-J2 — superseded, owner_hold, external tasks, ORCH-SOLO lane, Blocked_Reason vocabulary
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §12 (E-J.2, E-J.5, E-J.6)
-**Owned_Paths:** scripts/validate_plan.py, tests/test_validate_plan.py, scripts/supervisor.py, tests/test_supervisor.py, scripts/control.py, tests/test_control.py, tests/test_lanes.py (new), dossiers/TASK-041.md
+**Owned_Paths:** scripts/validate_plan.py, tests/test_validate_plan.py, scripts/supervisor.py, tests/test_supervisor.py, scripts/control.py, tests/test_control.py, tests/test_supervisor_ledgers.py, tests/test_token_efficiency.py, tests/test_lanes.py (new), dossiers/TASK-041.md
 **Protected_Grants:** scripts/validate_plan.py, scripts/supervisor.py, scripts/control.py
 **Depends_On:** TASK-040, TASK-036
 **Description:** (2) `superseded` terminal status requiring `Superseded_By:`; excluded from awaiting-ORCH banners. (5) `owner_hold` status with required `Hold_On:` (CREDENTIALS | HARDWARE | ACCOUNT | DECISION | EXTERNAL: <detail>) — never dispatched, never triaged, listed in the digest with age. `Type: external` tasks: no Owned_Paths, checklist acceptance, evidence line, still get a REVIEW row. Solo lane `Assigned_To: ORCH-SOLO`: direct to base with [TASK-NNN] commits; cannot reach done without a REVIEW row whose reviewer model differs from the solo session's; capped by `plan.solo_max_files`=5. (6) Blocked_Reason must be `CATEGORY: detail` from the vocabulary (+ CAPACITY); prose-only fails validation. Protocol text (docs/COORDINATION_PROTOCOL.md) is ORCH-applied at wave close. **Protected-path grants (ORCH applies before dispatch):** scripts/validate_plan.py, scripts/supervisor.py, scripts/control.py.
@@ -1649,10 +1649,10 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-30T16:29:00Z] [CX] `python -m pytest -q tests/test_lanes.py tests/test_validate_plan.py` → 41 passed in 0.80s; `python -m pytest -q` → 1203 passed, 3 failed in 905.99s (only the listed out-of-scope legacy fixtures); `node hooks/run-tests.js` → 47 passed, 0 failed; `git diff --check` → clean.
 - [2026-09-30T16:04:54Z] [CX] `python -m pytest -q tests/test_lanes.py tests/test_validate_plan.py tests/test_control.py` → 96 passed; `node hooks/run-tests.js` → 47 passed, 0 failed; `python scripts/validate_plan.py C:\CLAUDECODE_kingdom.work\DEVDEPARTMENT\PLAN.md` → legal (1 size warning).
 - [2026-09-30T16:04:54Z] [CX] `python -m pytest -q` → 1202 passed, 3 failed in 561.95s; failures are the unowned legacy bare-reason fixtures detailed in Progress_Notes and dossier.
-**Review_Findings:** —
-**Blocked_Reason:** OWNERSHIP_CONFLICT
-**Updated_By:** CX
-**Updated_At:** 2026-09-30T16:30:25Z
+**Review_Findings:** ORCH 2026-09-30T19:21:24Z (owner-directed unblock): OWNERSHIP_CONFLICT resolved — tests/test_supervisor_ledgers.py and tests/test_token_efficiency.py added to Owned_Paths so CX can update their fixtures; Status blocked -> in_progress. Branch task/TASK-041-cx, its commits, Progress_Notes and Test_Evidence are unchanged. ORCH edited neither test file nor any implementation file; CX makes and verifies the fixture updates.
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-30T19:21:34Z
 
 ### TASK-042
 **Title:** Wave E E-J3 — review rules into the command file, clock-stamped verdicts, frontmatter freshness, untracked-work detector
