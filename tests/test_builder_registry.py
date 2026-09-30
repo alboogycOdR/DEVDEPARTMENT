@@ -186,3 +186,25 @@ class TestIdentityFields:
         br._main(["resolve", "S5", "--repo", str(tmp_path)])
         out = capsys.readouterr().out
         assert "IDENTITY=preamble" in out and "AGENT_NAME=devteam-builder" in out
+
+
+class TestCodexSandbox:
+    def test_codex_sandbox_defaults_to_the_previous_full_access_value(self, tmp_path):
+        _, entry = br.resolve("CX", write_cfg(tmp_path, ["CX"]))
+        assert entry["codex_sandbox"] == "danger-full-access"
+
+    def test_codex_sandbox_is_configurable_and_emitted_for_dispatch(self, tmp_path, capsys):
+        codex = dict(br.LEGACY_DEFINITIONS["CX"], codex_sandbox="workspace-write")
+        write_cfg(tmp_path, {"active": ["CX"], "defined": {"CX": codex}})
+
+        unit, entry = br.resolve("CX", tmp_path)
+        rc = br._main(["resolve", unit, "--repo", str(tmp_path)])
+
+        assert rc == 0
+        assert entry["codex_sandbox"] == "workspace-write"
+        assert "CODEX_SANDBOX=workspace-write" in capsys.readouterr().out
+
+    def test_codex_rejects_unknown_sandbox_values(self, tmp_path):
+        codex = dict(br.LEGACY_DEFINITIONS["CX"], codex_sandbox="unrestricted-ish")
+        with pytest.raises(br.RegistryError, match="codex_sandbox"):
+            br.load_registry(write_cfg(tmp_path, {"active": ["CX"], "defined": {"CX": codex}}))

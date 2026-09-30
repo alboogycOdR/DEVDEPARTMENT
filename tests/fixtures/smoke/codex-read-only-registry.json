@@ -1,0 +1,17 @@
+{
+  "builders": {
+    "active": ["CX"],
+    "defined": {
+      "CX": {
+        "cli": "codex",
+        "model": null,
+        "auth": {"mode": "default"},
+        "worktree_suffix": "codex",
+        "branch_suffix": "cx",
+        "briefing": "briefings/CX.md",
+        "auto_loads_ambient_context": false,
+        "codex_sandbox": "read-only"
+      }
+    }
+  }
+}

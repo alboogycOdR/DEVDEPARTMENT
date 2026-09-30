@@ -63,6 +63,7 @@ ID="";      CLI="";        MODEL="";      WORKTREE_SUFFIX=""
 SUFFIX="";  BRIEFING="";   AUTO_LOADS_CONTEXT="false"
 AUTH_MODE="default";       AUTH_VALUE=""
 IDENTITY="preamble";       AGENT_NAME="devteam-builder"
+CODEX_SANDBOX="danger-full-access"
 while IFS='=' read -r k v; do
   case "$k" in
     UNIT) ID="$v" ;; CLI) CLI="$v" ;; MODEL) MODEL="$v" ;;
@@ -70,6 +71,7 @@ while IFS='=' read -r k v; do
     BRIEFING) BRIEFING="$v" ;; AUTO_LOADS_CONTEXT) AUTO_LOADS_CONTEXT="$v" ;;
     AUTH_MODE) AUTH_MODE="$v" ;; AUTH_VALUE) AUTH_VALUE="$v" ;;
     IDENTITY) IDENTITY="$v" ;; AGENT_NAME) AGENT_NAME="$v" ;;
+    CODEX_SANDBOX) CODEX_SANDBOX="$v" ;;
   esac
 done <<< "$REG_KV"
 [[ -n "$ID" && -n "$CLI" && -n "$WORKTREE_SUFFIX" && -n "$SUFFIX" && -n "$BRIEFING" ]] || {
@@ -97,7 +99,7 @@ case "$CLI" in
   # --reasoning-effort is not a valid `codex exec` CLI flag (confirmed against
   # codex-cli 0.144.5); model_reasoning_effort is authoritative via
   # .codex/config.toml, per that file's own comment.
-  codex) CMD=(codex exec ${MODEL:+--model "$MODEL"} -s danger-full-access) ;;
+  codex) CMD=(codex exec ${MODEL:+--model "$MODEL"} -s "$CODEX_SANDBOX") ;;
   # claude: -p takes the prompt as a trailing positional argument.
   claude) CMD=(claude -p ${MODEL:+--model "$MODEL"} --dangerously-skip-permissions) ;;
   *) echo "[dispatch] ERROR: unknown CLI family '$CLI' for unit $ID — refusing to dispatch." >&2; exit 1 ;;
@@ -105,6 +107,17 @@ esac
 
 echo "[dispatch] Validating PLAN.md..."
 python3 scripts/validate_plan.py PLAN.md || { echo "[dispatch] PLAN.md illegal — fix before dispatching." >&2; exit 1; }
+
+# Verify the current registry-derived CLI argv can write to a disposable
+# owned-path fixture before the first real launch. The fixture dispatch sets
+# DEVTEAM_PREFLIGHT_ACTIVE so it does not recursively launch another preflight.
+if [[ "${DEVTEAM_PREFLIGHT_ACTIVE:-0}" != "1" && -f "$REPO_ROOT/tests/test_harness_smoke.py" ]]; then
+  echo "[dispatch] Running registry fixture preflight for $ID..."
+  DEVTEAM_PREFLIGHT_ACTIVE=1 python3 tests/test_harness_smoke.py --preflight --repo "$REPO_ROOT" --units "$ID" || {
+    echo "[dispatch] ERROR: registry fixture preflight failed; refusing to launch $ID." >&2
+    exit 1
+  }
+fi
 
 # E-F.4: the main checkout's PLAN.md must be exactly what's committed — a
 # dirty main-checkout PLAN.md means some earlier write never landed (the
@@ -463,7 +476,10 @@ if [[ "$CONTROL_MODE" == "strict" ]]; then
   # Capture full stdout to the run log while still showing it live (tee),
   # so the CONTROL fence can be extracted from the log afterward regardless
   # of what the terminal happened to scroll past.
-  ( cd "$WT" && "${AUTH_ENV[@]}" "${CMD[@]}" "$PROMPT" ) 2>&1 | tee "$LOG_PATH" || true
+  set +e
+  ( cd "$WT" && "${AUTH_ENV[@]}" "${CMD[@]}" "$PROMPT" ) 2>&1 | tee "$LOG_PATH"
+  LAUNCH_STATUS=${PIPESTATUS[0]}
+  set -e
 
   echo "[dispatch] Session ended. Extracting devteam-control block..."
   EXTRACT_OUT="$(python3 scripts/control.py extract \
@@ -476,6 +492,10 @@ if [[ "$CONTROL_MODE" == "strict" ]]; then
       ;;
   esac
   echo "[dispatch] control.mode=strict: PLAN.md is applied by the supervisor's next tick, not here. Run /devteam-status once it has ticked."
+  if [[ "$LAUNCH_STATUS" -ne 0 ]]; then
+    echo "[dispatch] ERROR: builder CLI exited $LAUNCH_STATUS; dispatch did not succeed." >&2
+    exit "$LAUNCH_STATUS"
+  fi
   exit 0
 else
   ( cd "$WT" && "${AUTH_ENV[@]}" "${CMD[@]}" "$PROMPT" ) &
@@ -516,12 +536,19 @@ sys.exit(0 if has_resumable_task('.', '$ID') else 1)
   if [[ "$CLAIM_SEEN" -eq 0 ]] && kill -0 "$LAUNCH_PID" 2>/dev/null; then
     echo "[dispatch] CLAIM_UNVERIFIED: no PLAN.md claim/in_progress flip observed for $ID within ${CLAIM_VERIFY_SECONDS}s. Not fatal -- the builder's first commit will be picked up and reconciled on the next check." >&2
   fi
-  wait "$LAUNCH_PID" || true
+  set +e
+  wait "$LAUNCH_PID"
+  LAUNCH_STATUS=$?
+  set -e
 
   echo "[dispatch] Session ended. Re-validating PLAN.md..."
   python3 scripts/validate_plan.py PLAN.md || {
     echo "[dispatch] WARNING: PLAN.md now protocol-illegal — builder violated protocol. Inspect: git log -p -- PLAN.md" >&2
     exit 1
   }
+  if [[ "$LAUNCH_STATUS" -ne 0 ]]; then
+    echo "[dispatch] ERROR: builder CLI exited $LAUNCH_STATUS; dispatch did not succeed." >&2
+    exit "$LAUNCH_STATUS"
+  fi
   echo "[dispatch] Done. Run /status in Claude Code for the health scan."
 fi

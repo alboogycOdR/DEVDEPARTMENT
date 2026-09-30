@@ -74,6 +74,7 @@ $AutoLoadsContext = ($Reg["AUTO_LOADS_CONTEXT"] -eq "true")
 $AuthMode = $Reg["AUTH_MODE"]; $AuthValue = $Reg["AUTH_VALUE"]
 $Identity = $Reg["IDENTITY"]; if (-not $Identity) { $Identity = "preamble" }
 $AgentName = $Reg["AGENT_NAME"]; if (-not $AgentName) { $AgentName = "devteam-builder" }
+$CodexSandbox = $Reg["CODEX_SANDBOX"]; if (-not $CodexSandbox) { $CodexSandbox = "danger-full-access" }
 if (-not $Id -or -not $Cli -or -not $Reg["WORKTREE_SUFFIX"] -or -not $Suffix -or -not $Briefing) {
     Write-Error "[dispatch] Registry resolution for '$Builder' returned an incomplete entry - refusing to dispatch."
     exit 1
@@ -124,7 +125,7 @@ switch ($Cli) {
         $Cmd = "cmd"
         $CmdArgs = @("/c", "codex", "exec")
         if ($Model) { $CmdArgs += @("--model", $Model) }
-        $CmdArgs += @("-s", "danger-full-access")
+        $CmdArgs += @("-s", $CodexSandbox)
         $PromptViaStdin = $true
     }
     "claude" {
@@ -593,6 +594,26 @@ if ($DryRun) {
     Write-Host "--- Prompt ---"
     Write-Host $Prompt
     exit 0
+}
+
+# Verify the registry-derived CLI argv can write to a disposable owned-path
+# fixture before a real launch. The fixture sets DEVTEAM_PREFLIGHT_ACTIVE so
+# its nested dispatch does not recursively invoke this check.
+$PreflightScript = Join-Path $RepoRoot "tests\test_harness_smoke.py"
+if ($env:DEVTEAM_PREFLIGHT_ACTIVE -ne "1" -and (Test-Path $PreflightScript)) {
+    Write-Host "[dispatch] Running registry fixture preflight for $Id..." -ForegroundColor Cyan
+    $PreviousPreflight = $env:DEVTEAM_PREFLIGHT_ACTIVE
+    try {
+        $env:DEVTEAM_PREFLIGHT_ACTIVE = "1"
+        & $Py $PreflightScript --preflight --repo $RepoRoot --units $Id
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "[dispatch] Registry fixture preflight failed; refusing to launch $Id."
+            exit 1
+        }
+    } finally {
+        if ($null -eq $PreviousPreflight) { Remove-Item Env:\DEVTEAM_PREFLIGHT_ACTIVE -ErrorAction SilentlyContinue }
+        else { $env:DEVTEAM_PREFLIGHT_ACTIVE = $PreviousPreflight }
+    }
 }
 
 Write-Host "[dispatch] Launching $Builder ($Id) in $Wt..." -ForegroundColor Green
