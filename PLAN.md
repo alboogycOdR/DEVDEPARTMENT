@@ -1,5 +1,5 @@
 ---
-plan_version: 6.21
+plan_version: 6.22
 last_updated: 2026-09-30T14:38:34Z
 overall_status: in_progress
 orchestrator_notes: "AUTOPILOT 2026-09-30T14:38:34Z (claude-opus-5-5): TASK-038 APPROVED+merged (ORCH live CX smoke passed). CX now runs gpt-6-sol @ high effort (owner decision 2026-09-30; autopilot.json + .codex/config.toml, probe-verified). Done this wave: 034, 040, 037, 038. CX order: 042 -> 036 -> 044/041/045 -> 046 -> 043. Standing lessons: tasks adding test files own sync-manifest.json; live CLI smoke is run by ORCH, never from inside a builder session; ORCH checks test_sync_from_pack on master after every merge. User gets 5-minute progress updates while the session is open. DIRECTIVE 2026-09-29T10:15:00Z (Alister): all build work routes to CX. S5/GB receive no work; do not dispatch either. All pending tasks (034, 036-043) already Assigned_To: CX. ORCH's own role stays plan/dispatch/review only from here — the direct-build detour this session (ORCH implementing 031/033/035/039 itself) was a one-off exception, not the standing procedure. ENV CAVEAT: shell-driven suites (test_plan_commit/test_dispatch_worktree/test_notify_needs_review) can show spurious MSYS worktree-path failures in some session environments (git-in-worktree path resolution); TASK-037 owns the harness fix — verify with your own from-scratch full-suite run before trusting a reviewer's reported failure count. GB idle (Grok Build balance exhausted, HTTP 402). Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md."
@@ -1360,11 +1360,11 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-036
 **Title:** Wave E E-G — bookkeeping push policy (every | batch | merge_only)
-**Status:** needs_review
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §9 (E-G)
-**Owned_Paths:** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/control.py, tests/test_control.py, tests/test_plan_commit.py, scripts/push_policy.py (new), tests/test_push_policy.py (new), scripts/supervisor.py, dossiers/TASK-036.md
+**Owned_Paths:** sync-manifest.json, scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/control.py, tests/test_control.py, tests/test_plan_commit.py, scripts/push_policy.py (new), tests/test_push_policy.py (new), scripts/supervisor.py, dossiers/TASK-036.md
 **Protected_Grants:** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/control.py, scripts/push_policy.py, scripts/supervisor.py
 **Depends_On:** TASK-034, TASK-031, TASK-037
 **Description:** `git.push_policy`: every | batch | merge_only. Default `batch` for NEW projects only; existing projects keep `every` unless the owner opts in (ask-don't-auto-flip). batch: plan-only commits (chore(plan), CONTROL applications, status scans) pushed at most every `git.push_batch_minutes`=30, always on merge or park. merge_only: only on merge or park. Status scans that change nothing produce no commit. Implement the policy once in push_policy.py; plan_commit, control and the supervisor's merge/park paths call it. **Protected-path grants (ORCH applies before dispatch):** scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/control.py, scripts/push_policy.py, scripts/supervisor.py.
@@ -1413,10 +1413,10 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Artifacts:** scripts/push_policy.py, scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/control.py, scripts/supervisor.py, tests/test_push_policy.py, tests/test_plan_commit.py, dossiers/TASK-036.md
 **Test_Evidence:**
 - [2026-09-30T14:59:23Z] [CX] `python -m pytest -q tests/test_push_policy.py tests/test_control.py tests/test_plan_commit.py` → 87 passed in 81.71s; `python -m pytest -q` → 1195 passed in 543.37s; `node hooks/run-tests.js` → 47 passed, 0 failed.
-**Review_Findings:** ORCH RE-CARVE 2026-09-29T13:53:19Z: OWNERSHIP_CONFLICT resolved by SPLIT — the new-project `batch` default (needs sync_from_pack.py/onboarding config) moved to TASK-044; this task implements the policy with missing key → `every`, touching no autopilot.json. Now Depends_On TASK-037 (which temporarily owns scripts/plan_commit.sh). Existing branch task/TASK-036-cx (ab32d4e, no code) may be reused after rebasing on master once 037 merges.
+**Review_Findings:** REWORK (ORCH, claude-opus-5-5, 2026-09-30T15:00:56Z). Territory clean 8/8; policy module, durable window, lock, per-tick boundary check, merge/park flushes all read well. BLOCKING: (1) Behaviour change for existing projects: plan_commit.sh/.ps1 never pushed before (header said 'No push'). With the key absent -> `every`, every builder PLAN.md commit now runs `git push` on the integration branch. On THIS repo master is 257 commits ahead of origin (last push 2026-09-15), so the first plan_commit after merge would publish all of it unasked. 'Existing configs without the key keep today's behaviour' must hold per call site: when `git.push_policy` is ABSENT, plan_commit must not push at all (unchanged); supervisor/control paths keep their existing commit-and-push. plan_commit pushes only when the key is explicitly set (every|batch|merge_only). Expose this as e.g. `push_policy.py --event bookkeeping --only-if-configured` (or a `configured` flag from _config) and test both: absent key -> plan_commit makes NO push (assert remote ref unchanged); explicit `every` -> pushes. (2) push_policy.main returns 1 for benign outcomes ('already published', 'push-policy lock busy'), so plan_commit prints 'push failed; PLAN.md commit is local' when nothing failed. Return 0 for every non-error outcome; reserve non-zero for a real push/config error, and make the plan_commit warning quote the helper's note. (3) Register scripts/push_policy.py and tests/test_push_policy.py in sync-manifest.json yourself (now in Owned_Paths). Run both suites in the foreground and submit in the same turn.
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-09-30T15:00:48Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-30T15:00:56Z
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
