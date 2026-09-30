@@ -1608,7 +1608,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-041
 **Title:** Wave E E-J2 — superseded, owner_hold, external tasks, ORCH-SOLO lane, Blocked_Reason vocabulary
-**Status:** pending
+**Status:** claimed
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §12 (E-J.2, E-J.5, E-J.6)
@@ -1624,15 +1624,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] A prose Blocked_Reason fails validation (§12 Acceptance)
 - [ ] An external task validates without Owned_Paths and requires an evidence line to reach done (E-J.5)
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
+**Branch:** task/TASK-041-cx
+**Started_At:** 2026-09-30T15:38:37Z
 **Progress_Notes:** —
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-27T15:50:01Z
+**Updated_By:** CX
+**Updated_At:** 2026-09-30T15:38:38Z
 
 ### TASK-042
 **Title:** Wave E E-J3 — review rules into the command file, clock-stamped verdicts, frontmatter freshness, untracked-work detector
