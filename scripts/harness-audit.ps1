@@ -12,7 +12,8 @@
 #>
 param(
     [switch]$NoShield,
-    [switch]$Smoke
+    [switch]$Smoke,
+    [string]$SmokeUnits
 )
 
 $ErrorActionPreference = "Continue"
@@ -56,7 +57,9 @@ if ($Smoke) {
         Write-Host "FAIL: No Python interpreter found for CLI smoke." -ForegroundColor Red
         $Fail = $true
     } else {
-        & $Py "tests\test_harness_smoke.py" --live --repo $RepoRoot
+        $SmokeArgs = @("tests\test_harness_smoke.py", "--live", "--repo", $RepoRoot)
+        if ($SmokeUnits) { $SmokeArgs += @("--units", $SmokeUnits) }
+        & $Py @SmokeArgs
         if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: active CLI smoke test failed." -ForegroundColor Red; $Fail = $true }
     }
 } else {

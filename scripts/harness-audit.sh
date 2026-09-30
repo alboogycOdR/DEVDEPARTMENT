@@ -11,7 +11,7 @@
 # Usage:
 #   bash scripts/harness-audit.sh            # full gate
 #   bash scripts/harness-audit.sh --no-shield  # offline mode: skip AgentShield
-#   bash scripts/harness-audit.sh --smoke      # also launch each active CLI in scratch worktrees
+#   bash scripts/harness-audit.sh --smoke --units CX  # select active CLIs (default: all)
 #
 # Run this before every DEVDEPARTMENT release/upgrade and after any change to
 # hooks/, .claude/, .codex/, autopilot.json, or the scripts/ directory.
@@ -22,9 +22,19 @@ cd "$REPO_ROOT"
 FAIL=0
 SKIP_SHIELD=0
 RUN_SMOKE=0
-for arg in "$@"; do
-  [[ "$arg" == "--no-shield" ]] && SKIP_SHIELD=1
-  [[ "$arg" == "--smoke" ]] && RUN_SMOKE=1
+SMOKE_UNITS=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --no-shield) SKIP_SHIELD=1 ;;
+    --smoke) RUN_SMOKE=1 ;;
+    --units)
+      [[ $# -ge 2 && -n "$2" ]] || { echo "--units requires a value" >&2; exit 2; }
+      SMOKE_UNITS="$2"
+      shift ;;
+    --units=*) SMOKE_UNITS="${1#--units=}" ;;
+    *) echo "Unknown option: $1" >&2; exit 2 ;;
+  esac
+  shift
 done
 
 section() { printf '\n=== %s ===\n' "$1"; }
@@ -51,7 +61,9 @@ fi
 # --- 2. Active CLI smoke (opt-in; launches real CLIs) --------------------------
 section "2/4 Active CLI smoke"
 if [[ "$RUN_SMOKE" -eq 1 ]]; then
-  python3 tests/test_harness_smoke.py --live --repo "$REPO_ROOT" || {
+  smoke_args=(--live --repo "$REPO_ROOT")
+  [[ -z "$SMOKE_UNITS" ]] || smoke_args+=(--units "$SMOKE_UNITS")
+  python3 tests/test_harness_smoke.py "${smoke_args[@]}" || {
     echo "FAIL: active CLI smoke test failed." >&2
     FAIL=1
   }

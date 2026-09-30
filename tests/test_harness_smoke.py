@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import time
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -47,6 +48,17 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
 def _write_stub(path: Path, body: str) -> None:
     path.write_text(body, encoding="utf-8", newline="\n")
     path.chmod(0o755)
+
+
+def _bash() -> str:
+    """Use Git Bash on Windows, where bare `bash` commonly resolves to WSL."""
+    if os.name == "nt":
+        for candidate in (Path("C:/Program Files/Git/bin/bash.exe"),
+                          Path("C:/Program Files/Git/usr/bin/bash.exe")):
+            if candidate.is_file():
+                return str(candidate)
+        raise SmokeFailure("Git Bash is required for the Windows shell dispatcher")
+    return shutil.which("bash") or "bash"
 
 
 def _run_bounded(command: list[str], *, cwd: Path, env: dict[str, str],
@@ -92,7 +104,7 @@ def version_command(cli: str, fakebin: Path | None) -> list[str]:
     CLIs are deliberately shell scripts, so invoke those explicitly with bash.
     """
     if fakebin is not None:
-        return ["bash", str(fakebin / cli), "--version"]
+        return [_bash(), str(fakebin / cli), "--version"]
     if os.name == "nt":
         windows_command = shutil.which(f"{cli}.cmd")
         if windows_command:
@@ -101,7 +113,8 @@ def version_command(cli: str, fakebin: Path | None) -> list[str]:
 
 
 def create_fixture_project(parent: Path, unit: str = "CX", cli: str = "codex",
-                           *, stub: bool = True) -> tuple[Path, Path | None, Path]:
+                           *, stub: bool = True,
+                           source_entry: dict | None = None) -> tuple[Path, Path | None, Path]:
     """Build a disposable master-based project that exercises real dispatch argv."""
     suffix = unit.lower()
     root = parent / f"fixture-{unit}"
@@ -117,6 +130,10 @@ def create_fixture_project(parent: Path, unit: str = "CX", cli: str = "codex",
         "worktree_suffix": suffix, "branch_suffix": suffix,
         "briefing": f"briefings/{unit}.md", "auto_loads_ambient_context": False,
     }
+    if source_entry is not None:
+        entry.update(source_entry)
+        entry["cli"] = cli
+        entry["briefing"] = f"briefings/{unit}.md"
     (root / "autopilot.json").write_text(json.dumps({
         "control": {"mode": "legacy"}, "git": {"base_branch": "master"},
         "atlas": {"enabled": False},
@@ -185,6 +202,10 @@ def run_dispatch_smoke(root: Path, unit: str, cli: str, fakebin: Path | None,
                        output_file: Path, *, deny_write: bool = False,
                        artifact_timeout: float = 90) -> SmokeResult:
     env = dict(os.environ)
+    entry = load_registry(root)["defined"][unit]
+    auth = entry.get("auth") or {}
+    if auth.get("mode") == "config_dir":
+        env["CLAUDE_CONFIG_DIR"] = str(Path(auth["value"]).expanduser())
     if fakebin:
         env["PATH"] = f"{fakebin}{os.pathsep}{env.get('PATH', '')}"
     version = subprocess.run(version_command(cli, fakebin), env=env,
@@ -193,13 +214,13 @@ def run_dispatch_smoke(root: Path, unit: str, cli: str, fakebin: Path | None,
         raise SmokeFailure(f"{unit}: CLI version probe failed: {version.stderr.strip()}")
     if cli == "claude":
         flag_probe = subprocess.run(
-            ["bash", "-c", 'exec "$1" -p "smoke" --max-turns 1 --dangerously-skip-permissions', "smoke", cli],
+            [_bash(), "-c", 'exec "$1" -p "smoke" --max-turns 1 --dangerously-skip-permissions', "smoke", cli],
             env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=15)
         if flag_probe.returncode != 0:
             raise SmokeFailure(f"{unit}: CLI rejected hidden --max-turns flag: {flag_probe.stderr.strip()}")
     env["DEVTEAM_SMOKE_TARGET"] = str(output_file)
     env["SMOKE_DENY_WRITE"] = "1" if deny_write else "0"
-    result = _run_bounded(["bash", "scripts/dispatch.sh", unit], cwd=root, env=env, timeout=45)
+    result = _run_bounded([_bash(), "scripts/dispatch.sh", unit], cwd=root, env=env, timeout=45)
     if result.returncode != 0:
         raise SmokeFailure(f"{unit}: dispatch exited {result.returncode}: {result.stdout}\n{result.stderr}")
     deadline = time.monotonic() + artifact_timeout
@@ -217,23 +238,34 @@ def run_dispatch_smoke(root: Path, unit: str, cli: str, fakebin: Path | None,
 
 
 def run_fixture_smoke(parent: Path, unit: str = "CX", cli: str = "codex",
-                      *, deny_write: bool = False, stub: bool = True) -> SmokeResult:
-    root, fakebin, output_file = create_fixture_project(parent, unit, cli, stub=stub)
+                      *, deny_write: bool = False, stub: bool = True,
+                      source_entry: dict | None = None) -> SmokeResult:
+    root, fakebin, output_file = create_fixture_project(
+        parent, unit, cli, stub=stub, source_entry=source_entry)
     return run_dispatch_smoke(root, unit, cli, fakebin, output_file, deny_write=deny_write)
 
 
-def run_live_smoke(repo: Path) -> list[SmokeResult]:
-    """Run the owner-authorized CX live probe; record other active units as deferred."""
+def run_live_smoke(repo: Path, units: list[str] | None = None) -> list[SmokeResult]:
+    """Run selected active CLIs; default to the entire active registry."""
+    cr_files = shell_files_with_cr(repo)
+    if cr_files:
+        raise SmokeFailure("CR byte in shell script(s): " + ", ".join(str(p) for p in cr_files))
     registry = load_registry(repo)
+    active = registry["active"]
+    selected = set(active if units is None else units)
+    unknown = selected.difference(active)
+    if unknown:
+        raise SmokeFailure("smoke unit(s) are not active: " + ", ".join(sorted(unknown)))
     results: list[SmokeResult] = []
-    for unit in registry["active"]:
-        if unit != "CX":
-            print(f"{unit}: deferred: owner directive (CX-only live smoke)")
+    for unit in active:
+        if unit not in selected:
+            print(f"{unit}: deferred (not selected)")
             continue
         entry = registry["defined"][unit]
         cli = entry["cli"]
-        with __import__("tempfile").TemporaryDirectory(prefix=f"devteam-smoke-{unit}-") as temp:
-            result = run_fixture_smoke(Path(temp), unit, cli, stub=False)
+        with tempfile.TemporaryDirectory(prefix=f"devteam-smoke-{unit}-") as temp:
+            result = run_fixture_smoke(Path(temp), unit, cli, stub=False,
+                                       source_entry=entry)
             results.append(result)
             print(f"{unit}: exit=0 version={result.version} file={result.output_file}")
     return results
@@ -271,6 +303,43 @@ def test_crlf_dispatch_shell_is_rejected(tmp_path):
     assert shell_files_with_cr(tmp_path) == [tmp_path / "scripts" / "dispatch.sh"]
 
 
+def test_live_entrypoint_rejects_crlf_dispatch_before_launch(tmp_path):
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "dispatch.sh").write_bytes(b"#!/bin/sh\r\necho broken\r\n")
+    result = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve()), "--live", "--repo", str(tmp_path)],
+        capture_output=True, text=True, timeout=10)
+    assert result.returncode != 0
+    assert "CR byte" in result.stderr
+    assert "dispatch.sh" in result.stderr
+
+
+def test_live_selection_defers_others_and_copies_registry_entry(tmp_path, monkeypatch, capsys):
+    registry = {"active": ["GB", "CX"], "defined": {
+        "GB": {"cli": "grok"},
+        "CX": {"cli": "codex", "model": "pinned-model", "auth": {"mode": "config_dir", "value": "~/auth"}},
+    }}
+    monkeypatch.setattr(sys.modules[__name__], "load_registry", lambda _: registry)
+    calls = []
+
+    def fake_run(parent, unit, cli, **kwargs):
+        calls.append((unit, cli, kwargs["source_entry"]))
+        return SmokeResult(unit, "v1", parent / "smoke.txt", "")
+
+    monkeypatch.setattr(sys.modules[__name__], "run_fixture_smoke", fake_run)
+    run_live_smoke(tmp_path, ["CX"])
+    assert calls == [("CX", "codex", registry["defined"]["CX"])]
+    assert "GB: deferred" in capsys.readouterr().out
+
+
+def test_fixture_preserves_live_model_and_auth(tmp_path):
+    source = {"model": "pinned-model", "auth": {"mode": "config_dir", "value": "~/auth"}}
+    root, _, _ = create_fixture_project(tmp_path, source_entry=source)
+    entry = json.loads((root / "autopilot.json").read_text(encoding="utf-8"))["builders"]["defined"]["CX"]
+    assert entry["model"] == "pinned-model"
+    assert entry["auth"] == source["auth"]
+
+
 def test_fixture_keeps_prompt_away_from_windows_leading_slash_path_conversion():
     dispatch = (SCRIPTS / "dispatch.sh").read_text(encoding="utf-8")
     assert 'PROMPT="${IDENTITY_OVERRIDE}You are' in dispatch
@@ -279,9 +348,16 @@ def test_fixture_keeps_prompt_away_from_windows_leading_slash_path_conversion():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--live", action="store_true", help="run every active real builder CLI")
+    parser.add_argument("--live", action="store_true", help="run selected active real builder CLIs")
     parser.add_argument("--repo", default=str(ROOT))
+    parser.add_argument("--units", default=os.environ.get("DEVTEAM_SMOKE_UNITS"),
+                        help="comma-separated active units; default: every active unit")
     args = parser.parse_args()
     if not args.live:
         parser.error("pass --live to launch active CLIs, or run pytest for stub fixture coverage")
-    run_live_smoke(Path(args.repo).resolve())
+    selected = [unit.strip() for unit in args.units.split(",") if unit.strip()] if args.units else None
+    try:
+        run_live_smoke(Path(args.repo).resolve(), selected)
+    except SmokeFailure as exc:
+        print(f"smoke failed: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
