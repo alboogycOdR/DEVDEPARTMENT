@@ -49,6 +49,41 @@ def _write_stub(path: Path, body: str) -> None:
     path.chmod(0o755)
 
 
+def _run_bounded(command: list[str], *, cwd: Path, env: dict[str, str],
+                 timeout: float) -> subprocess.CompletedProcess:
+    """Run a dispatch in its own process group and clean up only that group.
+
+    A legacy dispatch backgrounds the builder before waiting on it.  Killing a
+    broad ``*codex*`` match after a timeout can therefore kill the smoke runner
+    itself; retain the exact launcher PID and terminate only its descendants.
+    """
+    kwargs: dict[str, object] = {
+        "cwd": cwd, "env": env, "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "text": True,
+    }
+    if os.name == "nt":
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True
+    process = subprocess.Popen(command, **kwargs)
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, check=False)
+        else:
+            import signal
+            os.killpg(process.pid, signal.SIGTERM)
+        stdout, stderr = process.communicate()
+        raise SmokeFailure(
+            f"dispatch timed out after {timeout}s; stopped only launcher process group PID {process.pid}: "
+            f"{stdout}\n{stderr}"
+        )
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+
+
 def version_command(cli: str, fakebin: Path | None) -> list[str]:
     """Return a Windows-safe command that asks a builder CLI for its version.
 
@@ -164,8 +199,7 @@ def run_dispatch_smoke(root: Path, unit: str, cli: str, fakebin: Path | None,
             raise SmokeFailure(f"{unit}: CLI rejected hidden --max-turns flag: {flag_probe.stderr.strip()}")
     env["DEVTEAM_SMOKE_TARGET"] = str(output_file)
     env["SMOKE_DENY_WRITE"] = "1" if deny_write else "0"
-    result = subprocess.run(["bash", "scripts/dispatch.sh", unit], cwd=root, env=env,
-                            stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=45)
+    result = _run_bounded(["bash", "scripts/dispatch.sh", unit], cwd=root, env=env, timeout=45)
     if result.returncode != 0:
         raise SmokeFailure(f"{unit}: dispatch exited {result.returncode}: {result.stdout}\n{result.stderr}")
     deadline = time.monotonic() + artifact_timeout
