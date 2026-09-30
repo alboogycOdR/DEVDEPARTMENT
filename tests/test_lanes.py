@@ -76,12 +76,14 @@ def test_external_done_requires_evidence_and_review_row():
     plan = FM + task(status="done", kind="external", owned="—")
     assert any("Evidence line" in e for e in validate(plan).errors)
     plan = FM + task(status="done", kind="external", owned="—", evidence="store-review ID 42")
+    assert any("REVIEW row" in e for e in validate(plan).errors)
     assert any("REVIEW row" in e for e in validate(plan, review_text="").errors)
     assert validate(plan, review_text=review()).ok
 
 
 def test_solo_done_requires_independent_reviewer_and_obeys_file_cap():
     plan = FM + task(status="done", assignee="ORCH-SOLO", maker="claude-opus-4-8")
+    assert any("different model" in e for e in validate(plan).errors)
     assert any("different model" in e for e in validate(plan, review_text="").errors)
     assert any("different model" in e for e in validate(plan, review_text=review("claude-opus-4-8")).errors)
     assert validate(plan, review_text=review()).ok

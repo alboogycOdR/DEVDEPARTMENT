@@ -407,7 +407,7 @@ def validate(text: str, control_mode: str = "legacy",
             if status == "done":
                 if t.is_empty("Evidence"):
                     rep.error(f"{ctx}: completed external task requires an Evidence line")
-                if review_text is not None and not _approved_review_row(review_text, t.task_id):
+                if not _approved_review_row(review_text or "", t.task_id):
                     rep.error(f"{ctx}: completed external task requires an approved REVIEW row")
 
         if not t.is_empty("Owned_Paths"):
@@ -457,7 +457,8 @@ def validate(text: str, control_mode: str = "legacy",
                 rep.error(f"{ctx}: ORCH-SOLO Owned_Paths must list exact files for the file cap")
             if len(files) > solo_max_files or len(artifacts) > solo_max_files:
                 rep.error(f"{ctx}: ORCH-SOLO exceeds plan.solo_max_files={solo_max_files}")
-            if status == "done" and review_text is not None and not _independent_solo_review(review_text, t.task_id, t.get("Maker_Model")):
+            if status == "done" and not _independent_solo_review(
+                    review_text or "", t.task_id, t.get("Maker_Model")):
                 rep.error(f"{ctx}: ORCH-SOLO done requires approved REVIEW row by a different model or human")
 
         if status == "needs_review" and t.is_empty("Test_Evidence"):
