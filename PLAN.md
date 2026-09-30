@@ -1658,7 +1658,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-042
 **Title:** Wave E E-J3 — review rules into the command file, clock-stamped verdicts, frontmatter freshness, untracked-work detector
-**Status:** claimed
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §12 (E-J.4, E-J.7, E-J.8), §6 (review timestamp bullet)
@@ -1673,13 +1673,26 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
 **Branch:** task/TASK-042-cx
 **Started_At:** 2026-09-30T20:20:01Z
-**Progress_Notes:** —
+**Progress_Notes:**
+- [2026-09-30T20:20:59Z] [CX] TASK-042 preflight (c8b9872) inspected all Owned_Paths before edits:
+  ```text
+  [preflight] TASK-042 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-codex-DEVDEPARTMENT
+    MISSING scripts/plan_health.py  -> absent
+    MISSING tests/test_plan_health.py  -> absent
+    FILE   .claude/commands/devteam-review.md  -> exists, 18 line(s), 3660 bytes
+    FILE   .claude/commands/devteam-status.md  -> exists, 14 line(s), 1769 bytes
+    FILE   .claude/commands/devteam-decompose.md  -> exists, 16 line(s), 3277 bytes
+    FILE   hooks/session-start.js  -> exists, 78 line(s), 3848 bytes
+    FILE   autopilot.json  -> exists, 156 line(s), 5678 bytes
+    FILE   dossiers/TASK-042.md  -> exists, 14 line(s), 1820 bytes
+  ```
+  Branch task/TASK-042-cx starts from master after TASK-041's code branch remained unmerged.
 **Artifacts:** —
 **Test_Evidence:** —
 **Review_Findings:** —
 **Blocked_Reason:** —
 **Updated_By:** CX
-**Updated_At:** 2026-09-30T20:20:16Z
+**Updated_At:** 2026-09-30T20:21:25Z
 
 ### TASK-043
 **Title:** Wave E exit — scripted exit-criteria scenario (10 × --once then accelerated 12 h --loop)
