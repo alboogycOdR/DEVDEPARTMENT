@@ -1,8 +1,8 @@
 ---
-plan_version: 6.25
-last_updated: 2026-09-30T15:36:59Z
+plan_version: 6.26
+last_updated: 2026-09-30T22:49:49Z
 overall_status: in_progress
-orchestrator_notes: "AUTOPILOT 2026-09-30T15:36:59Z: TASK-036 APPROVED+merged (owner waived ORCH suite re-run). DO NOT start the supervisor loop on this repo until TASK-041 lands the per-tick push guard (master is 257 commits ahead of origin). Unlocked: 041, 044 (and 042/045 already ready). BACKLOG (owner, 2026-09-30): efficiency proposals parked in docs/EFFICIENCY_BACKLOG_2026-09.md (parallel tests, fast lane, CI-as-reviewer, PLAN archive, parallel CX, manifest rule, scheduled tick, event-based updates) — NOT scheduled; raise at Wave E close. AUTOPILOT 2026-09-30T14:38:34Z (claude-opus-5-5): TASK-038 APPROVED+merged (ORCH live CX smoke passed). CX now runs gpt-6-sol @ high effort (owner decision 2026-09-30; autopilot.json + .codex/config.toml, probe-verified). Done this wave: 034, 040, 037, 038. CX order: 042 -> 036 -> 044/041/045 -> 046 -> 043. Standing lessons: tasks adding test files own sync-manifest.json; live CLI smoke is run by ORCH, never from inside a builder session; ORCH checks test_sync_from_pack on master after every merge. User gets 5-minute progress updates while the session is open. DIRECTIVE 2026-09-29T10:15:00Z (Alister): all build work routes to CX. S5/GB receive no work; do not dispatch either. All pending tasks (034, 036-043) already Assigned_To: CX. ORCH's own role stays plan/dispatch/review only from here — the direct-build detour this session (ORCH implementing 031/033/035/039 itself) was a one-off exception, not the standing procedure. ENV CAVEAT: shell-driven suites (test_plan_commit/test_dispatch_worktree/test_notify_needs_review) can show spurious MSYS worktree-path failures in some session environments (git-in-worktree path resolution); TASK-037 owns the harness fix — verify with your own from-scratch full-suite run before trusting a reviewer's reported failure count. GB idle (Grok Build balance exhausted, HTTP 402). Live CLI facts: docs/reviews/LIVE_CHECKS_2026-09.md."
+orchestrator_notes: "ORCH 2026-09-30T22:49:49Z (reviewer claude-opus-5-5): TASK-041 + TASK-044 APPROVED+merged (integration pytest 1210/0, node 47/0). TASK-041's per-tick push guard (only_if_configured) is now on master — the supervisor-loop hold on this repo is lifted. UNLOCKED: TASK-043 (Wave E exit scenario) and TASK-046 (CI matrix green), both CX, deps all done. REWORK: TASK-042 (untracked detector counts protocol bookkeeping commits: 148/293 false positives; review-command lost the never-sonnet-5 rule) and TASK-045 (ps1 preflight fails closed without Git Bash; read-only stub rigged; dispatch CONTROL prompts need CATEGORY: detail vocabulary). Follow-up for next control.py owner: control.py:252 bare CAPACITY -> 'CAPACITY: <detail>'."
 ---
 
 # Project Plan
@@ -1608,7 +1608,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-041
 **Title:** Wave E E-J2 — superseded, owner_hold, external tasks, ORCH-SOLO lane, Blocked_Reason vocabulary
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §12 (E-J.2, E-J.5, E-J.6)
@@ -1651,14 +1651,14 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-30T16:29:00Z] [CX] `python -m pytest -q tests/test_lanes.py tests/test_validate_plan.py` → 41 passed in 0.80s; `python -m pytest -q` → 1203 passed, 3 failed in 905.99s (only the listed out-of-scope legacy fixtures); `node hooks/run-tests.js` → 47 passed, 0 failed; `git diff --check` → clean.
 - [2026-09-30T16:04:54Z] [CX] `python -m pytest -q tests/test_lanes.py tests/test_validate_plan.py tests/test_control.py` → 96 passed; `node hooks/run-tests.js` → 47 passed, 0 failed; `python scripts/validate_plan.py C:\CLAUDECODE_kingdom.work\DEVDEPARTMENT\PLAN.md` → legal (1 size warning).
 - [2026-09-30T16:04:54Z] [CX] `python -m pytest -q` → 1202 passed, 3 failed in 561.95s; failures are the unowned legacy bare-reason fixtures detailed in Progress_Notes and dossier.
-**Review_Findings:** ORCH 2026-09-30T19:21:24Z (owner-directed unblock): OWNERSHIP_CONFLICT resolved — tests/test_supervisor_ledgers.py and tests/test_token_efficiency.py added to Owned_Paths so CX can update their fixtures; Status blocked -> in_progress. Branch task/TASK-041-cx, its commits, Progress_Notes and Test_Evidence are unchanged. ORCH edited neither test file nor any implementation file; CX makes and verifies the fixture updates.
+**Review_Findings:** ORCH 2026-09-30T22:49:49Z APPROVED (reviewer model: claude-opus-5-5). Territory clean (9/9). All six ACs verified in code+tests (tests/test_lanes.py; push only_if_configured). Live PLAN.md validates under the new rules. Integration run master+041+044: pytest 1210 passed/0 failed, node 47/0. tests/test_lanes.py registered in sync-manifest.json. NON-BLOCKING follow-ups: control.py:252 writes bare 'CAPACITY' into Blocked_Reason (no ': detail') — next task owning control.py should write 'CAPACITY: <detail>'; dispatch CONTROL prompt vocabulary text routed to TASK-045 rework.
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-09-30T20:19:41Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-09-30T22:49:49Z
 
 ### TASK-042
 **Title:** Wave E E-J3 — review rules into the command file, clock-stamped verdicts, frontmatter freshness, untracked-work detector
-**Status:** pending
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §12 (E-J.4, E-J.7, E-J.8), §6 (review timestamp bullet)
@@ -1667,19 +1667,38 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-040, TASK-039
 **Description:** (4) Move the review standing rules out of the review_cmd JSON string into .claude/commands/devteam-review.md; review_cmd only points at it. The review command writes each verdict timestamp from the system clock (`date -u` / `[DateTime]::UtcNow`) and records the reviewing model. (7) `plan_health.py freshness`: flag frontmatter last_updated/overall_status/orchestrator_notes older than the newest task Updated_At or newest [TASK-…] commit; called by /devteam-status and session-start.js. (8) `plan_health.py untracked`: count base-branch commits in the last 14 days with no [TASK-NNN]/[ORCH]/[MAINT] tag → 'work outside the plan'. devteam-decompose.md: replace the claude-fable-5 model line with claude-opus-5-5 (owner decision 2026-09-26, LIVE_CHECKS). **Protected-path grants (ORCH applies before dispatch):** scripts/plan_health.py, .claude/commands/**, hooks/session-start.js, autopilot.json.
 **Acceptance_Criteria:**
-- [ ] Untagged commits are counted (spec §12 Acceptance)
-- [ ] Stale frontmatter is flagged by /devteam-status and session-start on a fixture (E-J.7)
-- [ ] review_cmd contains no standing rules, only a pointer; the review command stamps verdict time from the clock and names the reviewing model (E-J.4, §6)
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+- [x] Untagged commits are counted (spec §12 Acceptance)
+- [x] Stale frontmatter is flagged by /devteam-status and session-start on a fixture (E-J.7)
+- [x] review_cmd contains no standing rules, only a pointer; the review command stamps verdict time from the clock and names the reviewing model (E-J.4, §6)
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+**Branch:** task/TASK-042-cx
+**Started_At:** 2026-09-30T20:20:01Z
+**Progress_Notes:**
+- [2026-09-30T20:57:34Z] [CX] Full rerun passed: 1205 Python tests in 750.78s; Node 47/47; focused health tests 7/7; session-start syntax and fixture checks pass. The first run's isolated concurrency timeout did not recur. TASK-042 implementation complete; submitting for review on task/TASK-042-cx (commits 17a907e, ecddd30).
+- [2026-09-30T20:44:14Z] [CX] First full Python run: 1204 passed, 1 failed in 867.12s; failure was a 30s timeout in existing `test_two_once_processes_share_an_exclusive_review_lock` under suite load. Immediate isolated rerun passed (1 passed in 32.93s). Treating as load-sensitive pending a clean full-suite rerun; no files outside TASK-042 Owned_Paths changed.
+- [2026-09-30T20:28:14Z] [CX] TASK-042 implementation committed as 17a907e; fixture whitespace cleanup in ecddd30. Added `plan_health.py` freshness/untracked checks, status/session-start reporting, review clock/model instructions, autopilot pointer, and selected decompose model. Focused tests pass 7/7; Node suite 47/47; starting full Python suite. No code was ported (origin SHA N/A).
+- [2026-09-30T20:20:59Z] [CX] TASK-042 preflight (c8b9872) inspected all Owned_Paths before edits:
+  ```text
+  [preflight] TASK-042 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-codex-DEVDEPARTMENT
+    MISSING scripts/plan_health.py  -> absent
+    MISSING tests/test_plan_health.py  -> absent
+    FILE   .claude/commands/devteam-review.md  -> exists, 18 line(s), 3660 bytes
+    FILE   .claude/commands/devteam-status.md  -> exists, 14 line(s), 1769 bytes
+    FILE   .claude/commands/devteam-decompose.md  -> exists, 16 line(s), 3277 bytes
+    FILE   hooks/session-start.js  -> exists, 78 line(s), 3848 bytes
+    FILE   autopilot.json  -> exists, 156 line(s), 5678 bytes
+    FILE   dossiers/TASK-042.md  -> exists, 14 line(s), 1820 bytes
+  ```
+  Branch task/TASK-042-cx starts from master after TASK-041's code branch remained unmerged.
+**Artifacts:** scripts/plan_health.py, tests/test_plan_health.py, .claude/commands/devteam-review.md, .claude/commands/devteam-status.md, .claude/commands/devteam-decompose.md, hooks/session-start.js, autopilot.json, dossiers/TASK-042.md
+**Test_Evidence:**
+- [2026-09-30T20:57:34Z] [CX] `python -m pytest -q` → 1205 passed in 750.78s; `node hooks/run-tests.js` → 47 passed, 0 failed; `python -m pytest -q tests/test_plan_health.py` → 7 passed; `node --check hooks/session-start.js` and `git diff --check` clean.
+- [2026-09-30T20:44:14Z] [CX] `python -m pytest -q` → 1204 passed, 1 failed in 867.12s (single timeout in `test_two_once_processes_share_an_exclusive_review_lock`); `python -m pytest -q tests/test_supervisor_ledgers.py::test_two_once_processes_share_an_exclusive_review_lock` → 1 passed in 32.93s. Full rerun pending.
+- [2026-09-30T20:28:14Z] [CX] `python -m pytest -q tests/test_plan_health.py` → 7 passed; `node hooks/run-tests.js` → 47 passed, 0 failed; `node --check hooks/session-start.js` and `git diff --check` clean. Full Python suite pending.
+**Review_Findings:** ORCH 2026-09-30T22:49:49Z REWORK (reviewer model: claude-opus-5-5). Territory clean (8/8). BLOCKING: (1) E-J.8 untracked detector is dominated by false positives — on this repo `plan_health.py` reports 148/293 commits 'outside the plan', and nearly all are protocol-mandated bookkeeping (`chore(plan): claim|start|submit TASK-NNN [CX]`, `chore(review): TASK-NNN rework [AUTOPILOT]`, `Merge branch 'master' into task/TASK-NNN-cx`). The spec's intent is detecting release work done outside PLAN (rwc case), so a commit whose subject names a TASK-NNN with a unit/SV/AUTOPILOT tag, or a merge of/into a task/TASK-NNN-* branch, must count as tracked; only commits naming no task and carrying none of [TASK-NNN]/[ORCH]/[MAINT] count. Add a test on a fixture repo containing each bookkeeping shape plus one genuinely untagged commit (expect 1). (2) .claude/commands/devteam-review.md: the new 'Reviewer identity' paragraph REPLACED the model-discipline rule — restore it (review runs on the configured reviewer model, never on claude-sonnet-5 = the S5 builder's model; CLAUDE.md 'ORCH model discipline') and keep the identity/recording text alongside it. Also carry the dropped review_cmd fact 'the integration branch is autopilot.json git.base_branch' into the command file, since review_cmd no longer states it. NON-BLOCKING: freshness uses `git log --all`, so any in-flight task-branch commit makes frontmatter 'stale' — acceptable per spec wording, but say so in the message. ORCH will register scripts/plan_health.py + tests/test_plan_health.py in sync-manifest.json at merge.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-27T19:07:45Z
+**Updated_At:** 2026-09-30T22:49:49Z
 
 ### TASK-043
 **Title:** Wave E exit — scripted exit-criteria scenario (10 × --once then accelerated 12 h --loop)
@@ -1709,7 +1728,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-044
 **Title:** Wave E E-G2 — new-project `git.push_policy: batch` default (split from TASK-036)
-**Status:** pending
+**Status:** done
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §9 (E-G), §8 item 7 (ask-don't-auto-flip precedent)
@@ -1718,23 +1737,35 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-036, TASK-040
 **Description:** Split from TASK-036 (OWNERSHIP_CONFLICT). When sync_from_pack creates a NEW project's autopilot.json it writes `git.push_policy: "batch"` (and `git.push_batch_minutes: 30`); when it syncs into an EXISTING project's autopilot.json it never adds or changes `git.push_policy` — an absent key keeps TASK-036's `every` behaviour, and the upgrade path only reports the option (ask-don't-auto-flip). DEVDEPARTMENT's own live autopilot.json is not edited by this task; opting this project into `batch` is Alister's call, applied by ORCH. **Protected-path grants (ORCH applies before dispatch):** scripts/sync_from_pack.py.
 **Acceptance_Criteria:**
-- [ ] A new-project sync writes `git.push_policy: "batch"` and `git.push_batch_minutes: 30` (spec §9: default `batch` for new projects)
-- [ ] Syncing into an existing project whose autopilot.json lacks `git.push_policy` leaves it absent, and one that sets it keeps its value byte-for-byte
-- [ ] The existing-project sync output mentions the `batch` option without applying it
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+- [x] A new-project sync writes `git.push_policy: "batch"` and `git.push_batch_minutes: 30` (spec §9: default `batch` for new projects)
+- [x] Syncing into an existing project whose autopilot.json lacks `git.push_policy` leaves it absent, and one that sets it keeps its value byte-for-byte
+- [x] The existing-project sync output mentions the `batch` option without applying it
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+**Branch:** task/TASK-044-cx
+**Started_At:** 2026-09-30T20:59:08Z
+**Progress_Notes:**
+- [2026-09-30T21:17:23Z] [CX] Full Python suite passed: 1202 passed in 788.61s; Node suite 47/47; focused sync suite 71/71; syntax/whitespace checks clean. TASK-044 is complete on task/TASK-044-cx, commit 426ce17; submitting for review.
+- [2026-09-30T21:03:43Z] [CX] Implemented and committed the new-project `batch`/30 config seed, preservation of project `git` settings, and existing-project opt-in message (commit 426ce17). Regression tests cover dry-run, new-project apply, missing and explicit existing policies. Focused sync suite 71/71; starting both full suites.
+- [2026-09-30T20:59:30Z] [CX] TASK-044 preflight (c8b9872) inspected all Owned_Paths before edits:
+  ```text
+  [preflight] TASK-044 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-codex-DEVDEPARTMENT
+    FILE   scripts/sync_from_pack.py  -> exists, 777 line(s), 39762 bytes
+    FILE   tests/test_sync_from_pack.py  -> exists, 826 line(s), 52437 bytes
+    MISSING dossiers/TASK-044.md  -> absent
+  ```
+  Spec §9 requires new projects to start with `batch`/30, while existing projects retain the configured or absent setting; sync currently handles only existing autopilot files.
+**Artifacts:** scripts/sync_from_pack.py, tests/test_sync_from_pack.py, dossiers/TASK-044.md
+**Test_Evidence:**
+- [2026-09-30T21:17:23Z] [CX] `python -m pytest -q` → 1202 passed in 788.61s; `node hooks/run-tests.js` → 47 passed, 0 failed; `python -m pytest -q tests/test_sync_from_pack.py::TestNewProjectPushPolicy tests/test_sync_from_pack.py` → 71 passed; `python -m compileall -q scripts/sync_from_pack.py` and `git diff --check` clean.
+- [2026-09-30T21:03:43Z] [CX] `python -m pytest -q tests/test_sync_from_pack.py::TestNewProjectPushPolicy tests/test_sync_from_pack.py` → 71 passed; `git diff --check` clean. Full Python and Node suites pending.
+**Review_Findings:** ORCH 2026-09-30T22:49:49Z APPROVED (reviewer model: claude-opus-5-5). Territory clean (3/3). New project seeds git={push_policy: batch, push_batch_minutes: 30} without pack git settings; existing projects untouched (git stays project-owned) with a 'NOT applied' offer. Integration run: pytest 1210/0, node 47/0. NON-BLOCKING: explicit-policy test compares parsed git object, not raw bytes (file is not rewritten in that case, so equivalent).
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-29T13:53:19Z
+**Updated_At:** 2026-09-30T22:49:49Z
 
 ### TASK-045
 **Title:** Wave E E-H2b — smoke test detects a codex argv without worktree write access (split from TASK-038)
-**Status:** pending
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.4) Acceptance
@@ -1743,18 +1774,31 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Depends_On:** TASK-037, TASK-038
 **Description:** Split from TASK-038 (owner-approved 2026-09-29). dispatch hard-codes Codex `-s danger-full-access`, so no fixture registry can express a codex unit that lacks write access. Make the codex sandbox/write-access flag come from the builder registry entry (default unchanged: danger-full-access, so live dispatch argv is byte-identical), then add the harness smoke fixture whose codex argv lacks worktree write access and assert the smoke test FAILS on it. Also carried from TASK-038 review: (a) wire the smoke to run on builder_registry changes and before an onboarding's first dispatch (spec §10); (b) dispatch.sh must not report success when the builder CLI fails to start (observed: `exec: node: not found` -> "Session ended", exit 0).
 **Acceptance_Criteria:**
-- [ ] Smoke test fails on a fixture registry whose codex argv lacks write access to the worktree (spec §10 Acceptance)
-- [ ] Default registry produces a byte-identical codex dispatch argv to before (dry-run comparison in a test)
-- [ ] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
-**Branch:** —
-**Started_At:** —
-**Progress_Notes:** —
-**Artifacts:** —
-**Test_Evidence:** —
-**Review_Findings:** —
+- [x] Smoke test fails on a fixture registry whose codex argv lacks write access to the worktree (spec §10 Acceptance)
+- [x] Default registry produces a byte-identical codex dispatch argv to before (dry-run comparison in a test)
+- [x] Full Python suite (`python -m pytest -q`) and Node suite (`node hooks/run-tests.js`) green in the worktree; counts recorded in Test_Evidence
+**Branch:** task/TASK-045-cx
+**Started_At:** 2026-09-30T21:18:24Z
+**Progress_Notes:**
+- [2026-09-30T21:18:58Z] [CX] TASK-045 preflight (c8b9872) inspected all Owned_Paths before edits:
+  ```text
+  [preflight] TASK-045 Owned_Paths inspected in C:/CLAUDECODE_kingdom.work/wt-codex-DEVDEPARTMENT
+    FILE   scripts/dispatch.sh  -> exists, 499 line(s), 31740 bytes
+    FILE   scripts/dispatch.ps1  -> exists, 788 line(s), 49782 bytes
+    FILE   scripts/builder_registry.py  -> exists, 237 line(s), 12376 bytes
+    FILE   tests/test_builder_registry.py  -> exists, 148 line(s), 8533 bytes
+    FILE   tests/test_harness_smoke.py  -> exists, 311 line(s), 15769 bytes
+    MISSING tests/fixtures/smoke  -> absent
+    MISSING dossiers/TASK-045.md  -> absent
+  ```
+  Registry currently has no Codex sandbox field; dispatch defaults Codex to `danger-full-access`. I’m checking existing smoke/onboarding wiring before implementation.
+- [2026-09-30T22:10:05Z] [CX] Implemented registry-configured Codex sandbox (default remains danger-full-access), read-only write-denial fixture, pre-dispatch smoke preflight, and nonzero CLI status propagation. Commit fd32c41. Full Python suite passed 1205 tests in 807.33s; Node suite 47/47. After the user requested test-runtime optimization, streamlined duplicate full-dispatch smoke cases and added an end-to-end preflight-before-launch check; final affected suite 42/42 in 61.23s. A second full-suite run was stopped at ~65% for the requested performance investigation; no failures had appeared. Broader suite optimization is outside this task's Owned_Paths and should be tracked separately.
+**Artifacts:** scripts/builder_registry.py, scripts/dispatch.sh, scripts/dispatch.ps1, tests/test_builder_registry.py, tests/test_harness_smoke.py, tests/fixtures/smoke/codex-read-only-registry.json, dossiers/TASK-045.md; commit fd32c41
+**Test_Evidence:** `python -m pytest -q` -> 1205 passed in 807.33s (full run before final test-only smoke-suite refactor); final affected tests `python -m pytest --durations=12 -q tests/test_builder_registry.py tests/test_harness_smoke.py` -> 42 passed in 61.23s; `node hooks/run-tests.js` -> 47 passed, 0 failed. Final changes also pass `bash -n scripts/dispatch.sh`, PowerShell parser, `python -m compileall`, `git diff --check`, and `python scripts/validate_plan.py PLAN.md` (one existing PLAN size warning).
+**Review_Findings:** ORCH 2026-09-30T22:49:49Z REWORK (reviewer model: claude-opus-5-5). Territory clean (7/7); codex_sandbox registry field, default argv byte-identical (dry-run test) and dispatch.sh exit-status propagation are correct. BLOCKING: (1) dispatch.ps1 now runs tests/test_harness_smoke.py --preflight before every real launch and refuses to dispatch when it fails, but the preflight drives scripts/dispatch.sh through Git Bash (_bash() raises 'Git Bash is required' when C:/Program Files/Git is absent). test_harness_smoke.py is framework-owned and ships to every project, so a Windows project without Git Bash at that path can no longer dispatch at all, and the check never exercises the .ps1 argv it is guarding. Fix: in dispatch.ps1, a preflight that cannot run (no bash) must warn and continue, not refuse; only an actual write-smoke failure refuses. Test both cases. (2) The read-only fixture fails only because the stub itself is rigged (`-s read-only` → exit 73). Real codex under read-only exits 0 without writing — make the codex stub's read-only branch behave that way (exit 0, no write) so the smoke's own 'did not write its Owned_Paths smoke file' check is what fails; the test then shows the smoke detecting missing write access rather than the stub reporting it. (3) Blocked-reason vocabulary drift from TASK-041 (merged): the builder CONTROL prompt in dispatch.sh:286 and dispatch.ps1:389 still says 'blocked_reason must start with SPEC_AMBIGUITY … or OTHER:'; control.py now requires `CATEGORY: detail` and accepts CAPACITY. Update both prompts to the new format (list CAPACITY; say ': detail' is required). ORCH will register tests/fixtures/smoke/codex-read-only-registry.json in sync-manifest.json at merge (the shipped smoke test reads it).
 **Blocked_Reason:** —
 **Updated_By:** ORCH
-**Updated_At:** 2026-09-29T14:11:59Z
+**Updated_At:** 2026-09-30T22:49:49Z
 
 ### TASK-046
 **Title:** Wave E E-H1b — full suite green on the CI matrix (split from TASK-037)
