@@ -1360,7 +1360,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-036
 **Title:** Wave E E-G — bookkeeping push policy (every | batch | merge_only)
-**Status:** in_progress
+**Status:** blocked
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §9 (E-G)
@@ -1410,13 +1410,15 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   ```
 - [2026-09-29T13:32:00Z] [CX] Blocked before implementation: acceptance requires changing the new-project default while preserving existing-project `every`; `autopilot.json` is both the live project config and template, and `scripts/sync_from_pack.py` owns how config is copied. Both are outside TASK-036 Owned_Paths; editing only the allowed files cannot safely meet the acceptance criteria.
 - [2026-09-30T14:59:23Z] [CX] Implemented durable push scheduling and committed 5a10368; all TASK-036 acceptance criteria verified. ORCH must register the two new framework files in sync-manifest.json at merge (outside this task territory).
+- [2026-09-30T15:16:41Z] [CX] Fixed all three ORCH review findings in 82decda (dossier evidence in 8143d80). Focused 153 passed and Node 47 passed. Full Python suite fails only in tests/test_dispatch_worktree.py::TestClaimVerifiedAfterLegacyLaunch::test_claim_flip_within_window_does_not_log_claim_unverified (1197 passed, 1 failed; isolation repeats); fixture races its one-second PLAN writer with dispatch preflight. That test file is outside Owned_Paths, so requesting an ownership re-carve.
 **Artifacts:** scripts/push_policy.py, scripts/plan_commit.sh, scripts/plan_commit.ps1, scripts/control.py, scripts/supervisor.py, tests/test_push_policy.py, tests/test_plan_commit.py, dossiers/TASK-036.md
 **Test_Evidence:**
 - [2026-09-30T14:59:23Z] [CX] `python -m pytest -q tests/test_push_policy.py tests/test_control.py tests/test_plan_commit.py` → 87 passed in 81.71s; `python -m pytest -q` → 1195 passed in 543.37s; `node hooks/run-tests.js` → 47 passed, 0 failed.
+- [2026-09-30T15:16:41Z] [CX] `python -m pytest -q tests/test_push_policy.py tests/test_plan_commit.py tests/test_control.py tests/test_sync_from_pack.py` → 153 passed in 111.93s; `node hooks/run-tests.js` → 47 passed, 0 failed; `python -m pytest -q` → 1197 passed, 1 failed in 579.98s; isolated failing test → 1 failed in 2.49s.
 **Review_Findings:** REWORK (ORCH, claude-opus-5-5, 2026-09-30T15:00:56Z). Territory clean 8/8; policy module, durable window, lock, per-tick boundary check, merge/park flushes all read well. BLOCKING: (1) Behaviour change for existing projects: plan_commit.sh/.ps1 never pushed before (header said 'No push'). With the key absent -> `every`, every builder PLAN.md commit now runs `git push` on the integration branch. On THIS repo master is 257 commits ahead of origin (last push 2026-09-15), so the first plan_commit after merge would publish all of it unasked. 'Existing configs without the key keep today's behaviour' must hold per call site: when `git.push_policy` is ABSENT, plan_commit must not push at all (unchanged); supervisor/control paths keep their existing commit-and-push. plan_commit pushes only when the key is explicitly set (every|batch|merge_only). Expose this as e.g. `push_policy.py --event bookkeeping --only-if-configured` (or a `configured` flag from _config) and test both: absent key -> plan_commit makes NO push (assert remote ref unchanged); explicit `every` -> pushes. (2) push_policy.main returns 1 for benign outcomes ('already published', 'push-policy lock busy'), so plan_commit prints 'push failed; PLAN.md commit is local' when nothing failed. Return 0 for every non-error outcome; reserve non-zero for a real push/config error, and make the plan_commit warning quote the helper's note. (3) Register scripts/push_policy.py and tests/test_push_policy.py in sync-manifest.json yourself (now in Owned_Paths). Run both suites in the foreground and submit in the same turn.
-**Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-09-30T15:00:56Z
+**Blocked_Reason:** OWNERSHIP_CONFLICT: Need tests/test_dispatch_worktree.py to remove the fixed-delay PLAN.md writer race that fails the required full suite on Windows.
+**Updated_By:** CX
+**Updated_At:** 2026-09-30T15:16:41Z
 
 ### TASK-037
 **Title:** Wave E E-H1 — Windows runner lifecycle, CR stripping, line-ending defaults, Windows CI matrix
