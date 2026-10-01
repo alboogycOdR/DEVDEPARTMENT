@@ -67,7 +67,13 @@ function Write-PlanBlob([string]$Destination) {
     # PowerShell 5.1 decodes native stdout through the console code page and
     # Set-Content re-encodes it (including a BOM/CRLF). Copy the process stream
     # directly so the UTF-8 blob bytes, including em dashes, remain untouched.
-    $GitExe = (Get-Command git.exe -ErrorAction Stop).Source
+    # Prefer the native Windows executable over .cmd shims; Unix installs
+    # expose the same executable as `git` without the .exe suffix.
+    $GitCommand = Get-Command git.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $GitCommand) {
+        $GitCommand = Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1
+    }
+    $GitExe = $GitCommand.Source
     $StartInfo = New-Object System.Diagnostics.ProcessStartInfo
     $StartInfo.FileName = $GitExe
     $StartInfo.Arguments = '-C "' + $RepoRoot + '" show HEAD:PLAN.md'
@@ -76,7 +82,7 @@ function Write-PlanBlob([string]$Destination) {
     $StartInfo.RedirectStandardError = $true
     $GitProcess = New-Object System.Diagnostics.Process
     $GitProcess.StartInfo = $StartInfo
-    if (-not $GitProcess.Start()) { throw "could not start git.exe to read HEAD:PLAN.md" }
+    if (-not $GitProcess.Start()) { throw "could not start git to read HEAD:PLAN.md" }
     $OutputFile = [System.IO.File]::Open($Destination, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
     try { $GitProcess.StandardOutput.BaseStream.CopyTo($OutputFile) }
     finally { $OutputFile.Dispose() }

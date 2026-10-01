@@ -63,6 +63,7 @@ ID="";      CLI="";        MODEL="";      WORKTREE_SUFFIX=""
 SUFFIX="";  BRIEFING="";   AUTO_LOADS_CONTEXT="false"
 AUTH_MODE="default";       AUTH_VALUE=""
 IDENTITY="preamble";       AGENT_NAME="devteam-builder"
+CODEX_SANDBOX="danger-full-access"
 while IFS='=' read -r k v; do
   case "$k" in
     UNIT) ID="$v" ;; CLI) CLI="$v" ;; MODEL) MODEL="$v" ;;
@@ -70,6 +71,7 @@ while IFS='=' read -r k v; do
     BRIEFING) BRIEFING="$v" ;; AUTO_LOADS_CONTEXT) AUTO_LOADS_CONTEXT="$v" ;;
     AUTH_MODE) AUTH_MODE="$v" ;; AUTH_VALUE) AUTH_VALUE="$v" ;;
     IDENTITY) IDENTITY="$v" ;; AGENT_NAME) AGENT_NAME="$v" ;;
+    CODEX_SANDBOX) CODEX_SANDBOX="$v" ;;
   esac
 done <<< "$REG_KV"
 [[ -n "$ID" && -n "$CLI" && -n "$WORKTREE_SUFFIX" && -n "$SUFFIX" && -n "$BRIEFING" ]] || {
@@ -97,7 +99,7 @@ case "$CLI" in
   # --reasoning-effort is not a valid `codex exec` CLI flag (confirmed against
   # codex-cli 0.144.5); model_reasoning_effort is authoritative via
   # .codex/config.toml, per that file's own comment.
-  codex) CMD=(codex exec ${MODEL:+--model "$MODEL"} -s danger-full-access) ;;
+  codex) CMD=(codex exec ${MODEL:+--model "$MODEL"} -s "$CODEX_SANDBOX") ;;
   # claude: -p takes the prompt as a trailing positional argument.
   claude) CMD=(claude -p ${MODEL:+--model "$MODEL"} --dangerously-skip-permissions) ;;
   *) echo "[dispatch] ERROR: unknown CLI family '$CLI' for unit $ID — refusing to dispatch." >&2; exit 1 ;;
@@ -105,6 +107,17 @@ esac
 
 echo "[dispatch] Validating PLAN.md..."
 python3 scripts/validate_plan.py PLAN.md || { echo "[dispatch] PLAN.md illegal — fix before dispatching." >&2; exit 1; }
+
+# Verify the current registry-derived CLI argv can write to a disposable
+# owned-path fixture before the first real launch. The fixture dispatch sets
+# DEVTEAM_PREFLIGHT_ACTIVE so it does not recursively launch another preflight.
+if [[ "${DEVTEAM_PREFLIGHT_ACTIVE:-0}" != "1" && -f "$REPO_ROOT/tests/test_harness_smoke.py" ]]; then
+  echo "[dispatch] Running registry fixture preflight for $ID..."
+  DEVTEAM_PREFLIGHT_ACTIVE=1 python3 tests/test_harness_smoke.py --preflight --repo "$REPO_ROOT" --units "$ID" || {
+    echo "[dispatch] ERROR: registry fixture preflight failed; refusing to launch $ID." >&2
+    exit 1
+  }
+fi
 
 # E-F.4: the main checkout's PLAN.md must be exactly what's committed — a
 # dirty main-checkout PLAN.md means some earlier write never landed (the
@@ -283,7 +296,7 @@ Procedure: (1) Read AGENTS.md and $BRIEFING, then PLAN.md, fresh from disk, for 
 \`\`\`devteam-control
 {\"control_version\": 1, \"task\": \"$TASK_ID\", \"unit\": \"$ID\", \"status\": \"needs_review\", \"progress_note\": \"...\", \"artifacts\": [\"path/a.dart\"], \"test_evidence\": \"...\", \"blocked_reason\": null, \"next_step\": null}
 \`\`\`
-status must be exactly one of in_progress (mid-session checkpoint — dossier note + next_step, nothing else changes) / needs_review (requires non-empty test_evidence) / blocked (blocked_reason must start with SPEC_AMBIGUITY, MISSING_DEPENDENCY, OWNERSHIP_CONFLICT, SYNC_MISMATCH, TOOLING_FAILURE, or OTHER:). Never done/pending/claimed — those are the supervisor's alone. Conventional Commits ending [$TASK_ID] for your code commits (never for PLAN.md — you don't touch it). Never write to specs/, docs/, REVIEW.md, scripts/, .claude/, PLAN.md, other dossiers, or main."
+status must be exactly one of in_progress (mid-session checkpoint — dossier note + next_step, nothing else changes) / needs_review (requires non-empty test_evidence) / blocked (blocked_reason must use CATEGORY: detail; ': detail' is required and non-empty; CATEGORY is SPEC_AMBIGUITY, MISSING_DEPENDENCY, OWNERSHIP_CONFLICT, SYNC_MISMATCH, TOOLING_FAILURE, CAPACITY, or OTHER). Never done/pending/claimed — those are the supervisor's alone. Conventional Commits ending [$TASK_ID] for your code commits (never for PLAN.md — you don't touch it). Never write to specs/, docs/, REVIEW.md, scripts/, .claude/, PLAN.md, other dossiers, or main."
 else
   PROMPT="${IDENTITY_OVERRIDE}You are $ID, a builder in a multi-agent dev team. Working directory: $WT — your isolated git worktree on your own task branch. ALL CODE changes are made and committed there; never put code on main (merging is ORCH's, after review). PLAN.md is the deliberate exception: it is the shared coordination blackboard living at $REPO_ROOT/PLAN.md on main. READ and EDIT it at that path so you both see and publish current state. To record ANY PLAN.md change (claim, status transition, Progress_Note, needs_review) run: scripts/plan_commit.sh 'chore(plan): <what> [$ID]' - it commits PLAN.md alone directly onto main and cannot carry code. DO NOT run 'git push . HEAD:main': that is the old procedure and a known trap - it works on claim, but by needs_review your HEAD sits on your code commits and that push lands them all on the integration branch unreviewed. A PLAN.md commit left on your task branch is invisible to ORCH and the other builders until merge, which defeats the whole point of a blackboard. Code to your branch; PLAN.md to main; never the reverse.
 Procedure: (1) Read AGENTS.md and $BRIEFING, then PLAN.md, fresh from disk. If dossiers/TASK-NNN.md exists for your task, read it in full before acting and append a Work Log entry each session — never ask for re-explanation of anything in the dossier. (2) RESUME CHECK FIRST — scan PLAN.md for any task with Assigned_To: $ID and Status: in_progress or claimed. If found, resume that task immediately: re-read its Owned_Paths files and the last Progress_Note to find the exact stopping point, then continue on the existing branch (do not re-claim or re-branch). Only if NO in_progress/claimed task exists: claim the highest-priority pending task Assigned_To: $ID whose dependencies are done — one atomic edit+commit setting Status: claimed, Branch: task/TASK-NNN-$SUFFIX, Started_At. (3) Create (or switch to) the task branch in your worktree and implement strictly against the task's Spec_References, touching ONLY files under its Owned_Paths. (4) Test everything; append Test_Evidence. RUN EVERY VERIFICATION COMMAND IN THE FOREGROUND AND WAIT FOR IT IN THIS TURN - you are a one-shot -p invocation, so there is no later turn and NO notification can ever reach you. Never background a suite and say you will resume when notified: five builder sessions have died exactly there, work committed but the handoff lost. A long blocking wait is correct and safe. (5) Append-only Progress_Notes with UTC timestamps and [$ID] tags — if your context is approaching its limit, write a detailed stopping-point note (what is done, what file, exact next step) and commit before stopping. (6) Finish at needs_review (never done), or blocked with a vocabulary reason. Conventional Commits ending [TASK-NNN]. Never write to specs/, docs/, REVIEW.md, scripts/, .claude/, other task blocks, or main."
@@ -463,7 +476,10 @@ if [[ "$CONTROL_MODE" == "strict" ]]; then
   # Capture full stdout to the run log while still showing it live (tee),
   # so the CONTROL fence can be extracted from the log afterward regardless
   # of what the terminal happened to scroll past.
-  ( cd "$WT" && "${AUTH_ENV[@]}" "${CMD[@]}" "$PROMPT" ) 2>&1 | tee "$LOG_PATH" || true
+  set +e
+  ( cd "$WT" && "${AUTH_ENV[@]}" "${CMD[@]}" "$PROMPT" ) 2>&1 | tee "$LOG_PATH"
+  LAUNCH_STATUS=${PIPESTATUS[0]}
+  set -e
 
   echo "[dispatch] Session ended. Extracting devteam-control block..."
   EXTRACT_OUT="$(python3 scripts/control.py extract \
@@ -476,6 +492,10 @@ if [[ "$CONTROL_MODE" == "strict" ]]; then
       ;;
   esac
   echo "[dispatch] control.mode=strict: PLAN.md is applied by the supervisor's next tick, not here. Run /devteam-status once it has ticked."
+  if [[ "$LAUNCH_STATUS" -ne 0 ]]; then
+    echo "[dispatch] ERROR: builder CLI exited $LAUNCH_STATUS; dispatch did not succeed." >&2
+    exit "$LAUNCH_STATUS"
+  fi
   exit 0
 else
   ( cd "$WT" && "${AUTH_ENV[@]}" "${CMD[@]}" "$PROMPT" ) &
@@ -516,12 +536,19 @@ sys.exit(0 if has_resumable_task('.', '$ID') else 1)
   if [[ "$CLAIM_SEEN" -eq 0 ]] && kill -0 "$LAUNCH_PID" 2>/dev/null; then
     echo "[dispatch] CLAIM_UNVERIFIED: no PLAN.md claim/in_progress flip observed for $ID within ${CLAIM_VERIFY_SECONDS}s. Not fatal -- the builder's first commit will be picked up and reconciled on the next check." >&2
   fi
-  wait "$LAUNCH_PID" || true
+  set +e
+  wait "$LAUNCH_PID"
+  LAUNCH_STATUS=$?
+  set -e
 
   echo "[dispatch] Session ended. Re-validating PLAN.md..."
   python3 scripts/validate_plan.py PLAN.md || {
     echo "[dispatch] WARNING: PLAN.md now protocol-illegal — builder violated protocol. Inspect: git log -p -- PLAN.md" >&2
     exit 1
   }
+  if [[ "$LAUNCH_STATUS" -ne 0 ]]; then
+    echo "[dispatch] ERROR: builder CLI exited $LAUNCH_STATUS; dispatch did not succeed." >&2
+    exit "$LAUNCH_STATUS"
+  fi
   echo "[dispatch] Done. Run /status in Claude Code for the health scan."
 fi

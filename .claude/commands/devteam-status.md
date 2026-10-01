@@ -6,6 +6,7 @@ You are ORCH executing **Phase 3 — Monitoring & Dynamic Re-planning**.
 
 1. Run `python scripts/validate_plan.py`. Report violations first — an illegal plan means a unit broke protocol; find the offending edit via `git log -p -- PLAN.md` and identify the unit.
    Also run `python scripts/sync_from_pack.py --behind-pack --project .`; if it prints a warning, include it verbatim in the report.
+   Run `python scripts/plan_health.py --repo .` and include both the frontmatter-freshness and "work outside the plan" lines verbatim. A stale/missing history source is observability, not a reason to stop the status scan.
 2. Cross-check reality vs claims:
    - For each active task: does its `Branch` exist (`git branch --list "task/*"`)? Do `Artifacts` files exist on that branch (`git ls-tree -r <branch> --name-only`)? Do commit messages carry the `[TASK-NNN]` suffix?
    - `git diff main...<branch> --stat` for each active branch: **any path outside the task's Owned_Paths is a critical finding** — flag immediately, don't wait for review.

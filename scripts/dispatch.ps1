@@ -74,6 +74,7 @@ $AutoLoadsContext = ($Reg["AUTO_LOADS_CONTEXT"] -eq "true")
 $AuthMode = $Reg["AUTH_MODE"]; $AuthValue = $Reg["AUTH_VALUE"]
 $Identity = $Reg["IDENTITY"]; if (-not $Identity) { $Identity = "preamble" }
 $AgentName = $Reg["AGENT_NAME"]; if (-not $AgentName) { $AgentName = "devteam-builder" }
+$CodexSandbox = $Reg["CODEX_SANDBOX"]; if (-not $CodexSandbox) { $CodexSandbox = "danger-full-access" }
 if (-not $Id -or -not $Cli -or -not $Reg["WORKTREE_SUFFIX"] -or -not $Suffix -or -not $Briefing) {
     Write-Error "[dispatch] Registry resolution for '$Builder' returned an incomplete entry - refusing to dispatch."
     exit 1
@@ -124,7 +125,7 @@ switch ($Cli) {
         $Cmd = "cmd"
         $CmdArgs = @("/c", "codex", "exec")
         if ($Model) { $CmdArgs += @("--model", $Model) }
-        $CmdArgs += @("-s", "danger-full-access")
+        $CmdArgs += @("-s", $CodexSandbox)
         $PromptViaStdin = $true
     }
     "claude" {
@@ -386,7 +387,7 @@ Procedure: (1) Read AGENTS.md and $Briefing, then PLAN.md, fresh from disk, for 
 ${Fence}devteam-control
 {"control_version": 1, "task": "$TaskId", "unit": "$Id", "status": "needs_review", "progress_note": "...", "artifacts": ["path/a.dart"], "test_evidence": "...", "blocked_reason": null, "next_step": null}
 ${Fence}
-status must be exactly one of in_progress (mid-session checkpoint - dossier note + next_step, nothing else changes) / needs_review (requires non-empty test_evidence) / blocked (blocked_reason must start with SPEC_AMBIGUITY, MISSING_DEPENDENCY, OWNERSHIP_CONFLICT, SYNC_MISMATCH, TOOLING_FAILURE, or OTHER:). Never done/pending/claimed - those are the supervisor's alone. Conventional Commits ending [$TaskId] for your code commits (never for PLAN.md - you don't touch it). Never write to specs/, docs/, REVIEW.md, scripts/, .claude/, PLAN.md, other dossiers, or main.
+status must be exactly one of in_progress (mid-session checkpoint - dossier note + next_step, nothing else changes) / needs_review (requires non-empty test_evidence) / blocked (blocked_reason must use CATEGORY: detail; ': detail' is required and non-empty; CATEGORY is SPEC_AMBIGUITY, MISSING_DEPENDENCY, OWNERSHIP_CONFLICT, SYNC_MISMATCH, TOOLING_FAILURE, CAPACITY, or OTHER). Never done/pending/claimed - those are the supervisor's alone. Conventional Commits ending [$TaskId] for your code commits (never for PLAN.md - you don't touch it). Never write to specs/, docs/, REVIEW.md, scripts/, .claude/, PLAN.md, other dossiers, or main.
 "@
 } else {
     $Prompt = $IdentityOverride + @"
@@ -593,6 +594,28 @@ if ($DryRun) {
     Write-Host "--- Prompt ---"
     Write-Host $Prompt
     exit 0
+}
+
+# Verify the registry-derived CLI argv can write to a disposable owned-path
+# fixture before a real launch. The fixture sets DEVTEAM_PREFLIGHT_ACTIVE so
+# its nested dispatch does not recursively invoke this check.
+$PreflightScript = Join-Path $RepoRoot "tests\test_harness_smoke.py"
+if ($env:DEVTEAM_PREFLIGHT_ACTIVE -ne "1" -and (Test-Path $PreflightScript)) {
+    Write-Host "[dispatch] Running registry fixture preflight for $Id..." -ForegroundColor Cyan
+    $PreviousPreflight = $env:DEVTEAM_PREFLIGHT_ACTIVE
+    try {
+        $env:DEVTEAM_PREFLIGHT_ACTIVE = "1"
+        & $Py $PreflightScript --preflight --repo $RepoRoot --units $Id
+        if ($LASTEXITCODE -eq 77) {
+            Write-Warning "[dispatch] Registry shell fixture preflight unavailable (Bash missing); continuing native PowerShell dispatch. PowerShell argv was not checked by this shell smoke."
+        } elseif ($LASTEXITCODE -ne 0) {
+            Write-Error "[dispatch] Registry fixture preflight failed; refusing to launch $Id."
+            exit 1
+        }
+    } finally {
+        if ($null -eq $PreviousPreflight) { Remove-Item Env:\DEVTEAM_PREFLIGHT_ACTIVE -ErrorAction SilentlyContinue }
+        else { $env:DEVTEAM_PREFLIGHT_ACTIVE = $PreviousPreflight }
+    }
 }
 
 Write-Host "[dispatch] Launching $Builder ($Id) in $Wt..." -ForegroundColor Green

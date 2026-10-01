@@ -139,7 +139,10 @@
     "scripts/retire_unit.py",
     "tests/test_retire_unit.py",
     "tests/test_worktree_ps1.py",
-    "tests/test_lanes.py"
+    "tests/test_lanes.py",
+    "scripts/plan_health.py",
+    "tests/test_plan_health.py",
+    "tests/fixtures/smoke/codex-read-only-registry.json"
   ],
   "project_owned": [
     "PLAN.md",

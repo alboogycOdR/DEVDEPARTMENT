@@ -1,6 +1,7 @@
 # Loop hygiene v2 — making the loop cheap, quiet and durable
 
-**Status:** SPEC v2.1 — Wave E. Supersedes v1 and v2 (same path, 2026-09-26).
+**Status:** SPEC v2.2 — Wave E. Supersedes v1, v2 and v2.1 (same path; v2.2 amended 2026-10-01).
+**v2.2 (2026-10-01, ORCH, raised by TASK-043 SPEC_AMBIGUITY):** E-B.3 re-send timer is now capped — each escalation key is re-sent by timer at most `escalation.max_timer_resends` times (default 1), reconciling E-B.3's 1 h P1 interval with §15's "re-sent at most once more by timer". The interval still sets *when* the re-send happens; the cap sets *how many*. See E-B.3.
 **v2.1:** adds rwc-mobile-connect evidence (stranded ~v1.2 install, builder PLAN.md damage in legacy mode, CLI launch breakage, work that doesn't fit the task shape). The changes are in E-0.5–6, E-D, E-F.6–7, E-H.4–5 and E-J.5–8.
 **Origin:** code review (`reviews/DEVDEPARTMENT_REVIEW_2026-09-26.md` §2) **plus field evidence** from KERYX and oikonomos (`reviews/FIELD_FEEDBACK_SYNTHESIS_2026-09-26.md`). v2 re-ranks by measured cost and adds the defects that only the field could show.
 **Baseline:** pack `master` @ `b74d581`; suites 1028 Python (4 skipped) / 36 Node green.
@@ -63,6 +64,7 @@ Extends the E-0 port of `a14f8976`. All ledgers live in `RuntimeState` (on disk,
 2. **Markers.** `REVIEW_START task=… sha=… session=…` and `REVIEW_END task=… verdict=approved|rework|none duration=…` in AUTOPILOT_LOG. They make the "4-second review" question in the synthesis answerable.
 3. **Escalation ledger (H1).** Key = `kind|task_id|reason_prefix|digit-masked detail` (the masking follows `a14f8976`).
    - Send on first sight or on change; re-send after `escalation.renotify_hours` (default 4 for P2, 1 for P1).
+   - **(v2.2)** Timer re-sends per key are capped at `escalation.max_timer_resends` (default 1). After the cap the key is held — `ESCALATION_HELD` logged once per hold period, nothing sent — until the condition changes (new key) or clears. This is H1's "slow timer" made finite: a P1 is never muted (first sight, change and one reminder always go out) but is not repeated indefinitely. The same cap applies to the parked-loop frozen-task P1 reminder (E-C).
    - Otherwise log `ESCALATION_HELD` **once per hold period**, not per tick.
    - HALT from a STOP file logs once per STOP-file mtime.
    - Clear the key when the condition is gone.
