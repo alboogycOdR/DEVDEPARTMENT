@@ -53,6 +53,9 @@ Entry schema (per unit):
                             docs/BUILDER_REGISTRY.md "Builder identity".
   agent_name                agent to use when identity == "agent"
                             (default "devteam-builder")
+  codex_sandbox             Codex CLI sandbox: read-only, workspace-write,
+                            or danger-full-access (defaults to the historic
+                            danger-full-access invocation)
 """
 from __future__ import annotations
 
@@ -81,6 +84,7 @@ LEGACY_DEFINITIONS: dict[str, dict] = {
         "briefing": "briefings/CODEX_BRIEFING.md",
         "auto_loads_ambient_context": False,
         "usage_provider": "codex",
+        "codex_sandbox": "danger-full-access",
     },
     "S5": {
         "cli": "claude",
@@ -95,6 +99,7 @@ LEGACY_DEFINITIONS: dict[str, dict] = {
 }
 
 REQUIRED_FIELDS = ("cli", "worktree_suffix", "branch_suffix", "briefing")
+CODEX_SANDBOXES = frozenset({"read-only", "workspace-write", "danger-full-access"})
 
 # Structural (non-builder) units — always valid, never in the registry.
 STRUCTURAL_UNITS = frozenset({"ORCH", "SV"})
@@ -120,6 +125,12 @@ def _normalize_entry(unit: str, entry: dict) -> dict:
     out.setdefault("auth", {"mode": "default"})
     out.setdefault("auto_loads_ambient_context", entry.get("cli") == "claude")
     out.setdefault("usage_provider", None)
+    if out.get("cli") == "codex":
+        out.setdefault("codex_sandbox", "danger-full-access")
+        if not isinstance(out["codex_sandbox"], str) or out["codex_sandbox"] not in CODEX_SANDBOXES:
+            choices = ", ".join(sorted(CODEX_SANDBOXES))
+            raise RegistryError(
+                f"builders.defined['{unit}'].codex_sandbox must be one of: {choices}")
     # Identity mechanism for claude-CLI units. Default "preamble" = today's
     # behavior exactly; "agent" is opt-in per unit after the live
     # verification in docs/BUILDER_REGISTRY.md, mirroring how control.mode
@@ -255,6 +266,7 @@ def _main(argv: list[str]) -> int:
         print(f"AUTH_VALUE={auth.get('value', '')}")
         print(f"IDENTITY={e.get('identity', 'preamble')}")
         print(f"AGENT_NAME={e.get('agent_name', 'devteam-builder')}")
+        print(f"CODEX_SANDBOX={e.get('codex_sandbox', 'danger-full-access') if e.get('cli') == 'codex' else ''}")
         return 0
     except RegistryError as exc:
         print(f"builder_registry: {exc}", file=__import__("sys").stderr)
