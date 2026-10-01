@@ -280,15 +280,14 @@ def test_judgment_prompt_is_explicit_and_never_starts_with_a_slash():
         assert not prompt.startswith("/")
 
 
-def test_triage_unblock_uses_judgment_model(monkeypatch):
+def test_triage_unblock_uses_judgment_model(monkeypatch, tmp_path):
     """Scope triage is architectural judgment — must run on the judgment_model
     (opus-4-8), never the S5 builder's own model."""
     calls = []
     monkeypatch.setattr("supervisor.run_shell", lambda cmd, repo: calls.append(cmd) or 0)
     from supervisor import execute, RuntimeState, Action
-    import pathlib
     execute([Action("TRIAGE_UNBLOCK", "TASK-001: ORCH to re-sequence dependencies", task_id="TASK-001")],
-            DEFAULT_CONFIG, RuntimeState(), pathlib.Path("/tmp"), dry_run=False)
+            DEFAULT_CONFIG, RuntimeState(), tmp_path, dry_run=False)
     assert calls and "claude-opus-4-8" in calls[0]
     assert "claude-sonnet-5" not in calls[0]
 
