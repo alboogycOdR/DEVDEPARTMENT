@@ -1705,7 +1705,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-043
 **Title:** Wave E exit — scripted exit-criteria scenario (10 × --once then accelerated 12 h --loop)
-**Status:** in_progress
+**Status:** needs_review
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §15, §16
@@ -1733,15 +1733,18 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
   ```
 - [2026-09-30T23:12:42Z] [CX] Implemented full exit scenario in fe1b36f. All measurable bounds pass except reminders: the same P1 sends 13 times. Spec section 4 hourly reminder conflicts with section 15 at-most-one-repeat over 12 hours. Awaiting ORCH decision; retained failing assertion.
 - [2026-10-01T09:02:04Z] [CX] Implemented spec v2.2 `escalation.max_timer_resends` (default 1) with a durable per-key resend count, including parked frozen-task P1s; preserved quiet IDLE ticks before the reminder is due. Synced current master. Final scenario, focused regressions, and full Python/Node suites pass; submitting for ORCH review.
+- [2026-10-01T09:47:31Z] [CX] Fixed ORCH re-review finding: parked P1 deduplication now skips absent-key cleanup, preserving other live escalation ledgers. Added a P1/P2 regression that verifies P2 timestamps, held timestamp, and resend count survive the parked reminder and remain held after unpark. Synced latest master; full Python/Node suites green; resubmitting for re-review.
 **Artifacts:** tests/test_wave_e_exit.py, tests/fixtures/wave_e_exit/supervisor.py, tests/fixtures/wave_e_exit/README.md, dossiers/TASK-043.md
 - [2026-10-01T09:02:04Z] [CX] Added/updated: scripts/supervisor.py, tests/test_supervisor_ledgers.py, dossiers/TASK-043.md
+- [2026-10-01T09:47:31Z] [CX] Rework artifacts: scripts/supervisor.py, tests/test_supervisor_ledgers.py, dossiers/TASK-043.md
 **Test_Evidence:**
 - [2026-09-30T23:12:42Z] [CX] python -m pytest -q -s tests/test_wave_e_exit.py: 4 passed, 1 failed in 177.01s (exit 1). 10 --once processes, 145 loop ticks, 1 review, 3 unique P2s, 1 unique P1 sent 13 times, 1 answer, 2509-byte PLAN, 1 successful local push. Failure: test_escalation_conditions_and_reminder_ceiling. py_compile and git diff --check clean. Full suite withheld pending acceptance clarification.
 - [2026-10-01T09:02:04Z] [CX] `python -m pytest -q -s tests/test_wave_e_exit.py` → 5 passed (79.09s): 10 once processes, 145 loop ticks, 1 review launch, 3 P2s, 1 P1, max 2 sends/condition, 1 answer, 2,509-byte PLAN, 1 push. `python -m pytest -q tests/test_supervisor_park.py tests/test_supervisor_ledgers.py tests/test_wave_e_exit.py` → 23 passed (160.82s). Final `python -m pytest -q` → 1,239 passed, 0 failed, 0 skipped (897.99s; one pre-existing unknown `slow` marker warning). Final `node hooks/run-tests.js` → 47 passed, 0 failed. `py_compile` and `git diff --check` clean.
+- [2026-10-01T09:47:31Z] [CX] `python -m pytest -q tests/test_supervisor_ledgers.py::test_parked_p1_reminder_preserves_other_live_escalation_ledgers tests/test_supervisor_ledgers.py::test_parked_frozen_p1_uses_the_same_timer_resend_cap` → 2 passed. `python -m pytest -q tests/test_supervisor_ledgers.py tests/test_supervisor_park.py tests/test_wave_e_exit.py` → 24 passed in 182.58s. Final `python -m pytest -q` → 1,240 passed, 0 failed, 0 skipped in 1,018.78s (one pre-existing unknown `slow` marker warning); `node hooks/run-tests.js` → 47 passed, 0 failed. `git diff --check` clean.
 **Review_Findings:** ORCH 2026-10-01T09:21:30Z REWORK (reviewer model: claude-opus-5-5). Territory clean (6/6); tests/test_wave_e_exit.py + fixtures byte-identical to fe1b36f (scenario not weakened); max_timer_resends cap, durable per-key count, cleared with the key, default 1 — all correct in _dedupe_escalations/execute. BLOCKING (one defect, reproduced by ORCH): the parked-loop reminder path in decide() now calls _dedupe_escalations([reminder], ...). That function's cleanup pops every escalated/held/resend key not in the list it was given, so while parked each due P1 reminder ERASES the ledger entries of all other live conditions (e.g. the three SPEC_AMBIGUITY P2s). Repro: record P2 for TASK-101 and P1 for TASK-102, then call _dedupe_escalations([p1], st, DEFAULT_CONFIG, now+61min) -> st.escalated keeps only the P1 key. After unpark those P2s are 'new' and re-send, breaking H1 and spec §15 ('each re-sent at most once more'). Before this branch the parked path never touched the ledger. Fix: apply the cap to the parked reminder without the absent-key cleanup (e.g. split the cap/hold check out of _dedupe_escalations, or add a cleanup=False parameter used only by the parked path). Add a regression test in tests/test_supervisor_ledgers.py: P2 + P1 recorded, parked reminder tick(s) past 1 h, then assert the P2 key, its timestamp and its resend count survive, and that an unparked tick holds the P2 rather than re-sending it. Then re-run full Python + Node suites.
 **Blocked_Reason:** —
-**Updated_By:** ORCH
-**Updated_At:** 2026-10-01T09:21:30Z
+**Updated_By:** CX
+**Updated_At:** 2026-10-01T09:47:52Z
 
 ### TASK-044
 **Title:** Wave E E-G2 — new-project `git.push_policy: batch` default (split from TASK-036)
