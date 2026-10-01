@@ -304,7 +304,7 @@ def _max_timer_resends(cfg: dict) -> int:
 
 def _record_escalation_sent(action: "Action", state: "RuntimeState", now: datetime) -> None:
     key = escalation_key(action)
-    if key in state.escalated:
+    if _parse_ts(state.escalated.get(key, "")) is not None:
         state.escalation_timer_resends[key] = state.escalation_timer_resends.get(key, 0) + 1
     else:
         state.escalation_timer_resends[key] = 0

@@ -31,3 +31,17 @@ Write the failing test first (it must fail against current master — spec §1 H
   only one repeat over 12 hours. ORCH must clarify whether to configure a
   longer timer in the exit fixture or grant production reminder-policy work.
   No production files were changed and the failing assertion is retained.
+
+- ORCH resolved the ambiguity in spec v2.2: production timer re-sends are
+  capped by `escalation.max_timer_resends` (default 1), including parked-loop
+  frozen-task P1 reminders; the one-hour interval remains unchanged. Added a
+  durable per-key resend counter to `RuntimeState`, applied the cap through
+  both normal and parked escalation paths, and added regression coverage for
+  persistence, one resend over 12 simulated hours, changed-key reset, and the
+  parked path. TASK-043 changes committed as `06b8517` and task branch synced
+  with current `master`.
+- Verification so far: `python -m pytest -q tests/test_supervisor_ledgers.py`
+  → 13 passed; `python -m pytest -q -s tests/test_wave_e_exit.py` → 5 passed
+  (scenario reports 10 once processes, 145 loop ticks, three P2s, one P1,
+  max 2 sends per condition, one answer, 2,509-byte PLAN, one push);
+  `node hooks/run-tests.js` → 47 passed. Full Python suite is running.
