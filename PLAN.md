@@ -1,8 +1,8 @@
 ---
-plan_version: 6.27
-last_updated: 2026-10-01T00:16:16Z
+plan_version: 6.28
+last_updated: 2026-10-01T05:47:23Z
 overall_status: in_progress
-orchestrator_notes: "ORCH 2026-10-01T00:16:16Z: TASK-043 unblocked — reminder conflict settled by spec v2.2 (escalation.max_timer_resends=1, production cap; scenario untouched); TASK-043 Owned_Paths += scripts/supervisor.py, tests/test_supervisor_ledgers.py. TASK-042/045/046 reviewed (code verified, CI 36789689399 green both OS) — merges PENDING the ORCH full-suite integration run, which was killed at ~65% by host memory pressure (no failures seen; node 47/0)."
+orchestrator_notes: "ORCH 2026-10-01T05:47:23Z (reviewer claude-opus-5-5): TASK-042, TASK-045, TASK-046 APPROVED+merged (ORCH integration run master+042+045+046: pytest 1233 passed/0 failed/0 skipped, node 47/0); plan_health.py, test_plan_health.py, smoke read-only fixture registered in sync-manifest. TASK-043 in_progress (CX): implement spec v2.2 escalation.max_timer_resends cap in supervisor.py, exit scenario unchanged. Wave E remaining: TASK-043 only."
 ---
 
 # Project Plan
@@ -1658,7 +1658,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-042
 **Title:** Wave E E-J3 — review rules into the command file, clock-stamped verdicts, frontmatter freshness, untracked-work detector
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §12 (E-J.4, E-J.7, E-J.8), §6 (review timestamp bullet)
@@ -1698,10 +1698,10 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 - [2026-09-30T20:44:14Z] [CX] `python -m pytest -q` → 1204 passed, 1 failed in 867.12s (single timeout in `test_two_once_processes_share_an_exclusive_review_lock`); `python -m pytest -q tests/test_supervisor_ledgers.py::test_two_once_processes_share_an_exclusive_review_lock` → 1 passed in 32.93s. Full rerun pending.
 - [2026-09-30T20:28:14Z] [CX] `python -m pytest -q tests/test_plan_health.py` → 7 passed; `node hooks/run-tests.js` → 47 passed, 0 failed; `node --check hooks/session-start.js` and `git diff --check` clean. Full Python suite pending.
 - [2026-09-30T23:27:00Z] [CX] Final rework: python -m pytest -q -> 1219 passed in 1140.35s, exit 0; python -m pytest -q tests/test_plan_health.py -> 9 passed in 9.82s; node hooks/run-tests.js -> 47 passed, 0 failed; node --check hooks/session-start.js and git diff --check clean. Full terminal summary retained at C:/Users/Nuburo/AppData/Local/Temp/devdepartment-task042-full-20261001.log; dossier records commands and slow live usage-probe follow-up.
-**Review_Findings:** ORCH 2026-09-30T22:49:49Z REWORK (reviewer model: claude-opus-5-5). Territory clean (8/8). BLOCKING: (1) E-J.8 untracked detector is dominated by false positives — on this repo `plan_health.py` reports 148/293 commits 'outside the plan', and nearly all are protocol-mandated bookkeeping (`chore(plan): claim|start|submit TASK-NNN [CX]`, `chore(review): TASK-NNN rework [AUTOPILOT]`, `Merge branch 'master' into task/TASK-NNN-cx`). The spec's intent is detecting release work done outside PLAN (rwc case), so a commit whose subject names a TASK-NNN with a unit/SV/AUTOPILOT tag, or a merge of/into a task/TASK-NNN-* branch, must count as tracked; only commits naming no task and carrying none of [TASK-NNN]/[ORCH]/[MAINT] count. Add a test on a fixture repo containing each bookkeeping shape plus one genuinely untagged commit (expect 1). (2) .claude/commands/devteam-review.md: the new 'Reviewer identity' paragraph REPLACED the model-discipline rule — restore it (review runs on the configured reviewer model, never on claude-sonnet-5 = the S5 builder's model; CLAUDE.md 'ORCH model discipline') and keep the identity/recording text alongside it. Also carry the dropped review_cmd fact 'the integration branch is autopilot.json git.base_branch' into the command file, since review_cmd no longer states it. NON-BLOCKING: freshness uses `git log --all`, so any in-flight task-branch commit makes frontmatter 'stale' — acceptable per spec wording, but say so in the message. ORCH will register scripts/plan_health.py + tests/test_plan_health.py in sync-manifest.json at merge.
+**Review_Findings:** ORCH 2026-10-01T05:47:23Z APPROVED (reviewer model: claude-opus-5-5). Territory clean (8/8). Rework findings fixed: untracked detector treats task-naming unit-tagged commits and task-branch merges as tracked (this repo: 1/313, was 148/293), fixture-tested; devteam-review.md restores never-sonnet-5 discipline beside reviewer identity and names git.base_branch. ORCH integration run master+042+045+046: pytest 1233 passed/0 failed/0 skipped, node 47/0. Registered scripts/plan_health.py + tests/test_plan_health.py in sync-manifest.
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-09-30T23:27:07Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-10-01T05:47:23Z
 
 ### TASK-043
 **Title:** Wave E exit — scripted exit-criteria scenario (10 × --once then accelerated 12 h --loop)
@@ -1779,7 +1779,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-045
 **Title:** Wave E E-H2b — smoke test detects a codex argv without worktree write access (split from TASK-038)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H.4) Acceptance
@@ -1812,14 +1812,14 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Artifacts:** scripts/builder_registry.py, scripts/dispatch.sh, scripts/dispatch.ps1, tests/test_builder_registry.py, tests/test_harness_smoke.py, tests/fixtures/smoke/codex-read-only-registry.json, dossiers/TASK-045.md; commit fd32c41
 **Test_Evidence:** `python -m pytest -q` -> 1205 passed in 807.33s (full run before final test-only smoke-suite refactor); final affected tests `python -m pytest --durations=12 -q tests/test_builder_registry.py tests/test_harness_smoke.py` -> 42 passed in 61.23s; `node hooks/run-tests.js` -> 47 passed, 0 failed. Final changes also pass `bash -n scripts/dispatch.sh`, PowerShell parser, `python -m compileall`, `git diff --check`, and `python scripts/validate_plan.py PLAN.md` (one existing PLAN size warning).
 - [2026-09-30T23:31:59Z] [CX] Final rework verification: python -m pytest -q -> 1224 passed in 1094.45s, actual exit 0; python -m pytest -q tests/test_builder_registry.py tests/test_harness_smoke.py -> 49 passed in 122.91s, exit 0; node hooks/run-tests.js -> 47 passed, 0 failed. Bash syntax, Windows PowerShell 5.1 parse, and git diff --check pass. Complete commands/results recorded in dossiers/TASK-045.md.
-**Review_Findings:** ORCH 2026-09-30T22:49:49Z REWORK (reviewer model: claude-opus-5-5). Territory clean (7/7); codex_sandbox registry field, default argv byte-identical (dry-run test) and dispatch.sh exit-status propagation are correct. BLOCKING: (1) dispatch.ps1 now runs tests/test_harness_smoke.py --preflight before every real launch and refuses to dispatch when it fails, but the preflight drives scripts/dispatch.sh through Git Bash (_bash() raises 'Git Bash is required' when C:/Program Files/Git is absent). test_harness_smoke.py is framework-owned and ships to every project, so a Windows project without Git Bash at that path can no longer dispatch at all, and the check never exercises the .ps1 argv it is guarding. Fix: in dispatch.ps1, a preflight that cannot run (no bash) must warn and continue, not refuse; only an actual write-smoke failure refuses. Test both cases. (2) The read-only fixture fails only because the stub itself is rigged (`-s read-only` → exit 73). Real codex under read-only exits 0 without writing — make the codex stub's read-only branch behave that way (exit 0, no write) so the smoke's own 'did not write its Owned_Paths smoke file' check is what fails; the test then shows the smoke detecting missing write access rather than the stub reporting it. (3) Blocked-reason vocabulary drift from TASK-041 (merged): the builder CONTROL prompt in dispatch.sh:286 and dispatch.ps1:389 still says 'blocked_reason must start with SPEC_AMBIGUITY … or OTHER:'; control.py now requires `CATEGORY: detail` and accepts CAPACITY. Update both prompts to the new format (list CAPACITY; say ': detail' is required). ORCH will register tests/fixtures/smoke/codex-read-only-registry.json in sync-manifest.json at merge (the shipped smoke test reads it).
+**Review_Findings:** ORCH 2026-10-01T05:47:23Z APPROVED (reviewer model: claude-opus-5-5). Territory clean (7/7). Rework findings fixed: preflight exit 77 = unavailable (no bash) -> ps1 warns and continues, failed write -> refuse (both tested via the real ps1 block); read-only codex stub now exits 0 without writing so the smoke's own write check fails; both dispatch CONTROL prompts use CATEGORY: detail + CAPACITY (tested). ORCH integration run master+042+045+046: pytest 1233 passed/0 failed/0 skipped, node 47/0. Registered tests/fixtures/smoke/codex-read-only-registry.json in sync-manifest.
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-09-30T23:32:02Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-10-01T05:47:23Z
 
 ### TASK-046
 **Title:** Wave E E-H1b — full suite green on the CI matrix (split from TASK-037)
-**Status:** needs_review
+**Status:** done
 **Assigned_To:** CX
 **Priority:** medium
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §10 (E-H) Acceptance
@@ -1851,7 +1851,7 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Test_Evidence:** —
 - [2026-09-30T23:17:51Z] [CX] Full suites in fresh CI task-branch worktrees at 97e7f9d: Windows harness-audit.ps1 -NoShield invoked python -m pytest tests\ -q (1210 passed, zero skipped, 288.53s) and node hooks/run-tests.js (47 passed, 0 failed); Ubuntu harness-audit.sh --no-shield invoked python3 -m pytest tests/ -q (1209 passed, 1 skipped, 78.29s) and Node (47 passed, 0 failed). Both audits exit 0. Ubuntu sole skip: test_worktree_ps1.py Windows process/worktree lifecycle. CI: https://github.com/alboogycOdR/DEVDEPARTMENT/actions/runs/36789689399 .
 - [2026-09-30T23:17:51Z] [CX] Local repaired PowerShell CAS/stamping regression: python -m pytest -q tests/test_plan_commit.py::TestPowerShellCasBytes tests/test_plan_commit.py::TestClockStampedUpdatedAt -k "powershell or cas_reapply or untouched" -> 7 passed, 5 deselected, 34.51s, exit 0; node hooks/run-tests.js -> 47 passed, 0 failed. Windows CI PS5.1 parsing of all three scripts passed; git diff --check clean. Initial six Git-path failures and their repaired reruns documented in dossier.
-**Review_Findings:** —
+**Review_Findings:** ORCH 2026-10-01T05:47:23Z APPROVED (reviewer model: claude-opus-5-5). Territory clean (5/5). CI run 36789689399 independently confirmed via gh: success on windows-latest + ubuntu-latest at 97e7f9d (later commit 33385f6 is dossier-only). plan_commit.ps1 git lookup portable; /tmp fixture -> tmp_path, C:	mp workflow hack removed; skip reasons explicit, -ra in CI. ORCH integration run master+042+045+046: pytest 1233 passed/0 failed/0 skipped, node 47/0.
 **Blocked_Reason:** —
-**Updated_By:** CX
-**Updated_At:** 2026-09-30T23:18:13Z
+**Updated_By:** ORCH
+**Updated_At:** 2026-10-01T05:47:23Z
