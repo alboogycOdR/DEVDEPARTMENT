@@ -206,6 +206,47 @@ def test_parked_frozen_p1_uses_the_same_timer_resend_cap(tmp_path, monkeypatch):
     assert sent == ["P1"]
 
 
+def test_parked_p1_reminder_preserves_other_live_escalation_ledgers(tmp_path, monkeypatch):
+    p2 = sup.Action("ESCALATE_P2", "TASK-101 blocked: SPEC_AMBIGUITY — human answer needed",
+                    task_id="TASK-101")
+    p1 = sup.Action("ESCALATE_P1", "TASK-102 reached max_rework=2 — frozen for human review",
+                    task_id="TASK-102")
+    p2_key, p1_key = sup.escalation_key(p2), sup.escalation_key(p1)
+    p2_last, p2_held = NOW.strftime(sup.UTC_FMT), (NOW - __import__("datetime").timedelta(hours=5)).strftime(sup.UTC_FMT)
+    plan = (FM
+            + task(tid="TASK-101", status="blocked", blocked="SPEC_AMBIGUITY: awaiting a decision",
+                   owned="lib/a/**")
+            + task(tid="TASK-102", status="needs_review", owned="lib/b/**"))
+    repo = make_fixture_repo(tmp_path, plan)
+    sent = []
+    monkeypatch.setattr(sup, "notify", lambda _cfg, priority, message, _repo: sent.append((priority, message)))
+    state = sup.RuntimeState(
+        rework_counts={"TASK-102": CFG["max_rework"]},
+        parked={"kind": "P1", "reason": p1.detail, "since": NOW.strftime(sup.UTC_FMT)},
+        escalated={p1_key: NOW.strftime(sup.UTC_FMT), p2_key: p2_last},
+        escalation_held={p2_key: p2_held},
+        escalation_timer_resends={p1_key: 0, p2_key: 1},
+    )
+
+    # A due parked P1 must touch only its own ledger entry.
+    reminder_at = NOW + __import__("datetime").timedelta(minutes=61)
+    reminder_actions = sup.decide(plan, state, CFG, reminder_at)
+    assert [action.kind for action in reminder_actions] == ["ESCALATE_P1"]
+    sup.execute(reminder_actions, CFG, state, repo, False, reminder_at)
+    assert state.escalated[p2_key] == p2_last
+    assert state.escalation_held[p2_key] == p2_held
+    assert state.escalation_timer_resends[p2_key] == 1
+
+    # Once unparked, the still-live P2 remains throttled by its original
+    # timestamp and exhausted resend count rather than looking newly raised.
+    state.parked = {}
+    unparked_actions = sup.decide(plan, state, CFG, reminder_at + __import__("datetime").timedelta(minutes=1))
+    assert "ESCALATE_P2" not in [action.kind for action in unparked_actions]
+    assert any(action.kind == "ESCALATION_HELD" and p2_key in action.detail
+               for action in unparked_actions)
+    assert [priority for priority, _ in sent] == ["P1"]
+
+
 def test_tooling_failure_triage_is_durable_and_attempt_is_real(tmp_path, monkeypatch):
     plan = FM + task(status="blocked", blocked="TOOLING_FAILURE: runner exited unexpectedly",
                      branch="task/TASK-001-gb", started="2026-09-27T10:00:00Z")

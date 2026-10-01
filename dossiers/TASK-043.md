@@ -55,3 +55,10 @@ Write the failing test first (it must fail against current master — spec §1 H
   Final exit evidence: 10 once processes, 145 loop ticks, one review launch,
   3 P2 conditions, 1 P1 condition, max 2 sends per condition, one `/answer`,
   2,509-byte PLAN, and 1 successful local push.
+- ORCH re-review found parked P1 deduplication was pruning unrelated live
+  escalation entries. `_dedupe_escalations` now accepts `cleanup=False`, used
+  only by the parked reminder path, so it applies the reminder cap without
+  clearing other keys. Added a regression with an exhausted P2 key plus parked
+  P1: timestamp, held timestamp, and resend count survive the P1 reminder, and
+  the unparked P2 remains held. The exact regression passes; focused park,
+  ledger, and exit-scenario modules pass 24/24 in 182.58 s. Full suites pending.

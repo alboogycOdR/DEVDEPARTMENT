@@ -311,7 +311,8 @@ def _record_escalation_sent(action: "Action", state: "RuntimeState", now: dateti
     state.escalated[key] = now.strftime(UTC_FMT)
 
 
-def _dedupe_escalations(actions: list, state: "RuntimeState", cfg: dict, now: datetime) -> list:
+def _dedupe_escalations(actions: list, state: "RuntimeState", cfg: dict, now: datetime,
+                        *, cleanup: bool = True) -> list:
     """Apply H1's durable escalation ledger and emit one held marker per hold period."""
     out = []
     active = set()
@@ -332,12 +333,13 @@ def _dedupe_escalations(actions: list, state: "RuntimeState", cfg: dict, now: da
                 state.escalation_held.pop(key, None)
         out.append(a)
     # Conditions no longer selected this tick are gone; their next appearance is new.
-    for key in (set(state.escalated) - active):
-        if key.startswith("STATUS_DIGEST|"):
-            continue
-        state.escalated.pop(key, None)
-        state.escalation_held.pop(key, None)
-        state.escalation_timer_resends.pop(key, None)
+    if cleanup:
+        for key in (set(state.escalated) - active):
+            if key.startswith("STATUS_DIGEST|"):
+                continue
+            state.escalated.pop(key, None)
+            state.escalation_held.pop(key, None)
+            state.escalation_timer_resends.pop(key, None)
     return out
 
 
@@ -484,7 +486,7 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
                 last = _parse_ts(state.escalated.get(escalation_key(reminder), ""))
                 if last is not None and (now - last).total_seconds() < _renotify_hours(reminder, cfg) * 3600:
                     return [Action("IDLE", f"parked ({kind}): {reason}")]
-                return _dedupe_escalations([reminder], state, cfg, now)
+                return _dedupe_escalations([reminder], state, cfg, now, cleanup=False)
             return [Action("IDLE", f"parked ({kind}): {reason}")]
 
     # 2. Rework-loop guardrail + reviews
