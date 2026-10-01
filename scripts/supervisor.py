@@ -109,7 +109,7 @@ DEFAULT_CONFIG = {
     # (see CLAUDE.md "ORCH model discipline" for the full decision record).
     "judgment_model": "claude-opus-4-8",
     "review": {"max_backoff_minutes": 120, "lock_stale_minutes": 90},
-    "escalation": {"renotify_hours": {"P2": 4, "P1": 1}},
+    "escalation": {"renotify_hours": {"P2": 4, "P1": 1}, "max_timer_resends": 1},
     "max_triage_attempts": 1,
     # Existing projects do not acquire content-change notifications merely by
     # updating the pack; the on-disk digest remains available either way.
@@ -199,6 +199,7 @@ class RuntimeState:
     review_ledger: dict[str, dict] = field(default_factory=dict)    # task_id -> {key, done, fails, retry_after}
     escalated: dict[str, str] = field(default_factory=dict)         # escalation key -> UTC ts of last notify
     escalation_held: dict[str, str] = field(default_factory=dict)   # escalation key -> UTC ts of last held marker
+    escalation_timer_resends: dict[str, int] = field(default_factory=dict)  # key -> timer notifications already sent
     halt_mtime: str = ""                                             # STOP file mtime already logged
     triage_counts: dict[str, dict[str, int]] = field(default_factory=dict)  # task_id -> reason -> attempts
     last_status_digest_ts: str = ""                                 # scripted status digest throttle
@@ -293,7 +294,25 @@ def _renotify_hours(action: "Action", cfg: dict) -> float:
     return float(values or fallback)
 
 
-def _dedupe_escalations(actions: list, state: "RuntimeState", cfg: dict, now: datetime) -> list:
+def _max_timer_resends(cfg: dict) -> int:
+    value = (cfg.get("escalation") or {}).get("max_timer_resends", 1)
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _record_escalation_sent(action: "Action", state: "RuntimeState", now: datetime) -> None:
+    key = escalation_key(action)
+    if _parse_ts(state.escalated.get(key, "")) is not None:
+        state.escalation_timer_resends[key] = state.escalation_timer_resends.get(key, 0) + 1
+    else:
+        state.escalation_timer_resends[key] = 0
+    state.escalated[key] = now.strftime(UTC_FMT)
+
+
+def _dedupe_escalations(actions: list, state: "RuntimeState", cfg: dict, now: datetime,
+                        *, cleanup: bool = True) -> list:
     """Apply H1's durable escalation ledger and emit one held marker per hold period."""
     out = []
     active = set()
@@ -301,21 +320,26 @@ def _dedupe_escalations(actions: list, state: "RuntimeState", cfg: dict, now: da
         if a.kind in ("ESCALATE_P1", "ESCALATE_P2"):
             key = escalation_key(a)
             active.add(key)
-            last = _parse_ts(state.escalated.get(escalation_key(a), ""))
+            last = _parse_ts(state.escalated.get(key, ""))
             hold_seconds = _renotify_hours(a, cfg) * 3600
-            if last is not None and (now - last).total_seconds() < hold_seconds:
-                held = _parse_ts(state.escalation_held.get(key, ""))
-                if held is None or (now - held).total_seconds() >= hold_seconds:
-                    out.append(Action("ESCALATION_HELD", f"{a.kind} key={key}"))
-                    state.escalation_held[key] = now.strftime(UTC_FMT)
-                continue
+            if last is not None:
+                due = (now - last).total_seconds() >= hold_seconds
+                if not due or state.escalation_timer_resends.get(key, 0) >= _max_timer_resends(cfg):
+                    held = _parse_ts(state.escalation_held.get(key, ""))
+                    if held is None or (now - held).total_seconds() >= hold_seconds:
+                        out.append(Action("ESCALATION_HELD", f"{a.kind} key={key}"))
+                        state.escalation_held[key] = now.strftime(UTC_FMT)
+                    continue
+                state.escalation_held.pop(key, None)
         out.append(a)
     # Conditions no longer selected this tick are gone; their next appearance is new.
-    for key in (set(state.escalated) - active):
-        if key.startswith("STATUS_DIGEST|"):
-            continue
-        state.escalated.pop(key, None)
-        state.escalation_held.pop(key, None)
+    if cleanup:
+        for key in (set(state.escalated) - active):
+            if key.startswith("STATUS_DIGEST|"):
+                continue
+            state.escalated.pop(key, None)
+            state.escalation_held.pop(key, None)
+            state.escalation_timer_resends.pop(key, None)
     return out
 
 
@@ -460,8 +484,9 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
                 reminder = Action("ESCALATE_P1", reason,
                                   task_id=frozen.group(1) if frozen else None)
                 last = _parse_ts(state.escalated.get(escalation_key(reminder), ""))
-                if last is None or (now - last).total_seconds() >= _renotify_hours(reminder, cfg) * 3600:
-                    return [reminder]
+                if last is not None and (now - last).total_seconds() < _renotify_hours(reminder, cfg) * 3600:
+                    return [Action("IDLE", f"parked ({kind}): {reason}")]
+                return _dedupe_escalations([reminder], state, cfg, now, cleanup=False)
             return [Action("IDLE", f"parked ({kind}): {reason}")]
 
     # 2. Rework-loop guardrail + reviews
@@ -915,7 +940,7 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
             halt = True
         elif a.kind == "ESCALATE_P1":
             notify(cfg, "P1", a.detail, repo)   # P1 is NEVER muted — safety rail, not a preference
-            state.escalated[escalation_key(a)] = now.strftime(UTC_FMT)
+            _record_escalation_sent(a, state, now)
             state.parked = {"kind": "P1", "reason": a.detail, "since": now.strftime(UTC_FMT)}
             pushed, note = push_policy.maybe_push(repo, "park", now=now)
             if not pushed:
@@ -925,7 +950,7 @@ def execute(actions: list[Action], cfg: dict, state: RuntimeState, repo: Path, d
                 log_line(repo, f"MUTED: suppressed P2 — {a.detail}")
             else:
                 notify(cfg, "P2", a.detail, repo)
-                state.escalated[escalation_key(a)] = now.strftime(UTC_FMT)
+                _record_escalation_sent(a, state, now)
         elif a.kind == "DIGEST":
             detail = a.detail
             if state.pending_digest_lines:

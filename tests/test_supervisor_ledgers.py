@@ -154,16 +154,97 @@ def test_escalation_ledger_holds_p2s_and_renotifies_after_four_hours(tmp_path, m
     assert len([a for a in actions if a.kind == "ESCALATE_P2"]) == 3
 
 
-def test_p1_ledger_renotifies_only_after_one_hour(tmp_path, monkeypatch):
+def test_escalation_timer_resend_is_capped_persisted_and_resets_on_key_change(tmp_path, monkeypatch):
+    sent = []
+    monkeypatch.setattr(sup, "notify", lambda _cfg, priority, message, _repo: sent.append((priority, message)))
+    repo = make_fixture_repo(tmp_path, FM)
+    state_path = tmp_path / ".autopilot_state.json"
+    cfg = {**CFG, "escalation": {**CFG["escalation"], "max_timer_resends": 1}}
+    original = sup.Action("ESCALATE_P1", "frozen condition A", task_id="TASK-001")
+
+    # First sight, then exactly one timer resend at +1 h. Reload from disk on
+    # each tick to prove the ceiling survives scheduled --once processes.
+    for offset in (0, 60, *range(120, 13 * 60, 60)):
+        now = NOW + __import__("datetime").timedelta(minutes=offset)
+        state = sup.RuntimeState.load(state_path) if state_path.exists() else sup.RuntimeState()
+        actions = sup._dedupe_escalations([original], state, cfg, now)
+        sup.execute(actions, cfg, state, repo, False, now)
+        state.save(state_path)
+    assert [priority for priority, _ in sent] == ["P1", "P1"]
+    persisted = sup.RuntimeState.load(state_path)
+    key = sup.escalation_key(original)
+    assert persisted.escalation_timer_resends[key] == 1
+
+    # A changed condition has a new key and is immediately actionable.
+    changed = sup.Action("ESCALATE_P1", "frozen condition B", task_id="TASK-001")
+    actions = sup._dedupe_escalations([changed], persisted, cfg, NOW + __import__("datetime").timedelta(hours=13))
+    sup.execute(actions, cfg, persisted, repo, False, NOW + __import__("datetime").timedelta(hours=13))
+    assert [priority for priority, _ in sent] == ["P1", "P1", "P1"]
+    assert key not in persisted.escalation_timer_resends
+
+
+def test_parked_frozen_p1_uses_the_same_timer_resend_cap(tmp_path, monkeypatch):
     plan = FM + task(status="needs_review")
     sent = []
     monkeypatch.setattr(sup, "notify", lambda _cfg, priority, message, _repo: sent.append(priority))
-    state = sup.RuntimeState(rework_counts={"TASK-001": CFG["max_rework"]})
+    cfg = {**CFG, "escalation": {**CFG["escalation"], "max_timer_resends": 1}}
+    detail = f"TASK-001 reached max_rework={cfg['max_rework']} — frozen for human review"
+    action = sup.Action("ESCALATE_P1", detail, task_id="TASK-001")
+    state = sup.RuntimeState(rework_counts={"TASK-001": cfg["max_rework"]},
+                             parked={"kind": "P1", "reason": detail, "since": NOW.strftime(sup.UTC_FMT)},
+                             escalated={sup.escalation_key(action): NOW.strftime(sup.UTC_FMT)})
     repo = make_fixture_repo(tmp_path, plan)
-    for offset in (0, 5, 60):
-        now = NOW + __import__("datetime").timedelta(minutes=offset)
-        sup.execute(sup.decide(plan, state, CFG, now), CFG, state, repo, False, now)
-    assert sent == ["P1", "P1"]
+
+    resend_at = NOW + __import__("datetime").timedelta(hours=1)
+    actions = sup.decide(plan, state, cfg, resend_at)
+    assert [a.kind for a in actions] == ["ESCALATE_P1"]
+    sup.execute(actions, cfg, state, repo, False, resend_at)
+
+    after_cap = NOW + __import__("datetime").timedelta(hours=2)
+    actions = sup.decide(plan, state, cfg, after_cap)
+    assert "ESCALATE_P1" not in [a.kind for a in actions]
+    assert sent == ["P1"]
+
+
+def test_parked_p1_reminder_preserves_other_live_escalation_ledgers(tmp_path, monkeypatch):
+    p2 = sup.Action("ESCALATE_P2", "TASK-101 blocked: SPEC_AMBIGUITY — human answer needed",
+                    task_id="TASK-101")
+    p1 = sup.Action("ESCALATE_P1", "TASK-102 reached max_rework=2 — frozen for human review",
+                    task_id="TASK-102")
+    p2_key, p1_key = sup.escalation_key(p2), sup.escalation_key(p1)
+    p2_last, p2_held = NOW.strftime(sup.UTC_FMT), (NOW - __import__("datetime").timedelta(hours=5)).strftime(sup.UTC_FMT)
+    plan = (FM
+            + task(tid="TASK-101", status="blocked", blocked="SPEC_AMBIGUITY: awaiting a decision",
+                   owned="lib/a/**")
+            + task(tid="TASK-102", status="needs_review", owned="lib/b/**"))
+    repo = make_fixture_repo(tmp_path, plan)
+    sent = []
+    monkeypatch.setattr(sup, "notify", lambda _cfg, priority, message, _repo: sent.append((priority, message)))
+    state = sup.RuntimeState(
+        rework_counts={"TASK-102": CFG["max_rework"]},
+        parked={"kind": "P1", "reason": p1.detail, "since": NOW.strftime(sup.UTC_FMT)},
+        escalated={p1_key: NOW.strftime(sup.UTC_FMT), p2_key: p2_last},
+        escalation_held={p2_key: p2_held},
+        escalation_timer_resends={p1_key: 0, p2_key: 1},
+    )
+
+    # A due parked P1 must touch only its own ledger entry.
+    reminder_at = NOW + __import__("datetime").timedelta(minutes=61)
+    reminder_actions = sup.decide(plan, state, CFG, reminder_at)
+    assert [action.kind for action in reminder_actions] == ["ESCALATE_P1"]
+    sup.execute(reminder_actions, CFG, state, repo, False, reminder_at)
+    assert state.escalated[p2_key] == p2_last
+    assert state.escalation_held[p2_key] == p2_held
+    assert state.escalation_timer_resends[p2_key] == 1
+
+    # Once unparked, the still-live P2 remains throttled by its original
+    # timestamp and exhausted resend count rather than looking newly raised.
+    state.parked = {}
+    unparked_actions = sup.decide(plan, state, CFG, reminder_at + __import__("datetime").timedelta(minutes=1))
+    assert "ESCALATE_P2" not in [action.kind for action in unparked_actions]
+    assert any(action.kind == "ESCALATION_HELD" and p2_key in action.detail
+               for action in unparked_actions)
+    assert [priority for priority, _ in sent] == ["P1"]
 
 
 def test_tooling_failure_triage_is_durable_and_attempt_is_real(tmp_path, monkeypatch):
