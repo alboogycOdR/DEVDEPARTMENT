@@ -481,6 +481,9 @@ def decide(plan_text: str, state: RuntimeState, cfg: dict,
             if kind == "P1":
                 reminder = Action("ESCALATE_P1", reason,
                                   task_id=frozen.group(1) if frozen else None)
+                last = _parse_ts(state.escalated.get(escalation_key(reminder), ""))
+                if last is not None and (now - last).total_seconds() < _renotify_hours(reminder, cfg) * 3600:
+                    return [Action("IDLE", f"parked ({kind}): {reason}")]
                 return _dedupe_escalations([reminder], state, cfg, now)
             return [Action("IDLE", f"parked ({kind}): {reason}")]
 
