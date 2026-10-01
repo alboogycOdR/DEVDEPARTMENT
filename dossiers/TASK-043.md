@@ -62,3 +62,7 @@ Write the failing test first (it must fail against current master — spec §1 H
   P1: timestamp, held timestamp, and resend count survive the P1 reminder, and
   the unparked P2 remains held. The exact regression passes; focused park,
   ledger, and exit-scenario modules pass 24/24 in 182.58 s. Full suites pending.
+- Final rework verification on the synced branch: `python -m pytest -q` →
+  1,240 passed, 0 failed, 0 skipped in 1,018.78 s (one pre-existing unknown
+  `slow` marker warning); `node hooks/run-tests.js` → 47 passed, 0 failed.
+  `git diff --check` clean. Ready for ORCH re-review.
