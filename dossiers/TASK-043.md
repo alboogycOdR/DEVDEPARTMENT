@@ -45,3 +45,13 @@ Write the failing test first (it must fail against current master — spec §1 H
   (scenario reports 10 once processes, 145 loop ticks, three P2s, one P1,
   max 2 sends per condition, one answer, 2,509-byte PLAN, one push);
   `node hooks/run-tests.js` → 47 passed. Full Python suite is running.
+- Full-suite compatibility check first caught that the parked branch logged
+  `ESCALATION_HELD` before its one-hour reminder was due; fixed to remain
+  `IDLE` until due and use the resend cap only at reminder time. Focused
+  regression rerun: park + ledger + exit scenario → 23 passed in 160.82 s.
+- Final verification on the synced task branch: `python -m pytest -q` →
+  1,239 passed, 0 failed, 0 skipped in 897.99 s (one pre-existing unknown
+  `slow` marker warning); `node hooks/run-tests.js` → 47 passed, 0 failed.
+  Final exit evidence: 10 once processes, 145 loop ticks, one review launch,
+  3 P2 conditions, 1 P1 condition, max 2 sends per condition, one `/answer`,
+  2,509-byte PLAN, and 1 successful local push.
