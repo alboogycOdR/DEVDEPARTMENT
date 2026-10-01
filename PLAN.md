@@ -1,8 +1,8 @@
 ---
-plan_version: 6.26
-last_updated: 2026-09-30T22:49:49Z
+plan_version: 6.27
+last_updated: 2026-10-01T00:16:16Z
 overall_status: in_progress
-orchestrator_notes: "ORCH 2026-09-30T22:49:49Z (reviewer claude-opus-5-5): TASK-041 + TASK-044 APPROVED+merged (integration pytest 1210/0, node 47/0). TASK-041's per-tick push guard (only_if_configured) is now on master — the supervisor-loop hold on this repo is lifted. UNLOCKED: TASK-043 (Wave E exit scenario) and TASK-046 (CI matrix green), both CX, deps all done. REWORK: TASK-042 (untracked detector counts protocol bookkeeping commits: 148/293 false positives; review-command lost the never-sonnet-5 rule) and TASK-045 (ps1 preflight fails closed without Git Bash; read-only stub rigged; dispatch CONTROL prompts need CATEGORY: detail vocabulary). Follow-up for next control.py owner: control.py:252 bare CAPACITY -> 'CAPACITY: <detail>'."
+orchestrator_notes: "ORCH 2026-10-01T00:16:16Z: TASK-043 unblocked — reminder conflict settled by spec v2.2 (escalation.max_timer_resends=1, production cap; scenario untouched); TASK-043 Owned_Paths += scripts/supervisor.py, tests/test_supervisor_ledgers.py. TASK-042/045/046 reviewed (code verified, CI 36789689399 green both OS) — merges PENDING the ORCH full-suite integration run, which was killed at ~65% by host memory pressure (no failures seen; node 47/0)."
 ---
 
 # Project Plan
@@ -1705,11 +1705,12 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 
 ### TASK-043
 **Title:** Wave E exit — scripted exit-criteria scenario (10 × --once then accelerated 12 h --loop)
-**Status:** blocked
+**Status:** in_progress
 **Assigned_To:** CX
 **Priority:** high
 **Spec_References:** specs/LOOP_HYGIENE_2026-09.md §15, §16
-**Owned_Paths:** tests/test_wave_e_exit.py (new), tests/fixtures/wave_e_exit/** (new), dossiers/TASK-043.md
+**Owned_Paths:** tests/test_wave_e_exit.py (new), tests/fixtures/wave_e_exit/** (new), dossiers/TASK-043.md, scripts/supervisor.py, tests/test_supervisor_ledgers.py
+**Protected_Grants:** scripts/supervisor.py
 **Depends_On:** TASK-031, TASK-032, TASK-036, TASK-041
 **Description:** Build the §15 scenario on a fixture project using tests/tick_harness.py: 10 scheduled --once processes, then a 12 h --loop on an advanced clock, with one unreviewable task, three SPEC_AMBIGUITY tasks, one frozen task, and one Telegram /answer injected mid-run. Assert every §15 bound and print a one-screen evidence table ORCH pastes into the wave-close handover. Marked slow if >60 s; still part of the full suite.
 **Acceptance_Criteria:**
@@ -1734,10 +1735,10 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Artifacts:** tests/test_wave_e_exit.py, tests/fixtures/wave_e_exit/supervisor.py, tests/fixtures/wave_e_exit/README.md, dossiers/TASK-043.md
 **Test_Evidence:**
 - [2026-09-30T23:12:42Z] [CX] python -m pytest -q -s tests/test_wave_e_exit.py: 4 passed, 1 failed in 177.01s (exit 1). 10 --once processes, 145 loop ticks, 1 review, 3 unique P2s, 1 unique P1 sent 13 times, 1 answer, 2509-byte PLAN, 1 successful local push. Failure: test_escalation_conditions_and_reminder_ceiling. py_compile and git diff --check clean. Full suite withheld pending acceptance clarification.
-**Review_Findings:** —
-**Blocked_Reason:** SPEC_AMBIGUITY: section 4 requires hourly P1 reminders but section 15 allows one repeat across 12 hours. Should this scenario configure a longer timer, or should production cap reminders (requires supervisor.py ownership)?
-**Updated_By:** CX
-**Updated_At:** 2026-09-30T23:12:49Z
+**Review_Findings:** ORCH 2026-10-01T00:16:16Z SPEC_AMBIGUITY RESOLVED (claude-opus-5-5): fix PRODUCTION, not the scenario. specs/LOOP_HYGIENE_2026-09.md v2.2 amends E-B.3: timer re-sends per escalation key are capped at escalation.max_timer_resends (default 1); after the cap the key is held (ESCALATION_HELD once per hold period, nothing sent) until the condition changes or clears; the same cap applies to the parked-loop frozen-task P1 reminder. The 1 h P1 interval is unchanged (it sets WHEN; the cap sets HOW MANY). Owned_Paths extended with scripts/supervisor.py + tests/test_supervisor_ledgers.py (protected grant: scripts/supervisor.py). Implement the cap in _dedupe_escalations and the parked reminder path, persist the per-key re-send count in RuntimeState (cleared with the key), add ledger tests (P1: send, +1h re-send, then silent for 12h; changed condition = new key sends), keep test_wave_e_exit.py UNCHANGED in intent and default config — no skip/xfail/raised renotify interval. Then full Python + Node suites.
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-10-01T00:16:16Z
 
 ### TASK-044
 **Title:** Wave E E-G2 — new-project `git.push_policy: batch` default (split from TASK-036)
