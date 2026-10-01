@@ -142,7 +142,10 @@
     "tests/test_lanes.py",
     "scripts/plan_health.py",
     "tests/test_plan_health.py",
-    "tests/fixtures/smoke/codex-read-only-registry.json"
+    "tests/fixtures/smoke/codex-read-only-registry.json",
+    "tests/test_wave_e_exit.py",
+    "tests/fixtures/wave_e_exit/README.md",
+    "tests/fixtures/wave_e_exit/supervisor.py"
   ],
   "project_owned": [
     "PLAN.md",
