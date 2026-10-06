@@ -15,6 +15,7 @@ Read `AGENTS.md` and `docs/COORDINATION_PROTOCOL.md` at the start of every sessi
 ## Phase commands (see .claude/commands/)
 
 - `/devteam-decompose` — decompose `specs/` into tasks.
+- `/devteam-generate`  — stage one OMLCP generation for `**Lane:** generate` tasks before dispatch (`docs/OMLCP.md`).
 - `/devteam-dispatch`  — worktrees + builder launch.
 - `/devteam-status`    — sync scan and health report.
 - `/devteam-review`    — review `needs_review` items end-to-end.
