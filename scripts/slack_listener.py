@@ -2,7 +2,7 @@
 """slack_listener.py — Socket Mode command listener for the DEVDEPARTMENT
 autopilot supervisor (P1b-2, pre-Tower command path).
 
-specs/DEVDEPARTMENT_SLACK_SPEC.md §5 (slack_listener.py), §1 (transport
+specs/archive/DEVDEPARTMENT_SLACK_SPEC.md §5 (slack_listener.py), §1 (transport
 note), §8 (env vars). Two ORCH-resolved ambiguities shape this module,
 both recorded in full in dossiers/TASK-016.md:
 

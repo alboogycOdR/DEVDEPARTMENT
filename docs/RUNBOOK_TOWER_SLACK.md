@@ -190,7 +190,7 @@ tells you plainly why it did nothing.
 Before enabling on any real project, a human must complete all five steps —
 do not skip any of them:
 
-1. **Create the Slack app** from the manifest in `specs/DEVDEPARTMENT_SLACK_SPEC.md`.
+1. **Create the Slack app** from the manifest in `specs/archive/DEVDEPARTMENT_SLACK_SPEC.md`.
 2. **Invite the bot** to both the ops channel and the project channel.
 3. **Set all three env vars** in the shell / PM2 config that will run the supervisor:
    `DEVTEAM_SLACK_TOKEN`, `DEVTEAM_SLACK_APP_TOKEN`, `DEVTEAM_SLACK_SIGNING_SECRET`.

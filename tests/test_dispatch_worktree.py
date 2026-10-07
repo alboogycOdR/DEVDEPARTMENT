@@ -264,7 +264,7 @@ class TestForeignDirectorySafetyNet:
 
 
 class TestEmptyHuskReclaim:
-    """R-A (specs/L2_DISPATCH_RESILIENCE.md §2): an empty unregistered
+    """R-A (specs/archive/L2_DISPATCH_RESILIENCE.md §2): an empty unregistered
     directory at the worktree path is a leftover husk, not someone's work.
     These cases fail against pre-fix dispatch (it refuses the empty dir)."""
 

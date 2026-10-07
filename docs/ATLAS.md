@@ -6,7 +6,7 @@ to rebuild its orientation from raw file reads every time. It is read-only
 infrastructure: nothing in ATLAS makes decisions or edits code on a
 builder's behalf.
 
-Spec of record: `specs/DEVDEPARTMENT_ATLAS_SPEC.md`. This document is the
+Spec of record: `specs/archive/DEVDEPARTMENT_ATLAS_SPEC.md`. This document is the
 living reference for what actually shipped; if the two disagree, the spec
 explains intent and this file explains the built system.
 

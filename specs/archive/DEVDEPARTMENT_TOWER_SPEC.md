@@ -24,7 +24,7 @@ fork." All five hard constraints and all five phases unchanged.
 
 | Decision | Answer |
 |---|---|
-| Interrupt channel | **Slack** (primary) — see `specs/DEVDEPARTMENT_SLACK_SPEC.md`. Telegram is a redundant P1-only fallback. |
+| Interrupt channel | **Slack** (primary) — see `specs/archive/DEVDEPARTMENT_SLACK_SPEC.md`. Telegram is a redundant P1-only fallback. |
 | Pull surface | **Tower** — the board you go to look at |
 | Hosting | **clawsrv**, PM2, Tailscale-only |
 | Repo shape | Tower is its **own repo**, deployed once. The pack gains exactly two integration points and nothing else. |
@@ -272,7 +272,7 @@ Storage tables: `snapshots` (latest + ring-buffered history per project),
 | Phase | Deliverable | Territory | Depends |
 |---|---|---|---|
 | **P1** | `scripts/tower_sync.py` + tick wiring + config + tests | pack only | — |
-| **P1b** | Slack primary channel (full spec in `specs/DEVDEPARTMENT_SLACK_SPEC.md`) | pack only | — (parallel) |
+| **P1b** | Slack primary channel (full spec in `specs/archive/DEVDEPARTMENT_SLACK_SPEC.md`) | pack only | — (parallel) |
 | **P2** | Inbox consumer + `commands.py` refactor + tests | pack only | — (parallel) |
 
 P1 + P1b + P2 are one DEVDEPARTMENT wave — disjoint file territories,

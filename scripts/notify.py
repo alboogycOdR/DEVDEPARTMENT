@@ -10,7 +10,7 @@ Channels:
                this module keeps working when Slack is unconfigured).
                Credentials come ONLY from DEVTEAM_SLACK_TOKEN; channel IDs
                from autopilot.json's "slack" block. See
-               specs/DEVDEPARTMENT_SLACK_SPEC.md §9: Telegram is preserved
+               specs/archive/DEVDEPARTMENT_SLACK_SPEC.md §9: Telegram is preserved
                as-is and stays the always-available fallback.
 
 Usage:
@@ -95,7 +95,7 @@ def send_telegram(priority: str, message: str) -> None:
 
 
 def send_slack(priority: str, message: str) -> None:
-    """Slack Web API channel (specs/DEVDEPARTMENT_SLACK_SPEC.md §5, §9).
+    """Slack Web API channel (specs/archive/DEVDEPARTMENT_SLACK_SPEC.md §5, §9).
 
     Lazily imports slack_notify so this module — and every OTHER channel —
     keeps working untouched when Slack is unconfigured or slack_notify.py's

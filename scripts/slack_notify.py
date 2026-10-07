@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """slack_notify.py — Slack Web API sender with thread tracking (P1b-1).
 
-specs/DEVDEPARTMENT_SLACK_SPEC.md §3 (message designs), §5 (sender behaviours),
+specs/archive/DEVDEPARTMENT_SLACK_SPEC.md §3 (message designs), §5 (sender behaviours),
 §2 (channel routing), §9 (Telegram preserved as fallback), §10 (--test).
 
 Not a rename of notify.py's telegram sender, and not an incoming webhook — a
@@ -263,7 +263,7 @@ def mark_task_done(token: str, repo: Path, task_id: str) -> bool:
 
 
 # --------------------------------------------------------------------- Block Kit designs
-# specs/DEVDEPARTMENT_SLACK_SPEC.md §3 — four designs, each mapping to a real event.
+# specs/archive/DEVDEPARTMENT_SLACK_SPEC.md §3 — four designs, each mapping to a real event.
 
 def build_blocked_blocks(
     project: str, task_id: str, title: str, assignee: str,

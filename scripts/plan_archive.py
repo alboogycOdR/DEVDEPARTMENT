@@ -12,7 +12,7 @@ frontmatter value with a pointer. Callers pass a repo directory; this
 module never picks the live checkout on its own.
 
 Not a port. oikonomos has no ``plan_archive.py`` (checked 2026-09-27);
-behaviour follows specs/LOOP_HYGIENE_2026-09.md §6.
+behaviour follows specs/archive/LOOP_HYGIENE_2026-09.md §6.
 
 Usage:
     python scripts/plan_archive.py --repo PATH [--dry-run] [--notes-cap N]

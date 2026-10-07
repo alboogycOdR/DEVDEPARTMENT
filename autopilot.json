@@ -144,13 +144,13 @@
     "url": "",
     "project_id": "",
     "_token_env": "DEVTEAM_TOWER_TOKEN",
-    "_comment": "TOWER P1 (specs/DEVDEPARTMENT_TOWER_SPEC.md \u00a71). Ships DISABLED per the ask-don't-auto-flip rule. Enable per project only after Tower is deployed and DEVTEAM_TOWER_TOKEN is set in the supervisor's environment \u2014 never in a tracked file."
+    "_comment": "TOWER P1 (specs/archive/DEVDEPARTMENT_TOWER_SPEC.md \u00a71). Ships DISABLED per the ask-don't-auto-flip rule. Enable per project only after Tower is deployed and DEVTEAM_TOWER_TOKEN is set in the supervisor's environment \u2014 never in a tracked file."
   },
   "slack": {
     "enabled": false,
     "project_channel": "",
     "ops_channel": "",
     "thread_tracking": true,
-    "_comment": "Slack primary channel (specs/DEVDEPARTMENT_SLACK_SPEC.md \u00a75). Ships DISABLED; enabling requires the \u00a710 live-verification checklist (app from manifest, bot invited, three env vars, slack_notify.py --test) and adding 'slack' to notify_channels."
+    "_comment": "Slack primary channel (specs/archive/DEVDEPARTMENT_SLACK_SPEC.md \u00a75). Ships DISABLED; enabling requires the \u00a710 live-verification checklist (app from manifest, bot invited, three env vars, slack_notify.py --test) and adding 'slack' to notify_channels."
   }
 }

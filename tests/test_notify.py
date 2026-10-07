@@ -2,7 +2,7 @@
 get an actionable "Reply: /answer TASK-NNN <your decision>" line appended.
 
 Also covers the P1b-1 "slack" channel registration (TASK-015,
-specs/DEVDEPARTMENT_SLACK_SPEC.md §5, §9): lazily imported, degrades cleanly
+specs/archive/DEVDEPARTMENT_SLACK_SPEC.md §5, §9): lazily imported, degrades cleanly
 when unconfigured, never raises into the caller."""
 import sys
 from pathlib import Path

@@ -13,7 +13,7 @@ PLAN.md text eol=lf
 *.py text eol=lf
 *.js text eol=lf
 
-# --- H-D: repo line-ending policy (specs/PACK_HARDENING_2026-08.md §4) ---
+# --- H-D: repo line-ending policy (specs/archive/PACK_HARDENING_2026-08.md §4) ---
 #
 # ORCH decision on spec §8 Q1: option (b) — `* text=auto` going forward only,
 # WITHOUT a mass renormalization commit (option (a) would have been a single

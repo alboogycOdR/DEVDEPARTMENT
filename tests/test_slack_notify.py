@@ -1,7 +1,7 @@
 """Tests for scripts/slack_notify.py — Web API sender, thread tracking,
 Block Kit designs, §2 routing, rate-limit backoff, fail-open (P1b-1).
 
-specs/DEVDEPARTMENT_SLACK_SPEC.md §2, §3, §5, §9, §10. Stubbed transport
+specs/archive/DEVDEPARTMENT_SLACK_SPEC.md §2, §3, §5, §9, §10. Stubbed transport
 throughout — zero live Slack calls."""
 import json
 import sys
