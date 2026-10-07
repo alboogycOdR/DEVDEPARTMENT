@@ -231,11 +231,10 @@ def apply_unreported_to_plan(plan_text: str, task_id: str, ts: str, log_rel_path
     """§6 no-block fallback: Progress_Note only, Status unchanged.
 
     E-K.4: when the run log shows a probable provider-capacity error,
-    ``Blocked_Reason`` is set to the plain string ``CAPACITY`` (Wave G's
-    registry, when it exists, replaces this with a richer value — until
-    then this is deliberately not a full vocabulary entry, and Status stays
-    untouched, so validate_plan's blocked-status vocabulary check — which
-    only fires when Status is actually 'blocked' — never sees it).
+    ``Blocked_Reason`` is set to ``CAPACITY: <detail>`` naming the run log.
+    Status stays untouched. Since E-J.6 (TASK-041) CAPACITY is a full
+    vocabulary category, so the value is written in the same
+    ``CATEGORY: detail`` form validate_plan requires once a task is blocked.
     """
     lines = plan_text.split("\n")
     span = tgc._task_span(lines, task_id)
@@ -249,7 +248,8 @@ def apply_unreported_to_plan(plan_text: str, task_id: str, ts: str, log_rel_path
              f"see {log_rel_path}{suffix}")
     lines = tgc._append_to_field(lines, start, end, "Progress_Notes", bullet)
     if capacity and tgc._field_line_index(lines, start, end, "Blocked_Reason") is not None:
-        lines = tgc._set_field(lines, start, end, "Blocked_Reason", "CAPACITY")
+        lines = tgc._set_field(lines, start, end, "Blocked_Reason",
+                               f"CAPACITY: probable provider capacity error, see {log_rel_path}")
         start, end = tgc._task_span(lines, task_id)
     detail = f"UNREPORTED {task_id}: logged, state unchanged" + (", Blocked_Reason=CAPACITY" if capacity else "")
     return ApplyResult("\n".join(lines), True, detail)

@@ -5,6 +5,7 @@ and double-dispatch), the no-block fallback, and an end-to-end scripted
 lifecycle matching the spec's exit criteria.
 """
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -13,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import control as ctl  # noqa: E402
 import tg_commands as tgc  # noqa: E402
+import validate_plan  # noqa: E402
 
 
 FM = """---
@@ -334,9 +336,9 @@ class TestExtractFromLog:
 
     def test_capacity_marker_sets_blocked_reason_on_drain(self, tmp_path):
         """E-K.4: a capacity-flagged UNREPORTED marker sets Blocked_Reason
-        to the plain string CAPACITY on the task's own block, without
-        touching Status (so validate_plan's blocked-status vocabulary check
-        — which only fires when Status is 'blocked' — never sees it)."""
+        to ``CAPACITY: <detail>`` on the task's own block, without touching
+        Status. The value is in E-J.6's CATEGORY: detail form, so a task
+        later moved to blocked with it still validates (TASK-047)."""
         repo = make_repo(tmp_path, FM + task())
         log = repo / "run.log"
         log.write_text("provider is at capacity, please retry later\n", encoding="utf-8")
@@ -345,8 +347,13 @@ class TestExtractFromLog:
         results = ctl.drain_unreported_queue(repo, "2026-07-20T10:05:00Z")
         assert results and results[0][:2] == ("TASK-500", "UNREPORTED TASK-500: logged, state unchanged, Blocked_Reason=CAPACITY")
         plan_text = (repo / "PLAN.md").read_text(encoding="utf-8")
-        assert "**Blocked_Reason:** CAPACITY" in plan_text
+        reason = re.search(r"^\*\*Blocked_Reason:\*\* (.*)$", plan_text, re.M).group(1)
+        assert reason.startswith("CAPACITY: probable provider capacity error, see ")
+        assert "run.log" in reason
         assert "**Status:** in_progress" in plan_text  # unchanged
+        # The same reason on a blocked task passes validate_plan's vocabulary check.
+        blocked = plan_text.replace("**Status:** in_progress", "**Status:** blocked", 1)
+        assert not [e for e in validate_plan.validate(blocked).errors if "Blocked_Reason" in e]
 
     def test_stray_402_in_a_log_does_not_falsely_flag_capacity(self, tmp_path):
         """A line number, byte count, or port that happens to be '402'

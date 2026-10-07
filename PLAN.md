@@ -1,8 +1,8 @@
 ---
-plan_version: 6.31
-last_updated: 2026-10-01T10:32:29Z
+plan_version: 6.33
+last_updated: 2026-10-07T21:21:10Z
 overall_status: parked
-orchestrator_notes: "ORCH 2026-10-01T10:32:29Z: PROJECT PARKED by Alister after Wave E closed (all tasks done; TASK-043 merged on owner waiver of the ORCH full-suite re-run). Resume in a few weeks from docs/NEXT_WAVE_PRIORITY_2026-10.md: owner decision pending on a slim next wave (G-D.0 preflight gate, G-C.1 test-run-per-SHA, trimmed G-A gate, F2 session caps, reviewer-model cleanup); rest of F/G and all of Wave H deferred. Do not dispatch until the owner picks. First action on resume: full suite on master."
+orchestrator_notes: "ORCH 2026-10-07T21:21:10Z: PROJECT PARKED (owner decision pending on the next wave; see docs/NEXT_WAVE_PRIORITY_2026-10.md). Housekeeping 2026-10-07: implemented specs moved to specs/archive/; TASK-047 (ORCH-SOLO, CAPACITY: detail) done, reviewed by claude-fable-5-1; stale task branches deleted (worktrees detached, S5/GB WIP kept and matching .devteam/salvage); TASK-043 waiver CLOSED by an ORCH full suite on master with the change: pytest 1240 passed / 0 failed / 0 skipped (525.7s, Python 3.11), node 47 passed / 0 failed. Do not dispatch until the owner picks."
 ---
 
 # Project Plan
@@ -1857,7 +1857,33 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Test_Evidence:** —
 - [2026-09-30T23:17:51Z] [CX] Full suites in fresh CI task-branch worktrees at 97e7f9d: Windows harness-audit.ps1 -NoShield invoked python -m pytest tests\ -q (1210 passed, zero skipped, 288.53s) and node hooks/run-tests.js (47 passed, 0 failed); Ubuntu harness-audit.sh --no-shield invoked python3 -m pytest tests/ -q (1209 passed, 1 skipped, 78.29s) and Node (47 passed, 0 failed). Both audits exit 0. Ubuntu sole skip: test_worktree_ps1.py Windows process/worktree lifecycle. CI: https://github.com/alboogycOdR/DEVDEPARTMENT/actions/runs/36789689399 .
 - [2026-09-30T23:17:51Z] [CX] Local repaired PowerShell CAS/stamping regression: python -m pytest -q tests/test_plan_commit.py::TestPowerShellCasBytes tests/test_plan_commit.py::TestClockStampedUpdatedAt -k "powershell or cas_reapply or untouched" -> 7 passed, 5 deselected, 34.51s, exit 0; node hooks/run-tests.js -> 47 passed, 0 failed. Windows CI PS5.1 parsing of all three scripts passed; git diff --check clean. Initial six Git-path failures and their repaired reruns documented in dossier.
-**Review_Findings:** ORCH 2026-10-01T05:47:23Z APPROVED (reviewer model: claude-opus-5-5). Territory clean (5/5). CI run 36789689399 independently confirmed via gh: success on windows-latest + ubuntu-latest at 97e7f9d (later commit 33385f6 is dossier-only). plan_commit.ps1 git lookup portable; /tmp fixture -> tmp_path, C:	mp workflow hack removed; skip reasons explicit, -ra in CI. ORCH integration run master+042+045+046: pytest 1233 passed/0 failed/0 skipped, node 47/0.
+**Review_Findings:** ORCH 2026-10-01T05:47:23Z APPROVED (reviewer model: claude-opus-5-5). Territory clean (5/5). CI run 36789689399 independently confirmed via gh: success on windows-latest + ubuntu-latest at 97e7f9d (later commit 33385f6 is dossier-only). plan_commit.ps1 git lookup portable; /tmp fixture -> tmp_path, C:\tmp workflow hack removed; skip reasons explicit, -ra in CI. ORCH integration run master+042+045+046: pytest 1233 passed/0 failed/0 skipped, node 47/0.
 **Blocked_Reason:** —
 **Updated_By:** ORCH
 **Updated_At:** 2026-10-01T05:47:23Z
+
+### TASK-047
+**Title:** control.py UNREPORTED capacity path writes Blocked_Reason as `CAPACITY: <detail>`
+**Status:** done
+**Assigned_To:** ORCH-SOLO
+**Maker_Model:** claude-opus-5-5
+**Priority:** low
+**Spec_References:** specs/archive/LOOP_HYGIENE_2026-09.md §12 (E-J.6) and §13 (E-K.4); TASK-041 review follow-up
+**Owned_Paths:** scripts/control.py, tests/test_control.py
+**Depends_On:** —
+**Description:** Wave E follow-up recorded at TASK-041's review and in docs/NEXT_WAVE_PRIORITY_2026-10.md. `apply_unreported_to_plan` sets `Blocked_Reason` to the bare string `CAPACITY` when a run log shows a probable provider-capacity error. Since TASK-041, CAPACITY is a vocabulary category that requires `CATEGORY: detail`, so a task later moved to `blocked` with that value fails validation. Write `CAPACITY: <detail>` naming the run log instead. Status stays unchanged, as before.
+**Acceptance_Criteria:**
+- [x] A capacity-flagged UNREPORTED drain sets `Blocked_Reason` to `CAPACITY: <detail>` naming the run log
+- [x] That value passes validate_plan's blocked-reason check (a task with this reason and Status blocked validates)
+- [x] Status is unchanged and the non-capacity path is unchanged
+- [x] Full Python suite and Node suite green on master after the change
+**Branch:** —
+**Started_At:** 2026-10-07T21:11:13Z
+**Progress_Notes:**
+- [2026-10-07T21:11:13Z] [ORCH] Solo-lane housekeeping fix requested by Alister 2026-10-07. Owned files exist (scripts/control.py, tests/test_control.py).
+**Artifacts:** scripts/control.py, tests/test_control.py
+**Test_Evidence:** tests/test_control.py 56 passed; the updated capacity test fails against the pre-fix control.py and passes after; full suite on master with the change: pytest 1240 passed / 0 failed / 0 skipped (525.7s, Python 3.11), node 47 passed / 0 failed
+**Review_Findings:** 2026-10-07T21:21:10Z APPROVED by independent reviewer (reviewer_model: claude-fable-5-1; maker claude-opus-5-5). No blocking findings: value passes _valid_blocked_reason; log_rel_path is single-line; Status and non-capacity path unchanged; no code compares Blocked_Reason to bare CAPACITY. Nit (not applied): the returned detail text still says Blocked_Reason=CAPACITY as a summary.
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-10-07T21:21:10Z

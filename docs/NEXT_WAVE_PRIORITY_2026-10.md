@@ -39,9 +39,16 @@ Is the pack actively driving field projects (rwc-*, local-business-opportunity-e
 - **Mostly self-building** → items 1, 2, 5 only; then point builders at product work and at
   `docs/EFFICIENCY_BACKLOG_2026-09.md` (parked until Wave E closed — now due).
 
-## Open loose ends at park time
+## Loose ends at park time
 
-- Run one full Python + Node suite on master when memory allows (closes the TASK-043 waiver).
-- `control.py:252` writes bare `CAPACITY` (needs `CAPACITY: <detail>`) — fold into the next task owning control.py.
-- Branch `task/TASK-045-cx` is merged but still checked out in `wt-codex-DEVDEPARTMENT`; delete when CX moves off it.
-- Something appends duplicate `**Updated_At:**` lines in builder task blocks — investigate plan_commit/plan_stamp.
+- **Done 2026-10-07:** full suite on master — pytest 1240 passed / 0 failed / 0 skipped, node 47/0.
+  The TASK-043 waiver is closed.
+- **Done 2026-10-07:** `control.py` now writes `CAPACITY: <detail>` (TASK-047, ORCH-SOLO, reviewed by
+  `claude-fable-5-1`).
+- **Done 2026-10-07:** stale branches `task/TASK-045-cx`, `task/TASK-028-s5` and `task/TASK-032-gb`
+  deleted (all fully merged). Their worktrees were detached, not removed; the old S5/GB uncommitted
+  work is still in `wt-s5-DEVDEPARTMENT` / `wt-grok-DEVDEPARTMENT` and matches `.devteam/salvage/`.
+- **Open:** something appends duplicate `**Updated_At:**` lines in builder task blocks — investigate
+  plan_commit/plan_stamp.
+- **Open (machine, not repo):** `python` on PATH resolves to `~/.agent-reach-venv`, which has no
+  pytest. Use `C:\Users\Nuburo\AppData\Local\Programs\Python\Python311\python.exe` or fix PATH order.
