@@ -178,7 +178,12 @@ def test_shipped_plan_md_is_legal():
     # units and calls every extra registry unit illegal.
     # Port of oikonomos d3f5fc08.
     repo_root = str(Path(__file__).resolve().parents[1])
-    rep = validate(plan_path.read_text(encoding="utf-8"), registry_views=_apply_registry(repo_root))
+    # Pass REVIEW.md as main() does; ORCH-SOLO done tasks are legal only with an
+    # independent approved verdict row, which validate() can't see without it.
+    review_path = Path(repo_root) / "REVIEW.md"
+    review_text = review_path.read_text(encoding="utf-8") if review_path.is_file() else ""
+    rep = validate(plan_path.read_text(encoding="utf-8"), registry_views=_apply_registry(repo_root),
+                   review_text=review_text)
     assert rep.ok, rep.errors
 
 
