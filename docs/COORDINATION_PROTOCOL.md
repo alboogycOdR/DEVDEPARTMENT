@@ -69,7 +69,18 @@ Each task is a `### TASK-NNN` block. Fields:
 | `Test_Evidence` | — | Append-only | Command + result summary. Required before `needs_review` |
 | `Review_Findings` | — | ORCH only | |
 | `Blocked_Reason` | — | Yes, when blocking | |
+| `Lane` | No | No | `generate` or `iterate` (default when absent). ORCH-owned. `generate` = the task branch is pre-loaded by one OMLCP generation (`scripts/omlcp.py stage`); the builder verifies, repairs and hands off. See §3a and `docs/OMLCP.md`. |
 | `Updated_By` / `Updated_At` | Yes | Yes (every write) | |
+
+### 3a. Lanes (Wave O, 2026-10-06)
+
+A task is implemented in one of two lanes. **iterate** (the default) is the builder loop described
+everywhere in this protocol. **generate** applies only to fully specified greenfield work: every output file
+is new, and the dossier carries an `omlcp-manifest` fixing paths, exports and dependencies. ORCH stages one
+long generation onto the task branch before dispatch; the builder then claims, verifies, repairs in separate
+commits and hands off with the same evidence rules. The status lifecycle, territory rules and review standard
+are identical in both lanes. A generator never writes PLAN.md, dossiers, `.git/` or `.devteam/`, and never a
+file outside the manifest, outside `Owned_Paths`, or protected without a `Protected_Grants` entry.
 
 ## 4. Isolation Model — how overwrites become impossible
 

@@ -154,6 +154,24 @@ python3 scripts/atlas.py impact <path> [--hops N]     # reverse-dependency closu
 ```
 Read-only, no LLM call, milliseconds. If `.devteam/atlas.db` doesn't exist yet, these just return nothing useful or a clear error — never treat their absence as blocking; you are never required to have or use ATLAS to complete a task.
 
+## Generate-lane tasks (`**Lane:** generate`)
+
+If your task block carries `**Lane:** generate`, ORCH has already run one long OMLCP generation
+(`scripts/omlcp.py stage`) and committed it on your task branch as a single
+`feat(omlcp): generate TASK-NNN ...` commit. You do **not** regenerate it. Your job is the refinement half:
+
+1. Claim as usual. Your task branch already exists — switch to it; do not re-create it from the base.
+2. Run `python scripts/omlcp.py verify TASK-NNN --repo <main checkout> --target .` and the project's
+   full suite. Paste both results into Progress_Notes.
+3. Fix every finding with normal edits inside `Owned_Paths`, in commits separate from the generation
+   commit (`fix(...): ... [TASK-NNN]`), so review can see what was generated and what you changed.
+4. Record your repair cost: `python scripts/omlcp.py log-repair TASK-NNN --input-tokens N --output-tokens N --unit <your ID> --repo <main checkout>`
+   (use your session's reported usage; if you cannot see it, estimate and say so in `--note`).
+5. If the generation is wrong in shape (wrong files, wrong interfaces) rather than in detail, do not
+   rewrite it wholesale: set `blocked` with `SPEC_AMBIGUITY` and say what the manifest got wrong.
+
+Everything else in this briefing — territory, `plan_commit`, evidence, hand-off — applies unchanged.
+
 ## Rework loop
 
 If ORCH returns your task to `in_progress` with `Review_Findings`: treat findings as the new acceptance bar, fix on the same branch, re-test, append evidence, back to `needs_review`.

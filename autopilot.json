@@ -152,5 +152,20 @@
     "ops_channel": "",
     "thread_tracking": true,
     "_comment": "Slack primary channel (specs/archive/DEVDEPARTMENT_SLACK_SPEC.md \u00a75). Ships DISABLED; enabling requires the \u00a710 live-verification checklist (app from manifest, bot invited, three env vars, slack_notify.py --test) and adding 'slack' to notify_channels."
+  },
+  "omlcp": {
+    "enabled": false,
+    "adapter": "claude-cli",
+    "model": "claude-sonnet-5",
+    "effort": "medium",
+    "max_output_tokens": 64000,
+    "practical_ceiling_tokens": 60000,
+    "max_continuations": 2,
+    "tokens_per_line": 12,
+    "input_warn_tokens": 30000,
+    "input_max_tokens": 150000,
+    "continuation_mode": "resume",
+    "timeout_seconds": 3600,
+    "_comment": "Wave O generation lane (specs/OMLCP_GENERATION_LANE_2026-10.md, docs/OMLCP.md). Ships DISABLED per the ask-don't-auto-flip rule: `enabled` gates supervisor auto-routing of Lane: generate tasks (O-D). scripts/omlcp.py itself runs whenever a builder invokes it. model must never equal the judgment model (maker != checker; omlcp run refuses). tokens_per_line=12 is measured on this pack's Python (paper assumes 3). practical_ceiling 60k per paper section 11.7; max_output_tokens sets CLAUDE_CODE_MAX_OUTPUT_TOKENS for the claude-cli adapter."
   }
 }

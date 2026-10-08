@@ -145,7 +145,22 @@
     "tests/fixtures/smoke/codex-read-only-registry.json",
     "tests/test_wave_e_exit.py",
     "tests/fixtures/wave_e_exit/README.md",
-    "tests/fixtures/wave_e_exit/supervisor.py"
+    "tests/fixtures/wave_e_exit/supervisor.py",
+    ".claude/commands/devteam-generate.md",
+    "docs/OMLCP.md",
+    "docs/OMLCP_ASSESSMENT.md",
+    "scripts/omlcp.py",
+    "scripts/omlcp_stream.py",
+    "scripts/omlcp_packet.py",
+    "scripts/omlcp_generate.py",
+    "scripts/omlcp_verify.py",
+    "scripts/omlcp_economics.py",
+    "tests/test_omlcp_stream.py",
+    "tests/test_omlcp_packet.py",
+    "tests/test_omlcp_generate.py",
+    "tests/test_omlcp_verify.py",
+    "tests/test_omlcp_economics.py",
+    "tests/test_omlcp_cli.py"
   ],
   "project_owned": [
     "PLAN.md",
