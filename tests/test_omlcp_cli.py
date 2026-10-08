@@ -141,7 +141,7 @@ def test_brief_mode_and_template(tmp_path, capsys):
     tpl = capsys.readouterr().out
     assert "```omlcp-manifest" in tpl
     p = tmp_path / "brief.md"
-    p.write_text(tpl)
+    p.write_text(tpl, encoding="utf-8")
     assert omlcp.main(["classify", "--brief", str(p), "--repo", str(tmp_path), "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["lane"] == "generate"
 
@@ -196,7 +196,7 @@ def test_stage_needs_a_builder_unit(git_repo, capsys):
 def test_unsafe_standalone_task_id_is_refused(tmp_path, capsys):
     tpl = omlcp.BRIEF_TEMPLATE.replace("**Task:** FEAT-001", "**Task:** ../../escape")
     p = tmp_path / "brief.md"
-    p.write_text(tpl)
+    p.write_text(tpl, encoding="utf-8")
     assert omlcp.main(["packet", "--brief", str(p), "--repo", str(tmp_path)]) == 1
     assert "not a safe directory name" in capsys.readouterr().err
     assert not (tmp_path.parent / "escape").exists()
