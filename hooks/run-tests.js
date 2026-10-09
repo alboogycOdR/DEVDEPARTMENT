@@ -716,6 +716,49 @@ test('claim visible only in the main checkout is allowed; gateguard denials land
   }
 });
 
+test('worktree builder may edit the main checkout PLAN.md by absolute path (first claim)', () => {
+  // The briefing tells a builder to edit <main>/PLAN.md from inside its worktree.
+  // relPath() is worktree-relative, so that path is '../main/PLAN.md' -- it used
+  // to miss the PLAN.md rule and hit the "no active task" territory block,
+  // refusing the very first claim (found live in the macOS sandbox run).
+  const parent = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'devteam-plan-wt-')));
+  const main = path.join(parent, 'main');
+  const wt = path.join(parent, 'wt');
+  fs.mkdirSync(main);
+  const git = (args, cwd) => execFileSync('git', args, { cwd, stdio: 'ignore' });
+  try {
+    git(['init', '-q', '-b', 'master'], main);
+    git(['config', 'user.email', 't@example.com'], main);
+    git(['config', 'user.name', 'T'], main);
+    fs.writeFileSync(path.join(main, 'PLAN.md'),
+      PLAN.replace('**Status:** in_progress', '**Status:** pending'), 'utf-8');
+    fs.writeFileSync(path.join(main, 'autopilot.json'), '{}\n', 'utf-8');
+    git(['add', 'PLAN.md', 'autopilot.json'], main);
+    git(['commit', '-q', '-m', 'init'], main);
+    git(['worktree', 'add', '--detach', wt, 'HEAD'], main);
+    const env = { CLAUDE_PROJECT_DIR: wt, DEVTEAM_UNIT: 'GB' };
+
+    const claim = runHook('territory-firewall.js',
+      { tool_input: { file_path: path.join(main, 'PLAN.md'),
+        old_string: '**Status:** pending', new_string: '**Status:** claimed' } }, env);
+    assert.strictEqual(claim.code, 0, claim.stderr);
+
+    const selfGrant = runHook('territory-firewall.js',
+      { tool_input: { file_path: path.join(main, 'PLAN.md'),
+        old_string: '**Owned_Paths:** lib/features/auth/**, test/auth/**',
+        new_string: '**Owned_Paths:** lib/features/auth/**, test/auth/**, CLAUDE.md' } }, env);
+    assert.strictEqual(selfGrant.code, 2, selfGrant.stderr);
+    assert.ok(selfGrant.stderr.includes('ORCH-only'), selfGrant.stderr);
+
+    const otherMainFile = runHook('territory-firewall.js',
+      { tool_input: { file_path: path.join(main, 'autopilot.json'), content: '{}' } }, env);
+    assert.strictEqual(otherMainFile.code, 2, otherMainFile.stderr);
+  } finally {
+    try { git(['worktree', 'remove', '--force', wt], main); } catch (_e) { /* best effort */ }
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
 test('dispatch exports DEVTEAM_TASK and DEVTEAM_DELEGATED beside DEVTEAM_UNIT', () => {
   const root = path.join(HOOKS_DIR, '..');
   const sh = fs.readFileSync(path.join(root, 'scripts', 'dispatch.sh'), 'utf-8');

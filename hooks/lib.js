@@ -353,6 +353,28 @@ function readPlanText() {
   }
 }
 
+/** Canonical absolute path for comparison: symlinks resolved (macOS /tmp ->
+ * /private/tmp), case-folded on Windows. Falls back to path.resolve when the
+ * path does not exist yet. */
+function canonicalPath(p) {
+  let abs;
+  try { abs = fs.realpathSync(p); } catch (_e) { abs = path.resolve(p); }
+  return process.platform === 'win32' ? abs.toLowerCase() : abs;
+}
+
+/**
+ * True when `p` is the coordination PLAN.md: either this checkout's or the
+ * main checkout's (E-A.1). A builder in a linked worktree edits
+ * <main>/PLAN.md by absolute path, which relPath() renders as
+ * '../<main>/PLAN.md', so a bare rel === 'PLAN.md' test misses it.
+ */
+function isPlanFile(p) {
+  if (!p) return false;
+  const abs = path.isAbsolute(p) ? p : path.join(repoRoot(), p);
+  const target = canonicalPath(abs);
+  return [repoRoot(), mainRoot()].some((root) => canonicalPath(path.join(root, 'PLAN.md')) === target);
+}
+
 function firstString(obj, keys) {
   if (!obj) return '';
   for (const k of keys) {
@@ -466,5 +488,5 @@ module.exports = {
   activeTasksFor, sessionTasksFor,
   globPrefix, pathInGlob, pathInAnyGlob, PROTECTED_FOR_BUILDERS, PROTECTED_EXCEPTIONS, pathInAnyException, findSecrets,
   writtenContentOf, filePathOf, EMPTY, ACTIVE, controlMode, activeTaskIdFor, knownUnits,
-  isHumanOnlyConfig, sessionIsDelegated, readPlanText,
+  isHumanOnlyConfig, sessionIsDelegated, readPlanText, isPlanFile,
 };

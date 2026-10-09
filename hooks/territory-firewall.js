@@ -58,7 +58,9 @@ function main() {
   // PLAN.md: strict mode — supervisor is the sole writer. Legacy mode
   // still lets a builder edit its own block, but Protected_Grants and
   // Owned_Paths are ORCH-only (a builder cannot self-grant a protected path).
-  if (rel === 'PLAN.md') {
+  // isPlanFile also matches the main checkout's PLAN.md, which a worktree
+  // builder edits by absolute path (rel is then '../<main>/PLAN.md').
+  if (lib.isPlanFile(target)) {
     if (mode === 'strict') {
       process.stderr.write(
         `[territory-firewall] BLOCKED: PLAN.md is protected in control.mode=strict (Wave I). ` +
