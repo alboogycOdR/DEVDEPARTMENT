@@ -40,6 +40,7 @@ os.environ["GIT_CEILING_DIRECTORIES"] = (
     f"{_TEMP_ROOT}{os.pathsep}{_existing}" if _existing else _TEMP_ROOT
 )
 
+
 # Port of oikonomos d3f5fc08. Windows: a bare `bash` handed to CreateProcess
 # resolves to C:\\Windows\\System32\\bash.exe (the WSL launcher) BEFORE any
 # PATH entry, and that launcher fails with "execvpe(/bin/bash) failed" unless
@@ -97,3 +98,14 @@ def _scrub_operator_env():
         sys.path.insert(0, scripts)
     import test_env_scrub
     test_env_scrub.scrub()
+
+
+# macOS: scripts/dispatch.sh opens each legacy-mode builder in its own
+# Terminal.app window when a GUI session is present. Tests assert on the
+# blocking in-process behaviour (exit codes, captured output), and must never
+# pop real windows, so every dispatch a test starts runs in-process. Applied
+# per test, not once at import: scripts/test_env_scrub.py strips DEVTEAM_*
+# from os.environ mid-session, which silently dropped a one-time setting.
+@pytest.fixture(autouse=True)
+def _dispatch_in_process(monkeypatch):
+    monkeypatch.setenv("DEVTEAM_DISPATCH_INPROCESS", "1")

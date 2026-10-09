@@ -657,6 +657,8 @@ class TestFreshClaimBranchFromBaseTip:
             ["bash", "-c", "git rev-parse HEAD"], cwd=wt, text=True).strip()
         assert wt_sha == foreign
 
+    @pytest.mark.skipif(not (shutil.which("powershell") or shutil.which("pwsh")),
+                        reason="powershell not available (Linux sandbox) — .ps1 behavior verified on Windows, mirrored 1:1 by review")
     def test_dispatch_ps1_creates_fresh_claim_branch_from_base_tip(self, tmp_path):
         proj = self._strict_stub(tmp_path, "projectTipPs")
         foreign = self._plant_previous_task_branch_via_git(proj)
@@ -689,6 +691,19 @@ class TestAutopilotTickPortability:
         low = src.lower()
         for banned in ("oikonomos", "oik_", "cx9", r"e:\dell-projects"):
             assert banned not in low, banned
+
+    def test_tick_sh_mirror_resolves_repo_from_own_path_and_parses(self):
+        path = REPO_ROOT / "scripts" / "autopilot-tick.sh"
+        src = path.read_text(encoding="utf-8")
+        assert 'REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"' in src
+        assert "supervisor.py --once" in src
+        assert "autopilot-tick.lock" in src  # cron has no Task Scheduler no-overlap setting
+        low = src.lower()
+        for banned in ("oikonomos", "oik_", "cx9", r"e:\dell-projects"):
+            assert banned not in low, banned
+        bash = shutil.which("bash")
+        if bash and os.name != "nt":
+            assert subprocess.run([bash, "-n", str(path)]).returncode == 0
 
 
 class TestLegacyModePinnedBaseAndClaimVerification:
@@ -910,6 +925,8 @@ class TestPs1LegacyModePinnedBaseAndClaimVerification:
             encoding="utf-8", newline="\n")
         return proj
 
+    @pytest.mark.skipif(not (shutil.which("powershell") or shutil.which("pwsh")),
+                        reason="powershell not available (Linux sandbox) — .ps1 behavior verified on Windows, mirrored 1:1 by review")
     def test_ps1_dirty_plan_md_in_main_checkout_refuses_to_dispatch(self, tmp_path):
         proj = self._legacy_project(tmp_path, "projectDirtyPs")
         (proj / "PLAN.md").write_text(
@@ -919,6 +936,8 @@ class TestPs1LegacyModePinnedBaseAndClaimVerification:
         assert result.returncode != 0
         assert "uncommitted changes in the main checkout" in _combined(result)
 
+    @pytest.mark.skipif(not (shutil.which("powershell") or shutil.which("pwsh")),
+                        reason="powershell not available (Linux sandbox) — .ps1 behavior verified on Windows, mirrored 1:1 by review")
     def test_ps1_worktree_on_a_previous_task_branch_is_reset_to_base_tip_when_no_resumable_task(self, tmp_path):
         proj = self._legacy_project(tmp_path, "projectResetMePs")
         setup = run_dispatch_ps1(proj, dry_run=True)
@@ -940,6 +959,8 @@ class TestPs1LegacyModePinnedBaseAndClaimVerification:
         assert wt_sha == base
         assert wt_sha != foreign
 
+    @pytest.mark.skipif(not (shutil.which("powershell") or shutil.which("pwsh")),
+                        reason="powershell not available (Linux sandbox) — .ps1 behavior verified on Windows, mirrored 1:1 by review")
     def test_ps1_worktree_is_left_alone_when_this_unit_has_a_resumable_task(self, tmp_path):
         proj = self._legacy_project(tmp_path, "projectKeepMePs")
         setup = run_dispatch_ps1(proj, dry_run=True)
@@ -983,6 +1004,8 @@ class TestPs1LegacyModePinnedBaseAndClaimVerification:
         wt_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=wt, text=True).strip()
         assert wt_sha == in_flight
 
+    @pytest.mark.skipif(not (shutil.which("powershell") or shutil.which("pwsh")),
+                        reason="powershell not available (Linux sandbox) — .ps1 behavior verified on Windows, mirrored 1:1 by review")
     def test_ps1_no_claim_flip_within_window_logs_claim_unverified(self, tmp_path):
         proj = make_project(tmp_path, "projectUnverifiedPs", REPO_ROOT)
         (proj / "autopilot.json").write_text(

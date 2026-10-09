@@ -19,6 +19,9 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const lib = require('./lib.js');
 
+// macOS/Linux ship `python3` with no `python` alias; Windows ships `python`.
+const PYTHON = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+
 function lastProgressNote(task) {
   const notes = (task.fields.Progress_Notes || '').split('\n').map((s) => s.trim()).filter((s) => s.startsWith('-'));
   return notes.length ? notes[notes.length - 1] : null;
@@ -29,7 +32,7 @@ function main() {
   const main = lib.mainRoot();
   const u = lib.unit() || 'UNKNOWN'; // null (unrecognized unit) is fine here — these hooks only label output
   const lines = [`[devteam session-start] Unit: ${u}. Re-read AGENTS.md and PLAN.md fresh from disk before acting.`];
-  const sync = spawnSync(process.env.PYTHON || 'python',
+  const sync = spawnSync(PYTHON,
     [path.join(root, 'scripts', 'sync_from_pack.py'), '--behind-pack', '--project', root],
     { encoding: 'utf8', timeout: 5000 });
   if (sync.status === 0 && sync.stdout.trim()) lines.push(`[devteam session-start] ${sync.stdout.trim()}`);
@@ -37,7 +40,7 @@ function main() {
   // E-J.7/E-J.8: report PLAN.md freshness and untagged base-branch work at
   // session start. This is observational and bounded; it must never block a
   // session if Python or Git is unavailable.
-  const health = spawnSync(process.env.PYTHON || 'python',
+  const health = spawnSync(PYTHON,
     [path.join(root, 'scripts', 'plan_health.py'), '--repo', main],
     { encoding: 'utf8', timeout: 10000 });
   if (health.status === 0 && health.stdout.trim()) {
