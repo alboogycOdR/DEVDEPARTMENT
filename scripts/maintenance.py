@@ -124,13 +124,16 @@ def _step_pytest(repo: Path) -> StepResult:
     if not tests_dir.exists():
         return StepResult("pytest", True, "no tests/ directory \u2014 skipped")
     try:
+        # Same 1800s budget as the harness-audit step: the full suite runs ~9 min
+        # on the macOS machine (real-CLI probes), and 600s timed out there,
+        # filing a bogus TASK-MAINT (2026-10-10).
         r = subprocess.run([sys.executable, "-m", "pytest", "tests/", "-q"], cwd=repo,
-                           capture_output=True, encoding="utf-8", errors="replace", timeout=600)
+                           capture_output=True, encoding="utf-8", errors="replace", timeout=1800)
         ok = r.returncode == 0
         tail = _oneline((r.stdout or "") + " " + (r.stderr or ""), max_len=500)
         return StepResult("pytest", ok, "pytest PASS" if ok else f"pytest FAILED: {tail}")
     except subprocess.TimeoutExpired:
-        return StepResult("pytest", False, "pytest timed out after 600s")
+        return StepResult("pytest", False, "pytest timed out after 1800s")
     except Exception as exc:  # noqa: BLE001
         return StepResult("pytest", False, f"pytest crashed: {exc}")
 
