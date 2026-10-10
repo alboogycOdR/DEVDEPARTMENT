@@ -23,9 +23,10 @@
   "_review_cmd_note": "Slash commands do NOT expand in claude -p on this CLI version \u2014 verified live 2026-08-13: '/devteam-review' as the -p prompt produced a no-op session ('I don't see a specific request'). The explicit read-and-execute prompt is the working form.",
   "builders": {
     "active": [
-      "CX"
+      "CX",
+      "CXB"
     ],
-    "_active_note": "2026-10-10 owner decision: Codex (CX) is the only active builder. GB stays defined but inactive until a Grok subscription is back (grok is not signed in on the macOS machine); S5 stays defined but inactive. Re-activate by adding the ID back to this list.",
+    "_active_note": "2026-10-10 owner decision: Codex only. CX runs on the nuburo.systems@gmail.com ChatGPT account (default ~/.codex login), CXB on nuburo@gmail.com (CODEX_HOME=~/.codex-cxb, dispatch.sh only). ORCH stays on Claude Code. GB stays defined but inactive until a Grok subscription is back; S5/S5B stay defined but inactive. Re-activate by adding the ID back to this list.",
     "defined": {
       "GB": {
         "cli": "grok",
@@ -79,6 +80,20 @@
         "auto_loads_ambient_context": true,
         "usage_provider": null,
         "_comment": "Defined but NOT active: activate by adding 'S5B' to builders.active AFTER the live CLAUDE_CONFIG_DIR verification in docs/BUILDER_REGISTRY.md. usage_provider stays null until the per-account probe (increment 9) exists."
+      },
+      "CXB": {
+        "cli": "codex",
+        "model": "gpt-6-sol",
+        "auth": {
+          "mode": "config_dir",
+          "value": "~/.codex-cxb"
+        },
+        "worktree_suffix": "codexb",
+        "branch_suffix": "cxb",
+        "briefing": "briefings/CODEX_BRIEFING.md",
+        "auto_loads_ambient_context": false,
+        "usage_provider": null,
+        "_comment": "Second Codex builder on the nuburo@gmail.com ChatGPT account (CX runs on nuburo.systems@gmail.com, the default ~/.codex login). dispatch.sh points codex at this login via CODEX_HOME=~/.codex-cxb; dispatch.ps1 does NOT yet (it sets CLAUDE_CONFIG_DIR only), so on Windows CXB would run on the default Codex account until the .ps1 mirror lands. usage_provider stays null: the usage probe reads the default login only."
       }
     }
   },
