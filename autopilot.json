@@ -23,10 +23,9 @@
   "_review_cmd_note": "Slash commands do NOT expand in claude -p on this CLI version \u2014 verified live 2026-08-13: '/devteam-review' as the -p prompt produced a no-op session ('I don't see a specific request'). The explicit read-and-execute prompt is the working form.",
   "builders": {
     "active": [
-      "GB",
-      "CX",
-      "S5"
+      "CX"
     ],
+    "_active_note": "2026-10-10 owner decision: Codex (CX) is the only active builder. GB stays defined but inactive until a Grok subscription is back (grok is not signed in on the macOS machine); S5 stays defined but inactive. Re-activate by adding the ID back to this list.",
     "defined": {
       "GB": {
         "cli": "grok",
