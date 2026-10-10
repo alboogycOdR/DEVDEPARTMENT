@@ -34,7 +34,7 @@ it. The pack ships **S5B** in exactly this state (see Activation below).
 |---|---|
 | `cli` | Invocation family: `grok` / `codex` / `claude`. Picks the CLI-quirk row in dispatch (flags, non-interactive conventions) — deliberately NOT what determines worktree/branch/briefing. |
 | `model` | Pinned model string, or `null` for the CLI's own default. |
-| `auth` | `{"mode": "default"}` (ambient credentials) or `{"mode": "config_dir", "value": "~/.claude-s5b"}` — dispatch sets `CLAUDE_CONFIG_DIR` to that path **scoped to the launch only** (bash: `env(1)` in the launch subshell; PS 5.1: save/restore in `finally`). |
+| `auth` | `{"mode": "default"}` (ambient credentials) or `{"mode": "config_dir", "value": "~/.claude-s5b"}` — dispatch sets `CLAUDE_CONFIG_DIR` (claude units) or, in `dispatch.sh` only, `CODEX_HOME` (codex units, e.g. `"~/.codex-cxb"` for a second ChatGPT account) to that path **scoped to the launch only** (bash: `env(1)` in the launch subshell; PS 5.1: save/restore in `finally`, CLAUDE_CONFIG_DIR only — the .ps1 mirror for CODEX_HOME is pending). |
 | `worktree_suffix` | → `wt-<suffix>-<project>` (sibling of the project root). |
 | `branch_suffix` | → `task/TASK-NNN-<suffix>`. |
 | `briefing` | The unit's briefing file. Two same-cli units may share one (S5/S5B do). |

@@ -18,6 +18,7 @@ and what does it actually do with a pre-existing directory there."
 NOT gated by --dry-run in dispatch.sh (only builder launch and prompt
 display are), so a dry run still exercises every line of the fix.
 """
+import json
 import os
 import shlex
 import shutil
@@ -510,6 +511,27 @@ class TestRegistryDrivenDispatch:
         # And S5 (auth mode default) must NOT get the env override:
         r_s5 = run_dispatch(proj, builder="S5")
         assert "CLAUDE_CONFIG_DIR=" not in r_s5.stdout
+
+    def test_codex_config_dir_unit_scopes_codex_home(self, tmp_path):
+        """A second Codex login (CXB) is selected with CODEX_HOME, never
+        CLAUDE_CONFIG_DIR -- codex ignores the latter and would silently run
+        on the default account."""
+        proj = make_project(tmp_path, "projectCxb", REPO_ROOT)
+        registry = json.loads(json.dumps(S5B_REGISTRY))
+        registry["builders"]["active"].append("CXB")
+        registry["builders"]["defined"]["CXB"] = {
+            "cli": "codex", "model": None,
+            "auth": {"mode": "config_dir", "value": "~/.codex-cxb"},
+            "worktree_suffix": "codexb", "branch_suffix": "cxb",
+            "briefing": "briefings/CODEX_BRIEFING.md",
+        }
+        (proj / "autopilot.json").write_text(json.dumps(registry), encoding="utf-8", newline="\n")
+        result = run_dispatch(proj, builder="CXB")
+        assert "CODEX_HOME=" in result.stdout, result.stdout + result.stderr
+        assert "CLAUDE_CONFIG_DIR=" not in result.stdout
+        assert "wt-codexb-projectCxb" in result.stdout
+        r_cx = run_dispatch(proj, builder="CX")
+        assert "CODEX_HOME=" not in r_cx.stdout
 
     def test_unknown_unit_fails_closed(self, tmp_path):
         proj = self._registry_project(tmp_path, "projectR")

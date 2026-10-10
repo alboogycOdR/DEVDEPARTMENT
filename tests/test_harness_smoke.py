@@ -219,7 +219,8 @@ def run_dispatch_smoke(root: Path, unit: str, cli: str, fakebin: Path | None,
     entry = load_registry(root)["defined"][unit]
     auth = entry.get("auth") or {}
     if auth.get("mode") == "config_dir":
-        env["CLAUDE_CONFIG_DIR"] = str(Path(auth["value"]).expanduser())
+        auth_var = "CODEX_HOME" if entry.get("cli") == "codex" else "CLAUDE_CONFIG_DIR"
+        env[auth_var] = str(Path(auth["value"]).expanduser())
     if fakebin:
         env["PATH"] = f"{fakebin}{os.pathsep}{env.get('PATH', '')}"
     argv_file = output_file.with_suffix(".argv")

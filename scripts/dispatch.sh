@@ -436,16 +436,20 @@ ${ATLAS_SECTION}"
 fi
 
 # v4.7: per-unit auth, resolved BEFORE the dry-run branch so previews are
-# accurate about it. config_dir mode sets CLAUDE_CONFIG_DIR for the launch
-# only (scoped inside the launch subshell via env(1) — it must not leak
-# into this script's own environment or any post-launch step).
+# accurate about it. config_dir mode points the CLI at a second login for the
+# launch only (scoped inside the launch subshell via env(1) — it must not leak
+# into this script's own environment or any post-launch step): CODEX_HOME for
+# codex units (a second ChatGPT account), CLAUDE_CONFIG_DIR for claude units.
+# dispatch.ps1 still sets CLAUDE_CONFIG_DIR only (macOS-first, 2026-10-10).
 # Expanded as ${AUTH_ENV[@]+"${AUTH_ENV[@]}"}: macOS bash 3.2 under `set -u`
 # treats an empty array as unbound, which killed every default-auth launch.
 AUTH_ENV=()
 if [[ "$AUTH_MODE" == "config_dir" ]]; then
   AUTH_DIR="${AUTH_VALUE/#\~/$HOME}"
-  AUTH_ENV=(env "CLAUDE_CONFIG_DIR=$AUTH_DIR")
-  echo "[dispatch] Unit $ID authenticates via CLAUDE_CONFIG_DIR=$AUTH_DIR (scoped to this launch)."
+  AUTH_VAR="CLAUDE_CONFIG_DIR"
+  [[ "$CLI" == "codex" ]] && AUTH_VAR="CODEX_HOME"
+  AUTH_ENV=(env "$AUTH_VAR=$AUTH_DIR")
+  echo "[dispatch] Unit $ID authenticates via $AUTH_VAR=$AUTH_DIR (scoped to this launch)."
 fi
 
 # Legacy-mode launch target: its own Terminal.app window on a Mac GUI session
@@ -543,7 +547,7 @@ elif [[ "$LAUNCH_MODE" == "terminal-window" ]]; then
     echo '# Safe to delete once the session has ended.'
     printf 'export PATH=%q\n' "$PATH"
     printf 'export DEVTEAM_UNIT=%q DEVTEAM_TASK=%q DEVTEAM_DELEGATED=1\n' "$ID" "$TASK_ID"
-    if [[ -n "${AUTH_DIR:-}" ]]; then printf 'export CLAUDE_CONFIG_DIR=%q\n' "$AUTH_DIR"; fi
+    if [[ -n "${AUTH_DIR:-}" ]]; then printf 'export %s=%q\n' "$AUTH_VAR" "$AUTH_DIR"; fi
     printf 'cd %q || exit 1\n' "$WT"
     printf 'printf %q $$ %q %q > %q\n' '{"pid": %d, "runner": "%s", "worktree": "%s"}' "$RUNNER_PATH" "$WT" "$PID_PATH"
     printf 'printf %s %q\n' "'\\033]0;%s\\007'" "DEVTEAM $ID -- ${TASK_ID:-scan}"
