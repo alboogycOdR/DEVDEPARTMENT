@@ -1144,3 +1144,23 @@ Status lifecycle: `pending → claimed → in_progress → needs_review → done
 **Status:** done
 **Archived:** plan/archive/2026-10.md
 
+### TASK-MAINT-2026-10-10
+**Title:** Nightly self-audit failure (2026-10-10)
+**Status:** pending
+**Assigned_To:** GB
+**Priority:** high
+**Spec_References:** self-generated — nightly audit failure
+**Owned_Paths:** scripts/**, tests/**
+**Depends_On:** —
+**Description:** pytest: pytest timed out after 600s
+**Acceptance_Criteria:**
+- [ ] All nightly audit steps pass: pytest
+**Branch:** —
+**Started_At:** —
+**Progress_Notes:** —
+**Artifacts:** —
+**Test_Evidence:** —
+**Review_Findings:** —
+**Blocked_Reason:** —
+**Updated_By:** ORCH
+**Updated_At:** 2026-10-10T07:10:24Z
